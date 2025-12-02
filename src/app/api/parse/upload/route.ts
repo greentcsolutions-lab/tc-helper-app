@@ -6,7 +6,13 @@ import { flattenPdf } from "@/lib/pdf/flatten";
 import { renderPdfToPngBase64Array } from "@/lib/extractor/renderer";
 import { classifyCriticalPages } from "@/lib/extractor/classifier";
 
-export async function POST(req: NextRequest) {
+export const runtime = "nodejs";
+export const maxDuration = 60;
+
+export async function POST(
+  req: NextRequest,
+  { params }: { params: Promise<Record<string, string>> }  // ← Fixed: Promise + Record
+) {
   const { userId } = await auth();
   if (!userId) return new Response("Unauthorized", { status: 401 });
 
@@ -30,19 +36,16 @@ export async function POST(req: NextRequest) {
       rawJson: {},
       formatted: {},
       criticalPageNumbers,
-      status: "READY_FOR_EXTRACT",  // ← New: Gate for extraction
-      pdfBuffer: flatBuffer,        // ← Keep until confirmed
+      status: "READY_FOR_EXTRACT",
+      pdfBuffer: flatBuffer,
     },
   });
 
   return Response.json({
     success: true,
     parseId: parse.id,
-    previewPages: criticalImages,  // ← Pass critical PNGs directly (4–9 pages)
+    previewPages: criticalImages,
     state,
     pageCount: allPages.length,
   });
 }
-
-export const runtime = "nodejs";
-export const maxDuration = 60;

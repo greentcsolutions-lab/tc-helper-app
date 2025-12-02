@@ -3,12 +3,18 @@ import { NextResponse } from "next/server";
 import { db } from "@lib/prisma";
 import { renderPdfToPngBase64Array } from "@/lib/extractor/renderer";
 
+export const runtime = "nodejs";
+export const maxDuration = 60;
+
+// Fixed for Next.js 15 — params is now a Promise
 export async function GET(
   req: Request,
-  { params }: { params: { parseId: string } }
+  { params }: { params: Promise<{ parseId: string }> }
 ) {
+  const { parseId } = await params;
+
   const parse = await db.parse.findUnique({
-    where: { id: params.parseId },
+    where: { id: parseId },
     select: { pdfBuffer: true, fileName: true },
   });
 
@@ -43,6 +49,3 @@ export async function GET(
     },
   });
 }
-
-export const runtime = "nodejs";
-export const maxDuration = 60;
