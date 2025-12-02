@@ -1,4 +1,4 @@
-// components/ThemeToggle.tsx
+// src/components/ui/ThemeToggle.tsx
 "use client";
 
 import { Moon, Sun } from "lucide-react";
@@ -10,7 +10,10 @@ export default function ThemeToggle() {
   const [mounted, setMounted] = useState(false);
   const { resolvedTheme, setTheme } = useTheme();
 
-  useEffect(() => setMounted(true), []);
+  // Prevent hydration mismatch
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   if (!mounted) return <div className="w-10 h-10" />;
 
@@ -23,11 +26,7 @@ export default function ThemeToggle() {
       className="fixed bottom-6 right-6 rounded-full shadow-lg z-50 border bg-background/80 backdrop-blur"
       onClick={() => setTheme(isDark ? "light" : "dark")}
     >
-      {isDark ? (
-        <Sun className="h-5 w-5" />
-      ) : (
-        <Moon className="h-5 w-5" />
-      )}
+      {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
       <span className="sr-only">Toggle theme</span>
     </Button>
   );

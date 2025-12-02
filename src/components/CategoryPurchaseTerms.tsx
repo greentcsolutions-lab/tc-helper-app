@@ -2,7 +2,7 @@
 import CategorySection from "./CategorySection";
 import { DollarSign } from "lucide-react";
 
-export default function CategoryPurchaseTerms({ data }: { data: any }) {
+export default function CategoryPurchaseTerms({ data }: { data: Record<string, any> }) {
   const deposit = data.initial_deposit || {};
   const homeWarranty = data.home_warranty || {};
 

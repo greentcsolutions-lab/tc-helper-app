@@ -10,7 +10,7 @@ function formatAgent(agent: any) {
   return parts.join(" • ") || "Not Provided";
 }
 
-export default function CategoryRepresentingParties({ data }: { data: any }) {
+export default function CategoryRepresentingParties({ data }: { data: Record<string, any> }) {
   const fields = [
     { label: "Buyer's Brokerage", value: data.buyers_broker?.brokerage_name },
     { label: "Buyer's Agent", value: formatAgent(data.buyers_broker) },

@@ -9,7 +9,7 @@ import { PreviewGallery } from "./preview-gallery";
 import { ActionsBar } from "./actions-bar";
 import { useRouter } from "next/navigation";  // ← Add for optional redirect
 
-export default function UploadZone({ onComplete }: { onComplete?: (data: any) => void }) {  // ← Optional callback
+export default function UploadZone({ onComplete }: { onComplete?: (data: Record<string, any>) => void }) {  // ← Optional callback
   const [view, setView] = useState<UploadView>("idle");
   const [currentFile, setCurrentFile] = useState<File | null>(null);
   const [parseId, setParseId] = useState<string>("");

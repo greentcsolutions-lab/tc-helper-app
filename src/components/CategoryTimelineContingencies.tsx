@@ -1,7 +1,7 @@
 import CategorySection from "./CategorySection";
 import { Calendar } from "lucide-react";
 
-export default function CategoryTimelineContingencies({ data }: { data: any }) {
+export default function CategoryTimelineContingencies({ data }: { data: Record<string, any> }) {
   const fields = [
     { label: "COP Contingency", value: data.cop_contingency ? "Active" : "Waived" },
     { label: "Final Acceptance Date", value: data.final_acceptance_date },
