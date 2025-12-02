@@ -6,12 +6,25 @@ export async function flattenPdf(buffer: Buffer): Promise<Buffer> {
     const pdfDoc = await PDFDocument.load(buffer, {
       ignoreEncryption: true,
       capNumbers: true,
+      updateMetadata: false,
     });
+
     const form = pdfDoc.getForm();
-    form?.flatten();
-    return Buffer.from(await pdfDoc.save({ useObjectStreams: false }));
+    if (form?.acroForm) {
+      try {
+        form.flatten();
+      } catch (e) {
+        console.warn("[flattenPdf] form.flatten() failed on malformed AcroForm – skipping");
+      }
+    }
+
+    const pdfBytes = await pdfDoc.save({
+      useObjectStreams: false, // prevents "invalid object ref" warnings
+    });
+
+    return Buffer.from(pdfBytes);
   } catch (error) {
-    console.error("[flattenPdf] Failed, returning original:", error);
+    console.error("[flattenPdf] Unexpected error – returning original buffer", error);
     return buffer;
   }
 }

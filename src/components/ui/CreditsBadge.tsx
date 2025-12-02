@@ -1,4 +1,6 @@
-// src/components/CreditsBadge.tsx
+// src/components/ui/CreditsBadge.tsx
+import Link from "next/link";
+
 interface CreditsBadgeProps {
   credits: number;
 }
@@ -17,25 +19,20 @@ export default function CreditsBadge({ credits }: CreditsBadgeProps) {
           : "bg-emerald-100 text-emerald-700"
       }`}
     >
-      {/* Number + forced spacing */}
       <span className="tabular-nums">{credits}</span>
-
-      {/* This span gives perfect, consistent spacing */}
       <span className="w-2" aria-hidden="true" />
-
-      {/* Text */}
       <span className="font-medium">
         {credits === 1 ? "parse" : "parses"} left
       </span>
 
-      {/* Optional CTA when zero */}
+      {/* Fixed: use Next.js Link instead of <a> → no hydration mismatch & fixes TS 2614 */}
       {isZero && (
-        <a
+        <Link
           href="/dashboard/billing"
           className="ml-3 text-xs font-medium underline hover:no-underline"
         >
           Add credits →
-        </a>
+        </Link>
       )}
     </div>
   );
