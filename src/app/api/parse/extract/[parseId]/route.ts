@@ -43,5 +43,5 @@ export async function POST(req: NextRequest, { params }: { params: { parseId: st
   return Response.json({ success: true, needsReview, extracted: result.extracted });
 }
 
-export const runtime = "edge";
+export const runtime = "nodejs";
 export const maxDuration = 60;
