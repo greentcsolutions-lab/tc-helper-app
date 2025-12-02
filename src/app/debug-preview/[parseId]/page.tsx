@@ -16,14 +16,20 @@ interface PageImage {
   height: number;
 }
 
-export default function DebugPreview({ params }: { params: { parseId: string } }) {
+// FIXED: params is now a Promise in Next.js 15
+interface DebugPreviewProps {
+  params: Promise<{ parseId: string }>;
+}
+
+export default async function DebugPreview({ params }: DebugPreviewProps) {
+  const { parseId } = await params;  // ← await the params
   const [images, setImages] = useState<PageImage[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedImage, setSelectedImage] = useState<PageImage | null>(null);
   const router = useRouter();
 
   useEffect(() => {
-    const evtSource = new EventSource(`/api/debug-render/${params.parseId}`);
+    const evtSource = new EventSource(`/api/debug-render/${parseId}`);
     evtSource.onmessage = (e) => {
       if (e.data === "[DONE]") {
         evtSource.close();
@@ -34,7 +40,7 @@ export default function DebugPreview({ params }: { params: { parseId: string } }
       setImages(prev => [...prev, page]);
     };
     return () => evtSource.close();
-  }, [params.parseId]);
+  }, [parseId]);
 
   const downloadAll = () => {
     images.forEach(img => {
@@ -46,12 +52,12 @@ export default function DebugPreview({ params }: { params: { parseId: string } }
   };
 
   const cancel = async () => {
-    await fetch(`/api/debug-cancel/${params.parseId}`, { method: "POST" });
+    await fetch(`/api/debug-cancel/${parseId}`, { method: "POST" });
     router.push("/dashboard");
   };
 
   const proceedToGrok = () => {
-    router.push(`/process-grok/${params.parseId}`);
+    router.push(`/process-grok/${parseId}`);
   };
 
   return (
@@ -121,7 +127,12 @@ export default function DebugPreview({ params }: { params: { parseId: string } }
       </Card>
 
       {selectedImage && (
-        <ImageModal image={selectedImage} onClose={() => setSelectedImage(null)} />
+        <ImageModal
+          src={selectedImage.base64}
+          alt={`Page ${selectedImage.pageNumber}`}
+          open={!!selectedImage}
+          onOpenChange={(open) => !open && setSelectedImage(null)}
+        />
       )}
     </div>
   );
