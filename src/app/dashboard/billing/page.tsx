@@ -3,20 +3,15 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import dynamic from "next/dynamic";
 
-// ←←← CRITICAL: rename the import so it doesn’t clash with the export const dynamic below
-const DynamicCreditsBadge = dynamic(() => import("@/components/ui/CreditsBadge"), {
-  ssr: false,
-  loading: () => (
-    <div className="inline-flex items-center rounded-full bg-muted px-4 py-2 text-sm">
-      Loading…
-    </div>
-  ),
-});
+// ←←← WE DO NOT IMPORT "next/dynamic" AT ALL
+// Instead we use React.lazy + Suspense (the only way to avoid the clash)
 
-// This line is REQUIRED for server components that do DB/auth calls in App Router
-export const dynamic = "force-dynamic";
+import { lazy, Suspense } from "react";
+
+const CreditsBadge = lazy(() => import("@/components/ui/CreditsBadge"));
+
+export const dynamic = "force-dynamic"; // ← this stays, no conflict now
 
 export default async function BillingPage() {
   const { userId } = await auth();
@@ -27,8 +22,6 @@ export default async function BillingPage() {
     select: { credits: true },
   });
 
-  const credits = user?.credits ?? 0;
-
   return (
     <div className="container mx-auto p-6">
       <Card className="max-w-2xl mx-auto">
@@ -38,10 +31,18 @@ export default async function BillingPage() {
         <CardContent className="space-y-6">
           <div className="flex items-center justify-between">
             <p className="text-lg">Current credits</p>
-            <DynamicCreditsBadge credits={credits} />
+            <Suspense
+              fallback={
+                <span className="inline-block animate-pulse rounded-full bg-muted px-4 py-2 text-sm">
+                  Loading…
+                </span>
+              }
+            >
+              <CreditsBadge credits={user?.credits ?? 0} />
+            </Suspense>
           </div>
           <p className="text-muted-foreground">
-            Free tier gives you 1 parse. Paid plans coming soon.
+            Free tier: 1 parse. Unlimited coming soon.
           </p>
         </CardContent>
       </Card>
