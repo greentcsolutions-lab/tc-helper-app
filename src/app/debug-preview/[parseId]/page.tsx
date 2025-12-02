@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from "react";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Loader2, Download, X, PlayCircle, AlertCircle } from "lucide-react";
@@ -16,19 +16,19 @@ interface PageImage {
   height: number;
 }
 
-// FIXED: params is now a Promise in Next.js 15
-interface DebugPreviewProps {
-  params: Promise<{ parseId: string }>;
-}
+export default function DebugPreview() {
+  // useParams() returns plain object in Next.js 15 — no Promise needed
+  const params = useParams();
+  const parseId = params.parseId as string;
 
-export default async function DebugPreview({ params }: DebugPreviewProps) {
-  const { parseId } = await params;  // ← await the params
   const [images, setImages] = useState<PageImage[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedImage, setSelectedImage] = useState<PageImage | null>(null);
   const router = useRouter();
 
   useEffect(() => {
+    if (!parseId) return;
+
     const evtSource = new EventSource(`/api/debug-render/${parseId}`);
     evtSource.onmessage = (e) => {
       if (e.data === "[DONE]") {
@@ -36,9 +36,14 @@ export default async function DebugPreview({ params }: DebugPreviewProps) {
         setLoading(false);
         return;
       }
-      const page = JSON.parse(e.data);
-      setImages(prev => [...prev, page]);
+      try {
+        const page = JSON.parse(e.data);
+        setImages(prev => [...prev, page]);
+      } catch (err) {
+        console.error("Failed to parse SSE message:", e.data);
+      }
     };
+
     return () => evtSource.close();
   }, [parseId]);
 
