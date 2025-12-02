@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Copy } from "lucide-react";
 import { toast } from "sonner";
 
-export function CopyFieldRow({ label, value }: { label: string; value: string }) {
+function CopyFieldRow({ label, value }: { label: string; value: string }) {
   const copy = () => {
     navigator.clipboard.writeText(value);
     toast.success(`Copied ${label}`);
@@ -23,3 +23,5 @@ export function CopyFieldRow({ label, value }: { label: string; value: string })
     </div>
   );
 }
+
+export default CopyFieldRow;  // ← Default export

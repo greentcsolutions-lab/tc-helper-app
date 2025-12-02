@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Copy } from "lucide-react";
 import { toast } from "sonner";
 
-export function CopyAllButton({ data }: { data: Record<string, any> }) {
+function CopyAllButton({ data }: { data: Record<string, any> }) {
   const copyAll = () => {
     const text = Object.entries(data)
       .map(([k, v]) => `${k}: ${v}`)
@@ -21,3 +21,5 @@ export function CopyAllButton({ data }: { data: Record<string, any> }) {
     </Button>
   );
 }
+
+export default CopyAllButton;  // ← Default export

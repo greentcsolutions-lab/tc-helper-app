@@ -10,7 +10,7 @@ export async function POST(req: NextRequest, { params }: { params: { parseId: st
   if (!userId) return new Response("Unauthorized", { status: 401 });
 
   const parse = await db.parse.findUnique({
-    where: { id: params.parseId, userId },  // Auth check
+    where: { id: params.parseId, userId },  // ← Use params.parseId here
     select: { pdfBuffer: true, criticalPageNumbers: true, status: true },
   });
 

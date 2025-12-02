@@ -19,7 +19,7 @@ interface ImageModalProps {
   className?: string;
 }
 
-export function ImageModal({
+function ImageModal({
   src,
   alt = "Document page",
   open,
@@ -69,3 +69,5 @@ export function ImageModal({
     </Dialog>
   );
 }
+
+export default ImageModal;  // ← Default export (matches your import)
