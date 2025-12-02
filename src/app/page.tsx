@@ -1,4 +1,5 @@
 // src/app/page.tsx
+// dummy comment for git commit
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
