@@ -5,13 +5,18 @@ import { Button } from "@/components/ui/button";
 import { Copy } from "lucide-react";
 import { toast } from "sonner";
 
-function CopyAllButton({ data }: { data: Record<string, any> }) {
+interface CopyAllButtonProps {
+  data: Record<string, any>;
+  categoryName?: string;
+}
+
+export default function CopyAllButton({ data, categoryName }: CopyAllButtonProps) {
   const copyAll = () => {
     const text = Object.entries(data)
       .map(([k, v]) => `${k}: ${v}`)
       .join("\n");
     navigator.clipboard.writeText(text);
-    toast.success("Copied all fields!");
+    toast.success(categoryName ? `Copied ${categoryName}!` : "Copied all fields!");
   };
 
   return (
@@ -21,5 +26,3 @@ function CopyAllButton({ data }: { data: Record<string, any> }) {
     </Button>
   );
 }
-
-export default CopyAllButton;  // ← Default export
