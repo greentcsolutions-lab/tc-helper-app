@@ -8,14 +8,15 @@ import { extractFromCriticalPages } from "@/lib/extractor/extractor";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
+// CORRECT Next.js 15 App Router signature for dynamic routes
 export async function POST(
-  req: NextRequest,
-  context: { params: { parseId: string } }
+  request: NextRequest,
+  { params }: { params: Promise<{ parseId: string }> }  // ← Promise-wrapped!
 ) {
   const { userId } = await auth();
   if (!userId) return new Response("Unauthorized", { status: 401 });
 
-  const parseId = context.params.parseId;
+  const { parseId } = await params;  // ← await the params
 
   const parse = await db.parse.findUnique({
     where: { id: parseId, userId },
