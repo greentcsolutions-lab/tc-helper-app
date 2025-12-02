@@ -2,10 +2,16 @@
 import { readFileSync } from "fs";
 import path from "path";
 
-const PROMPT = readFileSync(
-  path.join(process.cwd(), "src/lib/extractor/templates/classifier.txt"),
-  "utf-8"
-);
+// This file is only imported from server-only contexts (never Edge)
+const PROMPT_PATH = path.join(process.cwd(), "src/lib/extractor/templates/classifier.txt");
+let cachedPrompt: string | null = null;
+
+export function getClassifierPrompt(): string {
+  if (!cachedPrompt) {
+    cachedPrompt = readFileSync(PROMPT_PATH, "utf-8");
+  }
+  return cachedPrompt;
+}
 
 const chunk = <T>(arr: T[], size: number): T[][] =>
   Array.from({ length: Math.ceil(arr.length / size) }, (_, i) =>
@@ -17,11 +23,13 @@ export async function classifyCriticalPages(pages: { pageNumber: number; base64:
   const pageMap = new Map<string, number>();
   let state = "Unknown";
 
+  const prompt = getClassifierPrompt();
+
   for (const [i, batch] of batches.entries()) {
     const start = batch[0].pageNumber;
     const end = batch.at(-1)!.pageNumber;
 
-    const prompt = PROMPT
+    const fullPrompt = prompt
       .replace("{{BATCH}}", String(i + 1))
       .replace("{{TOTAL}}", String(batches.length))
       .replace("{{START}}", String(start))
@@ -40,7 +48,7 @@ export async function classifyCriticalPages(pages: { pageNumber: number; base64:
         messages: [{
           role: "user",
           content: [
-            { type: "text", text: prompt },
+            { type: "text", text: fullPrompt },
             ...batch.map(p => ({ type: "image_url", image_url: { url: p.base64 } }))
           ]
         }]

@@ -2,12 +2,19 @@
 import { readFileSync } from "fs";
 import path from "path";
 
-const PROMPT = readFileSync(
-  path.join(process.cwd(), "src/lib/extractor/templates/extractor.txt"),
-  "utf-8"
-);
+const PROMPT_PATH = path.join(process.cwd(), "src/lib/extractor/templates/extractor.txt");
+let cachedPrompt: string | null = null;
+
+export function getExtractorPrompt(): string {
+  if (!cachedPrompt) {
+    cachedPrompt = readFileSync(PROMPT_PATH, "utf-8");
+  }
+  return cachedPrompt;
+}
 
 export async function extractFromCriticalPages(images: { pageNumber: number; base64: string }[]) {
+  const prompt = getExtractorPrompt();
+
   const res = await fetch("https://api.x.ai/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -21,7 +28,7 @@ export async function extractFromCriticalPages(images: { pageNumber: number; bas
       messages: [{
         role: "user",
         content: [
-          { type: "text", text: PROMPT },
+          { type: "text", text: prompt },
           ...images.map(img => ({
             type: "image_url",
             image_url: { url: img.base64 }
