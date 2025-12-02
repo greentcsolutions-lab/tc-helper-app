@@ -7,6 +7,9 @@ import { renderPdfToPngBase64Array } from "@/lib/extractor/renderer";
 import { classifyCriticalPages } from "@/lib/extractor/classifier";
 import { extractFromCriticalPages } from "@/lib/extractor/extractor";
 
+export const runtime = "nodejs";
+export const maxDuration = 60;
+
 export async function POST(req: NextRequest) {
   const { userId } = await auth();
   if (!userId) return new Response("Unauthorized", { status: 401 });
@@ -69,6 +72,3 @@ export async function POST(req: NextRequest) {
     return new Response("Processing failed", { status: 500 });
   }
 }
-
-export const runtime = "edge";
-export const maxDuration = 60;
