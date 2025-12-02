@@ -1,0 +1,31 @@
+// src/lib/extractor/templates/extractor.txt
+Extract EXACTLY these fields from the FINAL ACCEPTED version of the contract.
+
+Counters and addenda override the original.
+Handwriting overrides typed text.
+Use the latest dated/signed version.
+
+Return ONLY valid JSON matching this schema exactly. Include confidence 0–100 for every field.
+
+{
+  "extracted": {
+    "state": "California",
+    "purchase_price": 1250000,
+    "buyer_names": ["John Doe", "Jane Doe"],
+    "seller_names": ["Robert Smith"],
+    "property_address": "123 Main St, Los Angeles, CA 90210",
+    "closing_date": "2025-12-15",
+    "contingency_removal_date": "2025-11-20",
+    "loan_amount": 1000000,
+    "down_payment": 250000
+  },
+  "confidence": {
+    "purchase_price": 100,
+    "buyer_names": 98,
+    "seller_names": 100,
+    "property_address": 100,
+    "closing_date": 95,
+    "overall_confidence": 97
+  },
+  "handwriting_detected": false
+}

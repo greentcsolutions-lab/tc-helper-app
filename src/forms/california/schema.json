@@ -1,0 +1,114 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "California RPA – TC Core Fields (2025 Optimized)",
+  "description": "Only the fields a Transaction Coordinator actually needs. Designed for maximum Grok accuracy + minimum token cost.",
+  "type": "object",
+  "properties": {
+    "buyer_names": {
+      "description": "All buyer names exactly as written",
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "property_address": {
+      "type": "object",
+      "properties": {
+        "full": { "type": "string" }
+      },
+      "required": ["full"]
+    },
+    "purchase_price": {
+      "type": "string",
+      "pattern": "^\\$\\d{1,3}(,\\d{3})*(\\.\\d{2})?$"
+    },
+    "all_cash": { "type": "boolean" },
+    "close_of_escrow": {
+      "description": "Days after acceptance OR specific date",
+      "oneOf": [
+        { "type": "integer", "minimum": 1 },
+        { "type": "string", "pattern": "^(0[1-9]|1[0-2])\\/(0[1-9]|[12]\\d|3[01])\\/\\d{4}$" }
+      ]
+    },
+    "initial_deposit": {
+      "type": "object",
+      "properties": {
+        "amount": {
+          "type": "string",
+          "pattern": "^(\\$\\d{1,3}(,\\d{3})*(\\.\\d{2})?|\\d+(\\.\\d+)?%)$"
+        },
+        "due": {
+          "oneOf": [
+            { "type": "integer", "minimum": 0 },
+            { "type": "string", "pattern": "^(0[1-9]|1[0-2])\\/(0[1-9]|[12]\\d|3[01])\\/\\d{4}$" }
+          ]
+        }
+      },
+      "required": ["amount"]
+    },
+    "loan_type": {
+      "type": "string",
+      "enum": ["Conventional", "FHA", "VA", "Seller Financing", "Other", "Assumable", "None"]
+    },
+    "seller_credit_to_buyer": {
+      "type": "string",
+      "pattern": "^\\$\\d{1,3}(,\\d{3})*(\\.\\d{2})?$"
+    },
+    "final_acceptance_date": {
+      "type": "string",
+      "pattern": "^(0[1-9]|1[0-2])\\/(0[1-9]|[12]\\d|3[01])\\/\\d{4}$"
+    },
+    "contingencies": {
+      "type": "object",
+      "properties": {
+        "loan_days": { "type": ["integer", "null"] },
+        "appraisal_days": { "type": ["integer", "null"] },
+        "investigation_days": { "type": ["integer", "null"] },
+        "crb_attached_and_signed": { "type": "boolean" }
+      }
+    },
+    "counters": {
+  "type": "object",
+  "properties": {
+    "has_counter_or_addendum": { "type": "boolean" },
+    "final_version_page": { "type": ["integer", "null"] },
+    "summary": { "type": "string" }
+  },
+  "required": ["has_counter_or_addendum"]
+},
+    "home_warranty": {
+      "type": "object",
+      "properties": {
+        "ordered_by": { "type": "string", "enum": ["Buyer", "Seller", "Both", "Waived"] },
+        "seller_max_cost": { "type": "string", "pattern": "^\\$\\d{1,3}(,\\d{3})*(\\.\\d{2})?$" }
+      },
+      "required": ["ordered_by"]
+    },
+    "buyers_broker": {
+      "type": "object",
+      "properties": {
+        "brokerage_name": { "type": "string" },
+        "agent_name": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" }
+      },
+      "required": ["brokerage_name", "agent_name"]
+    },
+    "sellers_broker": {
+      "type": "object",
+      "properties": {
+        "brokerage_name": { "type": "string" },
+        "agent_name": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" }
+      },
+      "required": ["brokerage_name", "agent_name"]
+    }
+  },
+  "required": [
+    "buyer_names",
+    "property_address",
+    "purchase_price",
+    "final_acceptance_date"
+  ],
+  "additionalProperties": false
+}

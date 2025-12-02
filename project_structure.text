@@ -1,0 +1,114 @@
+- .env
+- .env.local
+- .gitignore
+- README.md
+- components.json
+- eslint.config.mjs
+- next-env.d.ts
+- next.config.js
+- package-lock.json
+- package.json
+- postcss.config.js
+- prisma
+  - migrations
+    - 20251127015958_add_counter_info_to_parse
+      - migration.sql
+    - 20251129180320_add_self_destruct_fields
+      - migration.sql
+    - 20251129183609_add_final_self_destruct_fields
+      - migration.sql
+    - migration_lock.toml
+  - schema.prisma
+- public
+  - file.svg
+  - globe.svg
+  - next.svg
+  - vercel.svg
+  - window.svg
+- src
+  - app
+    - api
+      - credits
+        - route.ts
+      - parse
+        - finalize
+          - [parseId]
+            - route.ts
+        - preview
+          - [parseId]
+            - route.ts
+        - route.ts
+      - save-user-state
+        - route.ts
+    - dashboard
+      - layout.tsx
+      - page.tsx
+    - debug-preview
+      - [parseId]
+        - page.tsx
+    - favicon.ico
+    - globals.css
+    - layout.tsx
+    - onboarding
+      - page.tsx
+    - page.tsx
+    - parses
+      - PastResultsClient.tsx
+      - page.tsx
+    - sign-in
+      - [[...sign-in]]
+        - page.tsx
+    - sign-up
+      - [[...sign-up]]
+        - page.tsx
+  - components
+    - CategoryPurchaseTerms.tsx
+    - CategoryRepresentingParties.tsx
+    - CategorySection.tsx
+    - CategoryTimelineContingencies.tsx
+    - ui
+      - CreditsBadge.tsx
+      - ThemeToggle.tsx
+      - button.tsx
+      - card.tsx
+      - dialog.tsx
+      - sonner.tsx
+      - upload
+        - actions-bar.tsx
+        - dropzone.tsx
+        - preview-gallery.tsx
+        - types.ts
+        - upload-zone.tsx
+  - constants
+    - supported-states.ts
+  - forms
+    - california
+      - schema.json
+  - hooks
+    - use-mobile.ts
+  - lib
+    - __mocks__
+      - grok-mock.ts
+    - clerk.ts
+    - extractor
+      - classifier.ts
+      - confidence-gate.ts
+      - critical-pages.ts
+      - extractor.ts
+      - renderer.ts
+      - second-turn-boost.ts
+      - templates
+        - classifier.txt
+        - extractor.txt
+        - second-turn.txt
+    - pdf
+      - flatten.ts
+    - prisma.ts
+    - stripe.ts
+    - utils.ts
+  - proxy.ts
+  - types
+    - index.ts
+    - prisma.d.ts
+- tailwind.config.js
+- tsconfig.json
