@@ -5,9 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { CheckCircle2 } from "lucide-react";
 import { currentUser } from "@clerk/nextjs/server";
-import { UserButton, SignInButton, SignUpButton } from "@clerk/nextjs";
+import { UserButton, SignInButton, SignUpButton, SignedOut } from "@clerk/nextjs";
 
 export default async function Home() {
+  {
   const user = await currentUser();
 
   return (
@@ -22,12 +23,10 @@ export default async function Home() {
                 <Button variant="ghost" asChild>
                   <Link href="/dashboard">Dashboard</Link>
                 </Button>
-                {/* afterSignOutUrl is deprecated – redirect is now controlled in layout.tsx */}
                 <UserButton />
               </>
             ) : (
-              <>
-                {/* These now redirect to the hosted Clerk portal */}
+              <SignedOut>
                 <SignInButton mode="redirect">
                   <Button variant="ghost">Sign In</Button>
                 </SignInButton>
@@ -35,7 +34,7 @@ export default async function Home() {
                 <SignUpButton mode="redirect">
                   <Button>Get Started Free</Button>
                 </SignUpButton>
-              </>
+              </SignedOut>
             )}
           </div>
         </div>
@@ -50,9 +49,11 @@ export default async function Home() {
             Powered by Grok 4. Turn any scanned or digital real estate packet into perfectly formatted data in seconds.
           </p>
           <div className="flex gap-4 justify-center">
-            <SignUpButton mode="redirect">
-              <Button size="lg">Start Free → 1 Credit Included</Button>
-            </SignUpButton>
+            <SignedOut>
+              <SignUpButton mode="redirect">
+                <Button size="lg">Start Free → 1 Credit Included</Button>
+              </SignUpButton>
+            </SignedOut>
           </div>
         </section>
 
@@ -113,4 +114,5 @@ export default async function Home() {
       </footer>
     </div>
   );
+}
 }
