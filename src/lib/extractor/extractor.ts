@@ -1,19 +1,18 @@
 // src/lib/extractor/extractor.ts
-import { readFileSync } from "fs";
-import path from "path";
+import { EXTRACTOR_PROMPT, SECOND_TURN_PROMPT } from "./prompts";
 
-const PROMPT_PATH = path.join(process.cwd(), "src/lib/extractor/templates/extractor.txt");
-let cachedPrompt: string | null = null;
+export async function extractFromCriticalPages(
+  images: { pageNumber: number; base64: string }[],
+  previousResult?: any  // optional for second-turn boost
+) {
+  let prompt = EXTRACTOR_PROMPT;
 
-export function getExtractorPrompt(): string {
-  if (!cachedPrompt) {
-    cachedPrompt = readFileSync(PROMPT_PATH, "utf-8");
+  if (previousResult) {
+    prompt = SECOND_TURN_PROMPT.replace(
+      "{{PREVIOUS_JSON}}",
+      JSON.stringify(previousResult, null, 2)
+    );
   }
-  return cachedPrompt;
-}
-
-export async function extractFromCriticalPages(images: { pageNumber: number; base64: string }[]) {
-  const prompt = getExtractorPrompt();
 
   const res = await fetch("https://api.x.ai/v1/chat/completions", {
     method: "POST",

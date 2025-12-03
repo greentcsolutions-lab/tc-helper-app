@@ -1,17 +1,5 @@
 // src/lib/extractor/classifier.ts
-import { readFileSync } from "fs";
-import path from "path";
-
-// This file is only imported from server-only contexts (never Edge)
-const PROMPT_PATH = path.join(process.cwd(), "src/lib/extractor/templates/classifier.txt");
-let cachedPrompt: string | null = null;
-
-export function getClassifierPrompt(): string {
-  if (!cachedPrompt) {
-    cachedPrompt = readFileSync(PROMPT_PATH, "utf-8");
-  }
-  return cachedPrompt;
-}
+import { CLASSIFIER_PROMPT } from "./prompts";
 
 const chunk = <T>(arr: T[], size: number): T[][] =>
   Array.from({ length: Math.ceil(arr.length / size) }, (_, i) =>
@@ -23,13 +11,11 @@ export async function classifyCriticalPages(pages: { pageNumber: number; base64:
   const pageMap = new Map<string, number>();
   let state = "Unknown";
 
-  const prompt = getClassifierPrompt();
-
   for (const [i, batch] of batches.entries()) {
     const start = batch[0].pageNumber;
     const end = batch.at(-1)!.pageNumber;
 
-    const fullPrompt = prompt
+    const fullPrompt = CLASSIFIER_PROMPT
       .replace("{{BATCH}}", String(i + 1))
       .replace("{{TOTAL}}", String(batches.length))
       .replace("{{START}}", String(start))
