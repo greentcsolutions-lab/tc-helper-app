@@ -2,7 +2,7 @@
 "use client";
 
 import { SignInButton, SignUpButton, SignedIn, SignedOut } from "@clerk/nextjs";
-import UploadZone from "@/components/upload-zone";
+import UploadZone from "@/components/ui/upload/upload-zone";
 import { Toaster } from "@/components/ui/sonner";
 
 export default function Home() {
