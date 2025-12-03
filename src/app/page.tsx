@@ -1,13 +1,14 @@
-// src/app/page.tsx — Your ORIGINAL design restored + only Clerk fixes
+// src/app/page.tsx
+// changing comment for git push
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { CheckCircle2 } from "lucide-react";
 import { currentUser } from "@clerk/nextjs/server";
-import { UserButton, SignInButton, SignUpButton, SignedIn, SignedOut } from "@clerk/nextjs";
+import { UserButton } from "@clerk/nextjs";
 
 export default async function Home() {
-  const user = await currentUser();
+  const user = await currentUser(); // ← this is server-side, safe in App Router
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -25,21 +26,18 @@ export default async function Home() {
               </>
             ) : (
               <>
-                <SignedOut>
-                  <SignInButton mode="redirect">
-                    <Button variant="ghost">Sign In</Button>
-                  </SignInButton>
-                  <SignUpButton mode="redirect">
-                    <Button>Get Started Free</Button>
-                  </SignUpButton>
-                </SignedOut>
+                <Button variant="ghost" asChild>
+                  <Link href="/sign-in">Sign In</Link>
+                </Button>
+                <Button asChild>
+                  <Link href="/sign-up">Get Started Free</Link>
+                </Button>
               </>
             )}
           </div>
         </div>
       </header>
-
-      {/* Everything below is 100% your original code — untouched */}
+      
       <main className="flex-1">
         <section className="container mx-auto px-4 py-24 text-center">
           <h2 className="text-5xl font-bold mb-6">
@@ -49,17 +47,15 @@ export default async function Home() {
             Powered by Grok 4. Turn any scanned or digital real estate packet into perfectly formatted data in seconds.
           </p>
           <div className="flex gap-4 justify-center">
-            <SignedOut>
-              <SignUpButton mode="redirect">
-                <Button size="lg">Start Free → 1 Credit Included</Button>
-              </SignUpButton>
-            </SignedOut>
+            <Button size="lg" asChild>
+              <Link href="/sign-up">Start Free → 1 Credit Included</Link>
+            </Button>
           </div>
         </section>
 
         <section className="py-24 bg-muted/50">
           <div className="container mx-auto px-4">
-            <h3 className="text-3xl font-bold text-center mb-24 text-center mb-12">Why TCs Love TC Helper</h3>
+            <h3 className="text-3xl font-bold text-center mb-12">Why TCs Love TC Helper</h3>
             <div className="grid md:grid-cols-3 gap-8">
               {[
                 "99%+ accuracy on all RPA fields",
@@ -95,9 +91,9 @@ export default async function Home() {
                 <h4 className="text-2xl font-bold mb-4">Pro Monthly</h4>
                 <p className="text-4xl font-bold mb-2">$9.99<span className="text-lg font-normal">/month</span></p>
                 <p className="text-muted-foreground mb-6">10 credits • Auto-renew</p>
-                <SignUpButton mode="redirect">
-                  <Button size="lg" className="w-full">Subscribe Now</Button>
-                </SignUpButton>
+                <Button size="lg" className="w-full" asChild>
+                  <Link href="/sign-up">Subscribe Now</Link>
+                </Button>
                 <p className="mt-4 text-sm text-muted-foreground">
                   + $5 for 5 extra credits anytime
                 </p>
