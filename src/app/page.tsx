@@ -84,7 +84,7 @@ export default async function Home() {
                 <ul className="space-y-3 text-left">
                   <li>✓ 1 free extraction</li>
                   <li>✓ Full RPA parsing</li>
-                  <li>✓ California only</li>
+                  <li>✓ Restricted to CA for now</li>
                 </ul>
               </Card>
               <Card className="p-8 border-primary">
