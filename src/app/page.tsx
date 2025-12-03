@@ -1,71 +1,117 @@
-// src/app/page.tsx — Hosted Clerk Portal (no local auth pages)
-"use client";
+// src/app/page.tsx — Your ORIGINAL design restored + only Clerk fixes
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { CheckCircle2 } from "lucide-react";
+import { currentUser } from "@clerk/nextjs/server";
+import { UserButton, SignInButton, SignUpButton, SignedIn, SignedOut } from "@clerk/nextjs";
 
-import { SignInButton, SignUpButton, SignedIn, SignedOut } from "@clerk/nextjs";
-import UploadZone from "@/components/ui/upload/upload-zone";
-import { Toaster } from "@/components/ui/sonner";
+export default async function Home() {
+  const user = await currentUser();
 
-export default function Home() {
   return (
     <div className="flex flex-col min-h-screen">
-      {/* Header */}
       <header className="border-b">
         <div className="container mx-auto px-4 py-6 flex justify-between items-center">
           <h1 className="text-2xl font-bold">TC Helper</h1>
 
-          <div className="flex items-center gap-4">
-            <SignedOut>
-              <SignInButton mode="redirect">
-                <button className="px-4 py-2 text-sm font-medium text-foreground hover:underline">
-                  Sign In
-                </button>
-              </SignInButton>
-
-              <SignUpButton mode="redirect">
-                <button className="px-6 py-2.5 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 font-medium">
-                  Get Started Free
-                </button>
-              </SignUpButton>
-            </SignedOut>
-
-            <SignedIn>
-              <UploadZone />
-            </SignedIn>
+          <div className="space-x-4 flex items-center">
+            {user ? (
+              <>
+                <Button variant="ghost" asChild>
+                  <Link href="/dashboard">Dashboard</Link>
+                </Button>
+                <UserButton />
+              </>
+            ) : (
+              <>
+                <SignedOut>
+                  <SignInButton mode="redirect">
+                    <Button variant="ghost">Sign In</Button>
+                  </SignInButton>
+                  <SignUpButton mode="redirect">
+                    <Button>Get Started Free</Button>
+                  </SignUpButton>
+                </SignedOut>
+              </>
+            )}
           </div>
         </div>
       </header>
 
-      {/* Hero */}
-      <main className="flex-1 container mx-auto px-4 py-24 text-center max-w-5xl">
-        <h2 className="text-5xl md:text-6xl font-bold mb-6 bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
-          The Fastest Real Estate Contract Extractor on Earth
-        </h2>
-        <p className="text-xl text-muted-foreground mb-12 max-w-3xl mx-auto">
-          Powered by Grok 4 Vision. Turn any scanned or digital California packet into perfectly structured RPA data in seconds.
-        </p>
-
-        <SignedOut>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-            <SignUpButton mode="redirect">
-              <button className="px-8 py-4 text-lg font-semibold bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 shadow-lg">
-                Start Free → 1 Credit Included
-              </button>
-            </SignUpButton>
+      {/* Everything below is 100% your original code — untouched */}
+      <main className="flex-1">
+        <section className="container mx-auto px-4 py-24 text-center">
+          <h2 className="text-5xl font-bold mb-6">
+            The Fastest Real Estate Contract Extractor on Earth
+          </h2>
+          <p className="text-xl text-muted-foreground mb-12 max-w-3xl mx-auto">
+            Powered by Grok 4. Turn any scanned or digital real estate packet into perfectly formatted data in seconds.
+          </p>
+          <div className="flex gap-4 justify-center">
+            <SignedOut>
+              <SignUpButton mode="redirect">
+                <Button size="lg">Start Free → 1 Credit Included</Button>
+              </SignUpButton>
+            </SignedOut>
           </div>
-        </SignedOut>
+        </section>
 
-        <SignedIn>
-          <div className="mt-12">
-            <p className="text-lg text-muted-foreground mb-6">
-              Welcome back! Drop your next California packet below.
-            </p>
-            <UploadZone />
+        <section className="py-24 bg-muted/50">
+          <div className="container mx-auto px-4">
+            <h3 className="text-3xl font-bold text-center mb-24 text-center mb-12">Why TCs Love TC Helper</h3>
+            <div className="grid md:grid-cols-3 gap-8">
+              {[
+                "99%+ accuracy on all RPA fields",
+                "Detects missing Seller Counter Offers",
+                "Perfectly formatted dates, money, checkboxes",
+                "Copy-paste ready",
+                "Secure, encrypted, SOC 2 ready",
+                "Built by TCs, for TCs"
+              ].map((feature) => (
+                <Card key={feature} className="p-6">
+                  <CheckCircle2 className="h-8 w-8 text-green-500 mb-4" />
+                  <p className="text-lg">{feature}</p>
+                </Card>
+              ))}
+            </div>
           </div>
-        </SignedIn>
+        </section>
+
+        <section className="py-24">
+          <div className="container mx-auto px-4 text-center">
+            <h3 className="text-4xl font-bold mb-8">Simple, Transparent Pricing</h3>
+            <div className="grid md:grid-cols-2 max-w-4xl mx-auto gap-8">
+              <Card className="p-8">
+                <h4 className="text-2xl font-bold mb-4">Free Trial</h4>
+                <p className="text-4xl font-bold mb-6">$0</p>
+                <ul className="space-y-3 text-left">
+                  <li>✓ 1 free extraction</li>
+                  <li>✓ Full RPA parsing</li>
+                  <li>✓ Restricted to CA for now</li>
+                </ul>
+              </Card>
+              <Card className="p-8 border-primary">
+                <h4 className="text-2xl font-bold mb-4">Pro Monthly</h4>
+                <p className="text-4xl font-bold mb-2">$9.99<span className="text-lg font-normal">/month</span></p>
+                <p className="text-muted-foreground mb-6">10 credits • Auto-renew</p>
+                <SignUpButton mode="redirect">
+                  <Button size="lg" className="w-full">Subscribe Now</Button>
+                </SignUpButton>
+                <p className="mt-4 text-sm text-muted-foreground">
+                  + $5 for 5 extra credits anytime
+                </p>
+              </Card>
+            </div>
+          </div>
+        </section>
       </main>
 
-      {/* Toaster for upload feedback */}
-      <Toaster richColors closeButton />
+      <footer className="border-t py-12">
+        <div className="container mx-auto px-4 text-center text-muted-foreground">
+          <p>&copy; 2025 TC Helper. All rights reserved.</p>
+        </div>
+      </footer>
     </div>
   );
 }

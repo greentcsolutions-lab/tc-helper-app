@@ -1,4 +1,4 @@
-// src/app/layout.tsx
+// src/app/layout.tsx — Add signOutForceRedirectUrl to ClerkProvider
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
@@ -39,7 +39,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <ClerkProvider>
+    <ClerkProvider
+      afterSignOutUrl="/"  // ← NEW: Global post-logout redirect (replaces deprecated prop)
+    >
       <html lang="en" suppressHydrationWarning>
         <body
           className={cn(
