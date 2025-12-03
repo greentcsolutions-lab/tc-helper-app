@@ -1,14 +1,15 @@
 // src/middleware.ts — FINAL FIXED VERSION (Dec 2025, Clerk + Vercel safe)
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
+// In your existing middleware.ts — JUST CHANGE THIS LINE
 const isPublicRoute = createRouteMatcher([
   "/",
-  "/sign-in(.*)",
-  "/sign-up(.*)",
-  "/api/parse(.*)",      // upload, extract, preview, etc.
+  "/sign-in(.[^/]+)?",  // ← Updated: Covers /sign-in and /sign-in/*
+  "/sign-up(.[^/]+)?",  // ← Same for sign-up catch-all
+  "/api/parse(.*)",
   "/api/webhooks(.*)",
-  "/parses(.*)",          // your dev/testing route
-  "/debug-preview(.*)",   // if you still use this
+  "/parses(.*)",
+  "/debug-preview(.*)",
 ]);
 
 export default clerkMiddleware((auth, req) => {
