@@ -1,14 +1,14 @@
 // src/app/page.tsx
-// changing comment for git push
+// 12/03/2025
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { CheckCircle2 } from "lucide-react";
 import { currentUser } from "@clerk/nextjs/server";
-import { UserButton } from "@clerk/nextjs";
+import { UserButton, SignInButton, SignUpButton } from "@clerk/nextjs";
 
 export default async function Home() {
-  const user = await currentUser(); // ← this is server-side, safe in App Router
+  const user = await currentUser();
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -22,22 +22,25 @@ export default async function Home() {
                 <Button variant="ghost" asChild>
                   <Link href="/dashboard">Dashboard</Link>
                 </Button>
+                {/* afterSignOutUrl is deprecated – redirect is now controlled in layout.tsx */}
                 <UserButton />
               </>
             ) : (
               <>
-                <Button variant="ghost" asChild>
-                  <Link href="/sign-in">Sign In</Link>
-                </Button>
-                <Button asChild>
-                  <Link href="/sign-up">Get Started Free</Link>
-                </Button>
+                {/* These now redirect to the hosted Clerk portal */}
+                <SignInButton mode="redirect">
+                  <Button variant="ghost">Sign In</Button>
+                </SignInButton>
+
+                <SignUpButton mode="redirect">
+                  <Button>Get Started Free</Button>
+                </SignUpButton>
               </>
             )}
           </div>
         </div>
       </header>
-      
+
       <main className="flex-1">
         <section className="container mx-auto px-4 py-24 text-center">
           <h2 className="text-5xl font-bold mb-6">
@@ -47,9 +50,9 @@ export default async function Home() {
             Powered by Grok 4. Turn any scanned or digital real estate packet into perfectly formatted data in seconds.
           </p>
           <div className="flex gap-4 justify-center">
-            <Button size="lg" asChild>
-              <Link href="/sign-up">Start Free → 1 Credit Included</Link>
-            </Button>
+            <SignUpButton mode="redirect">
+              <Button size="lg">Start Free → 1 Credit Included</Button>
+            </SignUpButton>
           </div>
         </section>
 
@@ -82,18 +85,18 @@ export default async function Home() {
                 <h4 className="text-2xl font-bold mb-4">Free Trial</h4>
                 <p className="text-4xl font-bold mb-6">$0</p>
                 <ul className="space-y-3 text-left">
-                  <li>✓ 1 free extraction</li>
-                  <li>✓ Full RPA parsing</li>
-                  <li>✓ Restricted to CA for now</li>
+                  <li>1 free extraction</li>
+                  <li>Full RPA parsing</li>
+                  <li>Restricted to CA for now</li>
                 </ul>
               </Card>
               <Card className="p-8 border-primary">
                 <h4 className="text-2xl font-bold mb-4">Pro Monthly</h4>
                 <p className="text-4xl font-bold mb-2">$9.99<span className="text-lg font-normal">/month</span></p>
                 <p className="text-muted-foreground mb-6">10 credits • Auto-renew</p>
-                <Button size="lg" className="w-full" asChild>
-                  <Link href="/sign-up">Subscribe Now</Link>
-                </Button>
+                <SignUpButton mode="redirect">
+                  <Button size="lg" className="w-full">Subscribe Now</Button>
+                </SignUpButton>
                 <p className="mt-4 text-sm text-muted-foreground">
                   + $5 for 5 extra credits anytime
                 </p>
@@ -105,7 +108,7 @@ export default async function Home() {
 
       <footer className="border-t py-12">
         <div className="container mx-auto px-4 text-center text-muted-foreground">
-          <p>&copy; 2025 TC Helper. All rights reserved.</p>
+          <p>© 2025 TC Helper. All rights reserved.</p>
         </div>
       </footer>
     </div>
