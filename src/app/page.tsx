@@ -8,7 +8,7 @@ import { currentUser } from "@clerk/nextjs/server";
 import { UserButton, SignInButton, SignUpButton, SignedOut } from "@clerk/nextjs";
 
 export default async function Home() {
-  {
+  
   const user = await currentUser();
 
   return (
@@ -114,5 +114,4 @@ export default async function Home() {
       </footer>
     </div>
   );
-}
 }

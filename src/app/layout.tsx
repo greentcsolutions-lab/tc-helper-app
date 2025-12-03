@@ -29,8 +29,8 @@ const inter = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "TC Helper – AI California RPA Extractor",
-  description: "Instantly turn any California real estate packet into perfectly structured RPA data using Grok 4 Vision.",
+  title: "TC Helper – AI Productivity Tool for Real Estate",
+  description: "Instantly turn any real estate purchase agreement packet into perfectly structured data using Grok 4.",
 };
 
 export default function RootLayout({
