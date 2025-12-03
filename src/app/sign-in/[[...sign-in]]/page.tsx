@@ -11,6 +11,7 @@ export default function SignInPage() {
           signUpUrl="/sign-up"
           fallbackRedirectUrl="/dashboard"  // ← FIX: Replaces deprecated afterSignInUrl
         />
+        <p>This is a test.</p>
       </div>
     </div>
   );
