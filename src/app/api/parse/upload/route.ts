@@ -9,10 +9,7 @@ import { classifyCriticalPages } from "@/lib/extractor/classifier";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<Record<string, string>> }  // ← Fixed: Promise + Record
-) {
+export async function POST(req: NextRequest) {
   const { userId } = await auth();
   if (!userId) return new Response("Unauthorized", { status: 401 });
 
@@ -21,13 +18,32 @@ export async function POST(
   if (!file) return new Response("No file uploaded", { status: 400 });
 
   const buffer = Buffer.from(await file.arrayBuffer());
-  const flatBuffer = await flattenPdf(buffer);
 
-  // Render + classify (no extraction yet)
+  // ←←← SERVER-SIDE GARBAGE REJECTION
+  const header = buffer.subarray(0, 8).toString();
+  if (!header.includes("%PDF")) {
+    return Response.json(
+      { error: "invalid_pdf", message: "This is not a valid PDF file." },
+      { status: 400 }
+    );
+  }
+  if (buffer.length < 10_000) {
+    return Response.json(
+      { error: "file_too_small", message: "This PDF appears corrupted (too small)." },
+      { status: 400 }
+    );
+  }
+  if (buffer.length > 100_000_000) {
+    return Response.json(
+      { error: "file_too_large", message: "File exceeds 100 MB limit." },
+      { status: 400 }
+    );
+  }
+
+  const flatBuffer = await flattenPdf(buffer);
   const allPages = await renderPdfToPngBase64Array(flatBuffer);
   const { criticalImages, state, criticalPageNumbers } = await classifyCriticalPages(allPages);
 
-  // Save with PDF intact, status=READY_FOR_EXTRACT
   const parse = await db.parse.create({
     data: {
       userId,
