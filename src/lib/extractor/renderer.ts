@@ -1,41 +1,57 @@
 // src/lib/extractor/renderer.ts
-import { createCanvas } from "@napi-rs/canvas";
+import { createCanvas, ImageData, SKRSContext2D } from "@napi-rs/canvas";
 
 export interface PageImage {
   pageNumber: number;
   base64: string;
 }
 
-// ESM-only, Turbopack/Vercel optimized (aliased raw worker → blob)
+// Inject ImageData once (fixes internal new ImageData() calls)
+if (typeof globalThis.ImageData === "undefined") {
+  (globalThis as any).ImageData = ImageData;
+}
+
 let pdfjsLib: any = null;
 let workerBlobUrl: string | null = null;
+
+class NodeCanvasFactory {
+  create(width: number, height: number) {
+    const canvas = createCanvas(width, height);
+    const context = canvas.getContext("2d") as SKRSContext2D;
+    return { canvas, context };
+  }
+
+  reset(canvasAndContext: { canvas: any; context: SKRSContext2D }, width: number, height: number) {
+    canvasAndContext.canvas.width = width;
+    canvasAndContext.canvas.height = height;
+  }
+
+  destroy(_canvasAndContext: any) {
+    // @napi-rs/canvas cleans up automatically
+  }
+}
 
 async function ensurePdfJs() {
   if (pdfjsLib) return pdfjsLib;
 
-  // Dynamic import main lib (externals handle it)
   pdfjsLib = await import("pdfjs-dist/build/pdf.mjs");
 
-  // Alias resolves to raw string → create blob URL (no runtime fetch/404)
-  const workerSrcMod = await import("pdfjs-dist/build/pdf.worker.mjs");  // Now a string!
-  const workerBlob = new Blob([workerSrcMod.default], { type: "application/javascript" });
-  workerBlobUrl = URL.createObjectURL(workerBlob);
+  const workerSrc = await import("pdfjs-dist/build/pdf.worker.mjs");
+  const blob = new Blob([workerSrc.default], { type: "application/javascript" });
+  workerBlobUrl = URL.createObjectURL(blob);
 
-  // Set for fake/inline worker
   pdfjsLib.GlobalWorkerOptions.workerSrc = workerBlobUrl;
-
   return pdfjsLib;
 }
 
 export async function renderPdfToPngBase64Array(buffer: Buffer): Promise<PageImage[]> {
   const pdfjs = await ensurePdfJs();
+  const canvasFactory = new NodeCanvasFactory();
 
   const loadingTask = pdfjs.getDocument({
     data: new Uint8Array(buffer),
-    verbosity: 0,
-    isWorkerDisabled: true,  // Inline mode uses workerSrc blob for logic
+    isWorkerDisabled: true,
     useSystemFonts: true,
-    disableFontFace: false,
     cMapUrl: "pdfjs-dist/cmaps/",
     cMapPacked: true,
     standardFontDataUrl: "pdfjs-dist/standard_fonts/",
@@ -46,18 +62,28 @@ export async function renderPdfToPngBase64Array(buffer: Buffer): Promise<PageIma
 
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
-    const viewport = page.getViewport({ scale: 2.0 });  // 400 DPI for Grok
+    const viewport = page.getViewport({ scale: 2.0 });
 
-    const canvas = createCanvas(viewport.width, viewport.height);
-    const ctx = canvas.getContext("2d") as any;
+    const { canvas, context } = canvasFactory.create(viewport.width, viewport.height);
 
-    await page.render({ canvasContext: ctx, viewport }).promise;
+    const renderContext = {
+      canvasContext: context as any as CanvasRenderingContext2D, // ← THIS LINE FIXES TS
+      viewport,
+      canvasFactory,
+    };
+
+    await page.render(renderContext).promise;
 
     const base64 = canvas.toBuffer("image/png").toString("base64");
-    pages.push({ pageNumber: i, base64: `data:image/png;base64,${base64}` });
+    pages.push({
+      pageNumber: i,
+      base64: `data:image/png;base64,${base64}`,
+    });
+
+    page.cleanup();
   }
 
-  // Cleanup (Vercel 4GB hygiene)
+  pdf.cleanup();
   if (workerBlobUrl) {
     URL.revokeObjectURL(workerBlobUrl);
     workerBlobUrl = null;
