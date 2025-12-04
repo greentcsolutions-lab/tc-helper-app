@@ -16,12 +16,13 @@ export default function UploadZone({ onComplete }: { onComplete?: (data: Record<
   const [pageCount, setPageCount] = useState(0);
   const [previewPages, setPreviewPages] = useState<{ pageNumber: number; base64: string }[]>([]);
   const [isExtracting, setIsExtracting] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
-  const lastUpdate = useRef(Date.now());
-  const router = useRouter();
+  
+  // ← These three lines are the magic
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const analyzingStartTime = useRef<number | null>(null);
+  const [showJoke, setShowJoke] = useState(false);
 
-  // Optional: keep corner toast if you want it, or remove the two lines below
-  // toast.loading() and toast.dismiss() are now replaced by in-card messages
+  const router = useRouter();
 
   const validatePdf = async (file: File): Promise<boolean> => {
     const header = await file.slice(0, 8).arrayBuffer();
@@ -29,26 +30,17 @@ export default function UploadZone({ onComplete }: { onComplete?: (data: Record<
     const isPdf = view[0] === 0x25 && view[1] === 0x50 && view[2] === 0x44 && view[3] === 0x46;
 
     if (!isPdf) {
-      toast.error("This doesn't look like a PDF file", {
-        description: "Please select a valid PDF document.",
-      });
+      toast.error("This doesn't look like a PDF file", { description: "Please select a valid PDF document." });
       return false;
     }
-
     if (file.size < 10_000) {
-      toast.error("This file appears corrupted", {
-        description: "Please re-save or re-download the PDF and try again.",
-      });
+      toast.error("This file appears corrupted", { description: "Please re-save or re-download the PDF." });
       return false;
     }
-
     if (file.size > 25_000_000) {
-      toast.error("File too large", {
-        description: "Maximum file size is 25 MB.",
-      });
+      toast.error("File too large", { description: "Maximum file size is 25 MB." });
       return false;
     }
-
     return true;
   };
 
@@ -58,9 +50,53 @@ export default function UploadZone({ onComplete }: { onComplete?: (data: Record<
 
     setCurrentFile(file);
     setView("uploading");
-    setIsUploading(true);
-    lastUpdate.current = Date.now();
+    setIsAnalyzing(true);
+    analyzingStartTime.current = Date.now();
+    setShowJoke(false);
   };
+
+  // This effect guarantees a joke appears after 3.3 seconds
+  useEffect(() => {
+    if (!isAnalyzing) return;
+
+    const timeout = setTimeout(() => {
+      setShowJoke(true);
+    }, 4000);
+
+    return () => clearTimeout(timeout);
+  }, [isAnalyzing]);
+
+  // Actual upload — runs only once when file is selected
+  useEffect(() => {
+    if (!isAnalyzing || !currentFile) return;
+
+    const upload = async () => {
+      const formData = new FormData();
+      formData.append("file", currentFile);
+
+      try {
+        const res = await fetch("/api/parse/upload", { method: "POST", body: formData });
+        const data = await res.json();
+
+        if (!res.ok) throw new Error(data.message || "Upload failed");
+
+        setParseId(data.parseId);
+        setPreviewPages(data.previewPages);
+        setPageCount(data.pageCount);
+        setView("preview");
+        toast.success("Critical pages identified");
+      } catch (err: any) {
+        toast.error(err.message || "Upload failed");
+        reset();
+      } finally {
+        setIsAnalyzing(false);
+        analyzingStartTime.current = null;
+        setShowJoke(false);
+      }
+    };
+
+    upload();
+  }, [isAnalyzing, currentFile]);
 
   const handleConfirm = async () => {
     setIsExtracting(true);
@@ -77,7 +113,7 @@ export default function UploadZone({ onComplete }: { onComplete?: (data: Record<
         onComplete?.(data.extracted);
         setView("done");
       }
-    } catch (err) {
+    } catch {
       toast.error("Extraction failed – please try again");
     } finally {
       setIsExtracting(false);
@@ -90,40 +126,9 @@ export default function UploadZone({ onComplete }: { onComplete?: (data: Record<
     setParseId("");
     setPageCount(0);
     setPreviewPages([]);
-    setIsUploading(false);
+    setIsAnalyzing(false);
+    setShowJoke(false);
   };
-
-  // Upload happens here — your original logic unchanged
-  useEffect(() => {
-    if (!isUploading || !currentFile) return;
-
-    const upload = async () => {
-      const formData = new FormData();
-      formData.append("file", currentFile);
-
-      try {
-        const res = await fetch("/api/parse/upload", { method: "POST", body: formData });
-        const data = await res.json();
-
-        lastUpdate.current = Date.now();
-
-        if (!res.ok) throw new Error(data.message || "Upload failed");
-
-        setParseId(data.parseId);
-        setPreviewPages(data.previewPages);
-        setPageCount(data.pageCount);
-        setView("preview");
-        toast.success("Critical pages identified");
-      } catch (err: any) {
-        toast.error(err.message || "Upload failed");
-        reset();
-      } finally {
-        setIsUploading(false);
-      }
-    };
-
-    upload();
-  }, [isUploading, currentFile]);
 
   return (
     <div className="relative">
@@ -142,9 +147,8 @@ export default function UploadZone({ onComplete }: { onComplete?: (data: Record<
           currentFile={currentFile}
           onFileSelect={() => {}}
           onCancel={reset}
-          statusMessage="Analyzing your packet..."          
-          // update here for toast delay
-          isWaitingForJoke={Date.now() - lastUpdate.current > 4300}
+          statusMessage="Hold tight — analyzing your packet..."
+          isWaitingForJoke={showJoke}  
         />
       )}
 
