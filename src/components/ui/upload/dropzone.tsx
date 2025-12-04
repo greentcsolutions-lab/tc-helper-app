@@ -3,55 +3,81 @@
 
 import { Upload, FileText, X, Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { useDropzone } from "react-dropzone"; // Assuming you have this; if not, add to package.json
-import { useCallback } from "react";
 
 type DropzoneProps = {
   isUploading: boolean;
   currentFile: File | null;
   onFileSelect: (file: File) => void;
   onCancel: () => void;
+  statusMessage?: string;        // ← NEW
+  isWaitingForJoke?: boolean;    // ← NEW
 };
 
-export function Dropzone({ 
-  isUploading, 
-  currentFile, 
-  onFileSelect, 
-  onCancel 
-}: DropzoneProps) {
-  const onDrop = useCallback((acceptedFiles: File[]) => {
-    if (acceptedFiles.length > 0) {
-      onFileSelect(acceptedFiles[0]); // ← This triggers parent's handleFile → upload route instantly
-    }
-  }, [onFileSelect]);
+const jokes = [
+  "Don't trust AI to identify mushrooms...",
+  "This is why we don't let Grok drive...",
+  "Parsing legalese — the leading cause of AI therapy bills",
+  "Fun fact: This PDF has more pages than my attention span",
+  "Still faster than a human reading this packet",
+  "Beep boop... processing California bureaucracy...",
+  "Grok is now judging your buyer's handwriting",
+  "Hold tight — we're teaching the AI to read realtor scribbles",
+];
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: { "application/pdf": [".pdf"] },
-    maxSize: 25 * 1024 * 1024, // 25 MB
-    disabled: isUploading,
-    multiple: false,
-  });
+export function Dropzone({
+  isUploading,
+  currentFile,
+  onFileSelect,
+  onCancel,
+  statusMessage = "Hold tight — analyzing your packet...",
+  isWaitingForJoke = false,
+}: DropzoneProps) {
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const file = e.dataTransfer.files[0];
+    if (file) onFileSelect(file);
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) onFileSelect(file);
+  };
 
   return (
     <Card className={`transition-all duration-300 ${isUploading ? "ring-2 ring-primary" : ""}`}>
       <CardContent className="p-12">
         <div
-          {...getRootProps()}
-          className={`relative flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-12 text-center cursor-pointer transition-colors ${
-            isDragActive ? "border-primary bg-primary/5" : "border-muted hover:border-primary"
-          }`}
+          onDrop={handleDrop}
+          onDragOver={(e) => e.preventDefault()}
+          className="relative flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-16 text-center cursor-pointer transition-all hover:border-primary hover:bg-primary/5"
         >
-          <input {...getInputProps()} />
+          <input
+            type="file"
+            accept=".pdf"
+            onChange={handleChange}
+            disabled={isUploading}
+            className="absolute inset-0 opacity-0 cursor-pointer"
+          />
+
           {isUploading ? (
-            <div className="flex flex-col items-center gap-4">
-              <Loader2 className="h-12 w-12 animate-spin text-primary" />
-              <p className="text-lg">Hold tight — analyzing your packet...</p>
+            <div className="flex flex-col items-center gap-8">
+              <Loader2 className="h-16 w-16 animate-spin text-primary" />
+              <div className="space-y-3 text-center">
+                <p className="text-xl font-medium text-foreground">
+                  {statusMessage}
+                </p>
+                {isWaitingForJoke && (
+                  <p className="text-lg italic text-muted-foreground animate-pulse">
+                    {jokes[Math.floor(Math.random() * jokes.length)]}
+                  </p>
+                )}
+              </div>
             </div>
           ) : currentFile ? (
             <div className="flex items-center gap-4 text-lg">
               <FileText className="h-10 w-10 text-primary" />
-              <span className="font-medium truncate max-w-xs">{currentFile.name}</span>
+              <span className="font-medium truncate max-w-sm">{currentFile.name}</span>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -64,10 +90,10 @@ export function Dropzone({
             </div>
           ) : (
             <>
-              <Upload className="mb-4 h-12 w-12 text-muted-foreground" />
-              <p className="text-xl font-semibold">Drop your PDF here or click to upload</p>
-              <p className="mt-2 text-sm text-muted-foreground">
-                California RPA packets only • Max 25 MB
+              <Upload className="h-16 w-16 text-muted-foreground mb-4" />
+              <p className="text-2xl font-semibold">Drop your PDF here</p>
+              <p className="text-sm text-muted-foreground mt-2">
+                California RPA only • Max 25 MB
               </p>
             </>
           )}
