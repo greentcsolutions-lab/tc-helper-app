@@ -6,18 +6,23 @@ export interface PageImage {
   base64: string;
 }
 
-// ESM-only, Vercel/Next 15 optimized (inline worker = no instantiation, no ports)
-let pdfjsLib: any = null;  // TS-safe: pdfjs exports are dynamic in ESM
+// ESM-only, Turbopack/Vercel optimized (aliased raw worker → blob)
+let pdfjsLib: any = null;
+let workerBlobUrl: string | null = null;
 
 async function ensurePdfJs() {
   if (pdfjsLib) return pdfjsLib;
 
-  // Dynamic runtime import (Webpack resolves after externalize in next.config.js)
+  // Dynamic import main lib (externals handle it)
   pdfjsLib = await import("pdfjs-dist/build/pdf.mjs");
 
-  // ESM setup: Set workerSrc to a dummy path (ignored with isWorkerDisabled: true)
-  // This silences "No workerSrc specified" warnings without needing a real file/blob
-  (pdfjsLib.GlobalWorkerOptions as any).workerSrc = "pdfjs-dist/build/pdf.worker.mjs";
+  // Alias resolves to raw string → create blob URL (no runtime fetch/404)
+  const workerSrcMod = await import("pdfjs-dist/build/pdf.worker.mjs");  // Now a string!
+  const workerBlob = new Blob([workerSrcMod.default], { type: "application/javascript" });
+  workerBlobUrl = URL.createObjectURL(workerBlob);
+
+  // Set for fake/inline worker
+  pdfjsLib.GlobalWorkerOptions.workerSrc = workerBlobUrl;
 
   return pdfjsLib;
 }
@@ -27,12 +32,10 @@ export async function renderPdfToPngBase64Array(buffer: Buffer): Promise<PageIma
 
   const loadingTask = pdfjs.getDocument({
     data: new Uint8Array(buffer),
-    verbosity: 0,  // Silence console noise in Vercel logs
-    // ← KEY FIX: Inline synchronous mode (no worker thread, ESM/Node-safe)
-    isWorkerDisabled: true,  // Runs everything in main thread — zero setup, works on 4GB RAM
-    useSystemFonts: true,    // Use Node/system fonts (fixes font loading in canvas)
-    disableFontFace: false,  // Allow @font-face if needed (rare in PDFs)
-    // Cmaps/fonts: Externalize + next.config.js JSON rule handles resolution
+    verbosity: 0,
+    isWorkerDisabled: true,  // Inline mode uses workerSrc blob for logic
+    useSystemFonts: true,
+    disableFontFace: false,
     cMapUrl: "pdfjs-dist/cmaps/",
     cMapPacked: true,
     standardFontDataUrl: "pdfjs-dist/standard_fonts/",
@@ -43,26 +46,22 @@ export async function renderPdfToPngBase64Array(buffer: Buffer): Promise<PageIma
 
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
-    const viewport = page.getViewport({ scale: 2.0 });  // ~400 DPI for sharp Grok OCR
+    const viewport = page.getViewport({ scale: 2.0 });  // 400 DPI for Grok
 
     const canvas = createCanvas(viewport.width, viewport.height);
-    const ctx = canvas.getContext("2d") as any;  // TS cast: node-canvas vs DOM compat
+    const ctx = canvas.getContext("2d") as any;
 
-    // Render (inline mode handles text/fonts without mismatches)
-    await page.render({
-      canvasContext: ctx,
-      viewport,
-    }).promise;
+    await page.render({ canvasContext: ctx, viewport }).promise;
 
-    // PNG buffer → base64 (Grok vision data URI)
     const base64 = canvas.toBuffer("image/png").toString("base64");
-    pages.push({
-      pageNumber: i,
-      base64: `data:image/png;base64,${base64}`,
-    });
+    pages.push({ pageNumber: i, base64: `data:image/png;base64,${base64}` });
   }
 
-  // No cleanup needed (inline = no URLs/ports)
+  // Cleanup (Vercel 4GB hygiene)
+  if (workerBlobUrl) {
+    URL.revokeObjectURL(workerBlobUrl);
+    workerBlobUrl = null;
+  }
 
   return pages;
 }

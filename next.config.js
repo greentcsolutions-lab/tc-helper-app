@@ -1,14 +1,10 @@
-// next.config.js — FINAL 2025 VERSION (your old stuff + ESM pdfjs fix)
+// next.config.js — TURBOPACK + VERCEL ESM WORKER ALIAS
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // ←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←
-  // YOUR ORIGINAL SETTINGS (kept 100% intact)
-  // ←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←
   serverExternalPackages: ["canvas", "pdfjs-dist"],
 
   typescript: {
-    // THIS IS THE NUCLEAR OPTION THAT ACTUALLY WORKS
     ignoreBuildErrors: true,
   },
 
@@ -16,33 +12,38 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
 
-  // ←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←
-  // 2025 ESM FIXES (added + merged with your existing rule)
-  // ←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←
   experimental: {
-    // Critical: tells Next.js 15 + Vercel to NOT bundle pdfjs-dist ESM files
-    serverComponentsExternalPackages: [
-      "pdfjs-dist",        // ← fixes "Module not found: ESM packages..." error
-      "@napi-rs/canvas",   // already external anyway, but safe to list
-    ],
+    serverComponentsExternalPackages: ["pdfjs-dist", "@napi-rs/canvas"],
   },
 
+  // ← NEW: Turbopack/Webpack unified alias (fixes ?raw + worker 404)
   webpack: (config) => {
-    // Your original rule (already perfect)
     config.module.rules.push({
       test: /pdfjs-dist[\\/].*\.json$/,
       type: "json",
     });
 
-    // Optional but recommended: silence noisy pdfjs warnings in Vercel logs
+    // Alias for Webpack (build/deploy)
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      "pdfjs-dist/build/pdf.worker.mjs": "./public/pdf.worker.mjs",  // Raw source string
+    };
+
     config.ignoreWarnings = [
       ...(config.ignoreWarnings || []),
       { module: /pdf\.mjs$/ },
-      { message: /Critical dependency: the request of a dependency is an expression/ },
-      { message: /Use of eval/ }, // pdfjs worker uses eval internally (safe)
+      { message: /Critical dependency/ },
+      { message: /Use of eval/ },
     ];
 
     return config;
+  },
+
+  // Turbopack alias (dev + build --turbo)
+  turbopack: {
+    resolveAlias: {
+      "pdfjs-dist/build/pdf.worker.mjs": "./public/pdf.worker.mjs",  // Same raw source
+    },
   },
 };
 
