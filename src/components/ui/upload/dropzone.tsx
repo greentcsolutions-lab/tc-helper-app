@@ -11,119 +11,106 @@ const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
 const funnyKeepAlives = [
   "Don't trust AI to identify mushrooms...",
-  "This is why we don't let Grok drive...",
-  "Parsing legalese — the leading cause of AI therapy bills",
-  "Still faster than a human reading this packet",
   "Grok is now judging your buyer's handwriting",
-  "Hold tight — we're teaching the AI to read REALTOR scribbles",
-  "If this takes longer than your last situationship...",
-  "Beep boop... translating bureaucracy",
+  "Still faster than a human reading this packet",
+  "Beep boop... translating Real Estate legalese",
+  "Hold tight — teaching the AI to read REALTOR scribbles",
+  "This is why we don't let Grok drive...",
 ];
 
 type DropzoneProps = {
-  currentFile: File | null;
   onFileSelect: (file: File) => void;
   onCancel: () => void;
+  currentFile: File | null;
 };
 
-export function Dropzone({ currentFile, onFileSelect, onCancel }: DropzoneProps) {
+export function Dropzone({ onFileSelect, onCancel, currentFile }: DropzoneProps) {
   const [parseId, setParseId] = useState<string | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const lastUpdate = useRef(Date.now());
-  const activeToastId = useRef<string | null>(null);
+  const activeToast = useRef<string | null>(null);
 
-  // Funny keep-alive every 3.3s during long silence
+  // Keep-alive jokes every 3.3s
   useEffect(() => {
-    if (!isUploading || parseId === null) return;
-
-    const interval = setInterval(() => {
+    if (!isProcessing) return;
+    const id = setInterval(() => {
       if (Date.now() - lastUpdate.current > 3300) {
-        const joke = funnyKeepAlives[Math.floor(Math.random() * funnyKeepAlives.length)];
-        toast(joke, {
-          duration: 4500,
-          style: { background: "#0f0f0f", color: "#fff", border: "1px solid #333" },
+        toast(funnyKeepAlives[Math.floor(Math.random() * funnyKeepAlives.length)], {
+          duration: 5000,
+          style: { background: "#0f0f0f", color: "#fff" },
         });
       }
     }, 3300);
+    return () => clearInterval(id);
+  }, [isProcessing]);
 
-    return () => clearInterval(interval);
-  }, [isUploading, parseId]);
-
-  // Poll progress when we have a parseId
+  // Poll progress
   useEffect(() => {
     if (!parseId) return;
 
     const poll = async () => {
-      try {
-        const res = await fetch(`/api/parse/status/${parseId}`);
-        if (!res.ok) return;
-        const { messages, done } = await res.json();
-
-        const latest = messages[messages.length - 1];
-        if (latest && activeToastId.current) {
-          lastUpdate.current = Date.now();
-
-          if (done) {
-            toast.dismiss(activeToastId.current);
-            toast.success("Ready! Extracting final data...", { duration: 8000 });
-            setIsUploading(false);
-          } else {
-            toast.loading(latest, { id: activeToastId.current });
-          }
+      const res = await fetch(`/api/parse/status/${parseId}`);
+      if (!res.ok) return;
+      const { messages, done } = await res.json();
+      const latest = messages[messages.length - 1];
+      if (latest) {
+        lastUpdate.current = Date.now();
+        if (done) {
+          if (activeToast.current) toast.dismiss(activeToast.current);
+          toast.success("Ready! Extracting final data...", { duration: 8000 });
+          setIsProcessing(false);
+        } else if (activeToast.current) {
+          toast.loading(latest, { id: activeToast.current });
         }
-      } catch (e) {
-        // silent
       }
     };
 
     poll();
-    const id = setInterval(poll, 1200);
-    return () => clearInterval(id);
+    const interval = setInterval(poll, 1200);
+    return () => clearInterval(interval);
   }, [parseId]);
 
-  const startUpload = async (file: File) => {
-    // Immediate feedback — this was missing before!
+  const uploadFile = async (file: File) => {
+    // IMMEDIATE visual feedback — this was missing
     onFileSelect(file);
-    setIsUploading(true);
+    setIsProcessing(true);
     setParseId(null);
 
-    if (activeToastId.current) toast.dismiss(activeToastId.current);
-    activeToastId.current = toast.loading("Uploading PDF...", { duration: Infinity });
+    if (activeToast.current) toast.dismiss(activeToast.current);
+    activeToast.current = toast.loading("Uploading your PDF...", { duration: Infinity });
 
     const formData = new FormData();
     formData.append("file", file);
 
     try {
-      const res = await fetch("/api/parse/upload", { method: "POST", body: formData });
+      const res = await fetch("/api/parse/upload", {
+        method: "POST",
+        body: formData,
+      });
+
       const data = await res.json();
 
       if (data.success && data.parseId) {
         setParseId(data.parseId);
         lastUpdate.current = Date.now();
-        toast.loading("Flattening PDF — removing form fields...", { id: activeToastId.current });
+        toast.loading("Flattening PDF — removing form fields...", { id: activeToast.current });
       } else {
-        throw new Error(data.error || "Upload failed");
+        throw new Error("Upload failed");
       }
-    } catch (err: any) {
+    } catch (err) {
       toast.error("Upload failed — please try again");
-      setIsUploading(false);
+      setIsProcessing(false);
       onCancel();
     }
   };
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
-    const file = e.dataTransfer.files[0];
-    if (file && file.type === "application/pdf" && file.size <= MAX_FILE_SIZE_BYTES) {
-      startUpload(file);
-    } else {
-      toast.error(file ? `File too large! Max ${MAX_FILE_SIZE_MB} MB` : "Please upload a PDF");
-    }
-  };
+    e.stopPropagation();
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    const file = e.dataTransfer.files[0];
     if (!file) return;
+
     if (file.type !== "application/pdf") {
       toast.error("Please upload a PDF");
       return;
@@ -132,51 +119,78 @@ export function Dropzone({ currentFile, onFileSelect, onCancel }: DropzoneProps)
       toast.error(`File too large! Max ${MAX_FILE_SIZE_MB} MB`);
       return;
     }
-    startUpload(file);
+
+    uploadFile(file);
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.type !== "application/pdf") {
+      toast.error("Please upload a PDF");
+      return;
+    }
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      toast.error(`File too large! Max ${MAX_FILE_SIZE_MB} MB`);
+      return;
+    }
+
+    uploadFile(file);
   };
 
   return (
-    <Card className={`transition-all duration-300 ${isUploading ? "ring-2 ring-primary" : ""}`}>
+    <Card className="transition-all duration-300">
       <CardContent className="p-12">
         <div
           onDrop={handleDrop}
-          onDragOver={(e) => e.preventDefault()}
-          onDragLeave={(e) => e.preventDefault()}
-          className="relative flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-12 text-center cursor-pointer hover:border-primary transition-colors"
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+          onDragEnter={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+          className="relative flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 p-12 text-center hover:border-primary hover:bg-gray-100 transition-all cursor-pointer"
         >
           <input
             type="file"
             accept=".pdf"
-            onChange={handleChange}
-            disabled={isUploading}
+            onChange={handleInputChange}
             className="absolute inset-0 opacity-0 cursor-pointer"
+            disabled={isProcessing}
           />
 
-          {isUploading ? (
-            <div className="flex flex-col items-center gap-4">
-              <Loader2 className="h-12 w-12 animate-spin text-primary" />
-              <p className="text-lg font-medium">Hold tight — Grok is reading your packet...</p>
+          {isProcessing ? (
+            <div className="flex flex-col items-center gap-6">
+              <Loader2 className="h-16 w-16 animate-spin text-primary" />
+              <div className="text-lg font-medium text-gray-700">
+                Hold tight — Grok is reading your packet...
+              </div>
             </div>
           ) : currentFile ? (
             <div className="flex items-center gap-4 text-lg">
               <FileText className="h-10 w-10 text-primary" />
-              <span className="font-medium truncate max-w-xs">{currentFile.name}</span>
+              <span className="font-medium truncate max-w-md">{currentFile.name}</span>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   onCancel();
-                  setIsUploading(false);
+                  setIsProcessing(false);
                 }}
-                className="rounded-full p-2 hover:bg-muted"
+                className="rounded-full p-2 hover:bg-gray-200 hover:bg-gray-300 transition"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
           ) : (
             <>
-              <Upload className="mb-4 h-12 w-12 text-muted-foreground" />
-              <p className="text-xl font-semibold">Drop your PDF here or click to upload</p>
-              <p className="mt-2 text-sm text-muted-foreground">
+              <Upload className="mb-4 h-16 w-16 text-gray-400" />
+              <p className="text-xl font-semibold text-gray-700">
+                Drop your PDF here or click to upload
+              </p>
+              <p className="mt-2 text-sm text-gray-500">
                 California RPA packets only • Max {MAX_FILE_SIZE_MB} MB
               </p>
             </>
