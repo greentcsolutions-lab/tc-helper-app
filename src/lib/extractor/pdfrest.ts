@@ -1,5 +1,5 @@
 // src/lib/extractor/pdfrest.ts
-// 2025-12-04 — API-DOCS COMPLIANT: No dpi, URL fetch + base64 conversion
+// 2025-12-04 — FIXED: Proper Headers auth on output fetches + resolution=350 (docs-compliant)
 // Matches https://docs.pdfrest.com/.../png exactly — for 1000+ CA RPAs/day
 
 import { bufferToBlob } from "@/lib/utils";
@@ -19,13 +19,14 @@ export interface PdfRestPage {
 }
 
 /**
- * Flattened PDF Buffer → default-res PNGs (base64) via pdfRest /png endpoint
- * Docs-compliant: No dpi param, fetch URLs → convert to base64 for Grok-4-vision
+ * Flattened PDF Buffer → 350 DPI PNGs (base64) via pdfRest /png endpoint
+ * Docs-compliant: resolution param, fetch URLs with Api-Key Headers → convert to base64 for Grok-4-vision
  */
 export async function renderPdfToPngBase64Array(buffer: Buffer): Promise<PdfRestPage[]> {
   const form = new FormData();
   form.append("file", bufferToBlob(buffer, "application/pdf"), "document.pdf");
   form.append("output", "rpa_png"); // Prefix only — docs-compliant filename base
+  form.append("resolution", "350"); // Docs: 12-2400 DPI, default 300 — 350 for sharp handwriting
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 55_000);
@@ -63,8 +64,12 @@ export async function renderPdfToPngBase64Array(buffer: Buffer): Promise<PdfRest
     }
 
     // Fetch each PNG + convert to base64 (parallel for speed)
+    // FIXED: Use new Headers() for Node/Vercel fetch compatibility
+    const fetchHeaders = new Headers();
+    fetchHeaders.set("Api-Key", process.env.PDFREST_API_KEY!);
+
     const pngPromises = outputUrls.map(async (url: string, i: number) => {
-      const imgRes = await fetch(url, { headers }); // Reuse Api-Key if needed for resource
+      const imgRes = await fetch(url, { headers: fetchHeaders });
       if (!imgRes.ok) throw new Error(`Failed to fetch PNG ${i + 1}: ${imgRes.status}`);
       const arrayBuffer = await imgRes.arrayBuffer();
       const uint8 = new Uint8Array(arrayBuffer);
