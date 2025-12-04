@@ -1,6 +1,3 @@
 {
-  "installCommand": "npm ci && npm rebuild @napi-rs/canvas --build-from-source=false --verbose",  // ← --verbose logs prebuild success
-  "builds": [
-    { "src": "package.json", "use": "@vercel/node" }
-  ]
+  "installCommand": "npm ci && npm rebuild @napi-rs/canvas --build-from-source=false --verbose"
 }
