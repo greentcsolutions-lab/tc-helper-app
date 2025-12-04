@@ -6,11 +6,25 @@ export interface PageImage {
   base64: string;
 }
 
-// Inject ImageData once (fixes internal new ImageData() calls)
+// ──────────────────────────────────────────────────────────────
+// Path2D + ImageData polyfills (MUST run first)
+// ──────────────────────────────────────────────────────────────
+const { applyPath2DToCanvasRenderingContext, Path2D } = require("path2d");
+const { CanvasRenderingContext2D } = require("@napi-rs/canvas");
+
+applyPath2DToCanvasRenderingContext(CanvasRenderingContext2D);
+
+if (typeof globalThis !== "undefined" && typeof (globalThis as any).Path2D === "undefined") {
+  (globalThis as any).Path2D = Path2D;
+}
+
 if (typeof globalThis.ImageData === "undefined") {
   (globalThis as any).ImageData = ImageData;
 }
 
+// ──────────────────────────────────────────────────────────────
+// Canvas factory + pdfjs setup
+// ──────────────────────────────────────────────────────────────
 let pdfjsLib: any = null;
 let workerBlobUrl: string | null = null;
 
@@ -26,8 +40,8 @@ class NodeCanvasFactory {
     canvasAndContext.canvas.height = height;
   }
 
-  destroy(_canvasAndContext: any) {
-    // @napi-rs/canvas cleans up automatically
+  destroy() {
+    // No cleanup needed
   }
 }
 
@@ -67,7 +81,7 @@ export async function renderPdfToPngBase64Array(buffer: Buffer): Promise<PageIma
     const { canvas, context } = canvasFactory.create(viewport.width, viewport.height);
 
     const renderContext = {
-      canvasContext: context as any as CanvasRenderingContext2D, // ← THIS LINE FIXES TS
+      canvasContext: context as any as CanvasRenderingContext2D,
       viewport,
       canvasFactory,
     };
