@@ -1,5 +1,5 @@
 // src/lib/extractor/renderer.ts
-import { createCanvas, ImageData, SKRSContext2D } from "@napi-rs/canvas";
+import { createCanvas, ImageData } from "canvas";  // JS-only, Vercel-safe
 
 export interface PageImage {
   pageNumber: number;
@@ -7,10 +7,10 @@ export interface PageImage {
 }
 
 // ──────────────────────────────────────────────────────────────
-// Path2D + ImageData polyfills (MUST run first)
+// Path2D + ImageData polyfills (MUST run first — canvas exports these)
 // ──────────────────────────────────────────────────────────────
 const { applyPath2DToCanvasRenderingContext, Path2D } = require("path2d");
-const { CanvasRenderingContext2D } = require("@napi-rs/canvas");
+const { CanvasRenderingContext2D } = require("canvas");
 
 applyPath2DToCanvasRenderingContext(CanvasRenderingContext2D);
 
@@ -31,17 +31,17 @@ let workerBlobUrl: string | null = null;
 class NodeCanvasFactory {
   create(width: number, height: number) {
     const canvas = createCanvas(width, height);
-    const context = canvas.getContext("2d") as SKRSContext2D;
+    const context = canvas.getContext("2d");
     return { canvas, context };
   }
 
-  reset(canvasAndContext: { canvas: any; context: SKRSContext2D }, width: number, height: number) {
+  reset(canvasAndContext: { canvas: any; context: any }, width: number, height: number) {
     canvasAndContext.canvas.width = width;
     canvasAndContext.canvas.height = height;
   }
 
   destroy() {
-    // No cleanup needed
+    // No cleanup needed for JS canvas
   }
 }
 

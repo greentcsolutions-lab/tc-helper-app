@@ -31,10 +31,7 @@ const nextConfig = {
       "pdfjs-dist/build/pdf.worker.mjs": "./public/pdf.worker.mjs",
     };
 
-    // Force external + prevent bundling of native addon
-    config.externals = [...(config.externals || []), "@napi-rs/canvas"];
-    config.resolve.fallback = { ...config.resolve.fallback, canvas: false };
-
+    
     config.ignoreWarnings = [
       ...(config.ignoreWarnings || []),
       { module: /pdf\.mjs$/ },
