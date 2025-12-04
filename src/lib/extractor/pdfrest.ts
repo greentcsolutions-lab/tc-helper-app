@@ -21,7 +21,7 @@ export async function renderPdfToPngBase64Array(buffer: Buffer): Promise<PdfRest
   const form = new FormData();
   form.append("file", bufferToBlob(buffer, "application/pdf"), "document.pdf");
   form.append("output", "rpa_png");
-  form.append("resolution", "350"); // 350 DPI = perfect for Grok
+  form.append("resolution", "290"); // 290 DPI for speed + accuracy
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 55_000);
