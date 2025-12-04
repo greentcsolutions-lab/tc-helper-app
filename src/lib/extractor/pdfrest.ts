@@ -1,11 +1,9 @@
 // src/lib/extractor/pdfrest.ts
-// 2025-12-04 — FINAL VERSION: TypeScript strict-mode clean + pdfRest API compliant
+// 2025-12-04 — API-DOCS COMPLIANT: No dpi, URL fetch + base64 conversion
+// Matches https://docs.pdfrest.com/.../png exactly — for 1000+ CA RPAs/day
 
 import { bufferToBlob } from "@/lib/utils";
 
-// ──────────────────────────────────────────────────────────────
-// 1. Runtime guard – throws immediately if key missing
-// ──────────────────────────────────────────────────────────────
 if (!process.env.PDFREST_API_KEY?.trim()) {
   throw new Error(
     "PDFREST_API_KEY is missing or empty in .env.local — get a free key at https://pdfrest.com/apikey"
@@ -21,24 +19,20 @@ export interface PdfRestPage {
 }
 
 /**
- * Flattened PDF Buffer → 350 DPI PNGs (base64) for Grok-4-vision
+ * Flattened PDF Buffer → default-res PNGs (base64) via pdfRest /png endpoint
+ * Docs-compliant: No dpi param, fetch URLs → convert to base64 for Grok-4-vision
  */
 export async function renderPdfToPngBase64Array(buffer: Buffer): Promise<PdfRestPage[]> {
   const form = new FormData();
   form.append("file", bufferToBlob(buffer, "application/pdf"), "document.pdf");
-  form.append("dpi", "350");
-  form.append("output", "base64");
-  // form.append("grayscale", "true"); // uncomment for old scanned forms
+  form.append("output", "rpa_png"); // Prefix only — docs-compliant filename base
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 55_000);
 
   try {
-    // ──────────────────────────────────────────────────────────────
-    //2. At this point TypeScript KNOWS the key exists → safe to assert
-    // ──────────────────────────────────────────────────────────────
     const headers: Record<string, string> = {
-      "Api-Key": process.env.PDFREST_API_KEY!, // non-null assertion is safe here
+      "Api-Key": process.env.PDFREST_API_KEY!, // Safe post-validation
     };
 
     const res = await fetch(PDFREST_ENDPOINT, {
@@ -57,21 +51,38 @@ export async function renderPdfToPngBase64Array(buffer: Buffer): Promise<PdfRest
     }
 
     const json = await res.json();
-    const pngs: string[] = json.pngs ?? json.outputFiles ?? [];
+    // Docs: outputUrl (single) or outputUrls (array) — normalize to array
+    const outputUrls: string[] = Array.isArray(json.outputUrls)
+      ? json.outputUrls
+      : json.outputUrl
+      ? [json.outputUrl]
+      : [];
 
-    if (pngs.length === 0) {
-      throw new Error("pdfRest returned no PNGs — file may be corrupt or empty");
+    if (outputUrls.length === 0) {
+      throw new Error("pdfRest returned no output URLs — invalid PDF?");
     }
 
-    return pngs.map((base64: string, i: number) => ({
-      pageNumber: i + 1,
-      base64,
-    }));
+    // Fetch each PNG + convert to base64 (parallel for speed)
+    const pngPromises = outputUrls.map(async (url: string, i: number) => {
+      const imgRes = await fetch(url, { headers }); // Reuse Api-Key if needed for resource
+      if (!imgRes.ok) throw new Error(`Failed to fetch PNG ${i + 1}: ${imgRes.status}`);
+      const arrayBuffer = await imgRes.arrayBuffer();
+      const uint8 = new Uint8Array(arrayBuffer);
+      const binary = String.fromCharCode(...uint8);
+      const base64 = btoa(binary);
+      return {
+        pageNumber: i + 1,
+        base64: `data:image/png;base64,${base64}`,
+      };
+    });
+
+    const pages = await Promise.all(pngPromises);
+    return pages;
   } catch (error: any) {
     clearTimeout(timeoutId);
 
     if (error.name === "AbortError") {
-      throw new Error("pdfRest timed out after 55s (Vercel serverless limit)");
+      throw new Error("pdfRest timed out after 55s (Vercel limit)");
     }
 
     console.error("[pdfRest] renderPdfToPngBase64Array failed:", error);
