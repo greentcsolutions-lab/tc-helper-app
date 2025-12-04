@@ -1,6 +1,5 @@
 // src/lib/extractor/pdfrest.ts
-// 2025-12-04 — FINAL DEBUG + 100% WORKING VERSION
-// Includes console.log at every step so we see exactly what's happening
+// 2025-12-04 — FINAL VERSION: Handles pdfRest's broken comma-separated outputUrl on free tier
 
 import { bufferToBlob } from "@/lib/utils";
 
@@ -17,92 +16,79 @@ export interface PdfRestPage {
 }
 
 export async function renderPdfToPngBase64Array(buffer: Buffer): Promise<PdfRestPage[]> {
-  console.log("[pdfRest] Starting conversion for PDF size:", buffer.length, "bytes");
+  console.log("[pdfRest] Starting PDF → PNG conversion");
 
   const form = new FormData();
   form.append("file", bufferToBlob(buffer, "application/pdf"), "document.pdf");
   form.append("output", "rpa_png");
-  form.append("resolution", "350");
+  form.append("resolution", "350"); // 350 DPI = perfect for Grok
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 55_000);
 
   try {
-    const authHeaders = { "Api-Key": process.env.PDFREST_API_KEY! };
-
-    console.log("[pdfRest] POST to /png endpoint...");
     const res = await fetch(PDFREST_ENDPOINT, {
       method: "POST",
-      headers: authHeaders,
+      headers: { "Api-Key": process.env.PDFREST_API_KEY! },
       body: form,
       signal: controller.signal,
     });
 
     clearTimeout(timeoutId);
 
-    const responseText = await res.text();
-    console.log("[pdfRest] /png response status:", res.status);
-    console.log("[pdfRest] /png response body:", responseText);
-
     if (!res.ok) {
-      throw new Error(`pdfRest /png failed ${res.status}: ${responseText}`);
+      const text = await res.text();
+      throw new Error(`pdfRest failed: ${res.status} ${text}`);
     }
 
-    let json;
-    try {
-      json = JSON.parse(responseText);
-    } catch (e) {
-      throw new Error(`pdfRest returned invalid JSON: ${responseText}`);
+    const json = await res.json();
+    console.log("[pdfRest] Raw response:", JSON.stringify(json, null, 2));
+
+    // FIX THE BROKEN FREE-TIER BUG: outputUrl is sometimes a comma-separated string
+    let outputUrls: string[] = [];
+
+    if (Array.isArray(json.outputUrl)) {
+      outputUrls = json.outputUrl;
+    } else if (typeof json.outputUrl === "string") {
+      // Split by comma-separated URLs (the bug)
+      outputUrls = json.outputUrl.split(",").filter(Boolean);
+    } else if (Array.isArray(json.outputUrls)) {
+      outputUrls = json.outputUrls;
+    } else if (typeof json.outputUrls === "string") {
+      outputUrls = json.outputUrls.split(",").filter(Boolean);
     }
-
-    console.log("[pdfRest] Parsed JSON:", JSON.stringify(json, null, 2));
-
-    const outputUrls: string[] = Array.isArray(json.outputUrls)
-      ? json.outputUrls
-      : json.outputUrl
-      ? [json.outputUrl]
-      : [];
 
     if (outputUrls.length === 0) {
-      throw new Error("No output URLs returned. Full response: " + JSON.stringify(json));
+      throw new Error("No valid output URLs found in pdfRest response");
     }
 
-    console.log(`[pdfRest] Got ${outputUrls.length} PNG URL(s):`);
-    outputUrls.forEach((url, i) => console.log(`  [${i + 1}] ${url}`));
+    console.log(`[pdfRest] Fixed & extracted ${outputUrls.length} valid PNG URLs`);
 
-    // CRITICAL FIX: pdfRest output URLs are public and DO NOT require Api-Key header
-    // They are signed temporary URLs — sending Api-Key actually causes 400!
-    const pngPromises = outputUrls.map(async (url: string, i: number) => {
-      console.log(`[pdfRest] Fetching PNG ${i + 1}...`);
-      const imgRes = await fetch(url); // ← NO HEADERS! This is the fix.
+    const pages = await Promise.all(
+      outputUrls.map(async (url: string, i: number) => {
+        console.log(`[pdfRest] Downloading page ${i + 1}...`);
+        const imgRes = await fetch(url.trim()); // ← public URL, no auth needed
 
-      console.log(`[pdfRest] PNG ${i + 1} status:`, imgRes.status);
+        if (!imgRes.ok) {
+          const err = await imgRes.text();
+          throw new Error(`PNG fetch failed (page ${i + 1}): ${imgRes.status} ${err}`);
+        }
 
-      if (!imgRes.ok) {
-        const errText = await imgRes.text();
-        console.error(`[pdfRest] PNG ${i + 1} failed body:`, errText);
-        throw new Error(`Failed to fetch PNG ${i + 1}: ${imgRes.status} ${errText}`);
-      }
+        const arrayBuffer = await imgRes.arrayBuffer();
+        const base64 = Buffer.from(arrayBuffer).toString("base64");
 
-      const arrayBuffer = await imgRes.arrayBuffer();
-      const uint8 = new Uint8Array(arrayBuffer);
-      const binary = String.fromCharCode(...uint8);
-      const base64 = btoa(binary);
+        return {
+          pageNumber: i + 1,
+          base64: `data:image/png;base64,${base64}`,
+        };
+      })
+    );
 
-      console.log(`[pdfRest] PNG ${i + 1} converted to base64 (length: ${base64.length})`);
-
-      return {
-        pageNumber: i + 1,
-        base64: `data:image/png;base64,${base64}`,
-      };
-    });
-
-    const pages = await Promise.all(pngPromises);
-    console.log(`[pdfRest] Successfully converted ${pages.length} pages to base64`);
+    console.log(`[pdfRest] SUCCESS: ${pages.length} pages converted`);
     return pages;
   } catch (error: any) {
     clearTimeout(timeoutId);
-    console.error("[pdfRest] renderPdfToPngBase64Array failed:", error);
+    console.error("[pdfRest] FAILED:", error.message);
     throw error;
   }
 }
