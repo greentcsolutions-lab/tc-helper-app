@@ -21,7 +21,6 @@ const funnyKeepAlives = [
 ];
 
 type DropzoneProps = {
-  isUploading?: boolean;
   currentFile: File | null;
   onFileSelect: (file: File) => void;
   onCancel: () => void;
@@ -29,13 +28,13 @@ type DropzoneProps = {
 
 export function Dropzone({ currentFile, onFileSelect, onCancel }: DropzoneProps) {
   const [parseId, setParseId] = useState<string | null>(null);
-  const [displayedMessages, setDisplayedMessages] = useState<string[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
   const lastUpdate = useRef(Date.now());
-  const toastId = useRef<string | null>(null);
+  const activeToastId = useRef<string | null>(null);
 
-  // Funny keep-alive jokes every ~3.3s
+  // Funny keep-alive every 3.3s during long silence
   useEffect(() => {
-    if (!parseId) return;
+    if (!isUploading || parseId === null) return;
 
     const interval = setInterval(() => {
       if (Date.now() - lastUpdate.current > 3300) {
@@ -48,9 +47,9 @@ export function Dropzone({ currentFile, onFileSelect, onCancel }: DropzoneProps)
     }, 3300);
 
     return () => clearInterval(interval);
-  }, [parseId]);
+  }, [isUploading, parseId]);
 
-  // Poll progress
+  // Poll progress when we have a parseId
   useEffect(() => {
     if (!parseId) return;
 
@@ -60,57 +59,54 @@ export function Dropzone({ currentFile, onFileSelect, onCancel }: DropzoneProps)
         if (!res.ok) return;
         const { messages, done } = await res.json();
 
-        const newMsg = messages[messages.length - 1];
-        if (newMsg && !displayedMessages.includes(newMsg)) {
+        const latest = messages[messages.length - 1];
+        if (latest && activeToastId.current) {
           lastUpdate.current = Date.now();
-          setDisplayedMessages(messages);
-
-          if (toastId.current) toast.dismiss(toastId.current);
 
           if (done) {
-            toastId.current = toast.success("Ready! Extracting final data...", { duration: 8000 });
+            toast.dismiss(activeToastId.current);
+            toast.success("Ready! Extracting final data...", { duration: 8000 });
+            setIsUploading(false);
           } else {
-            toastId.current = toast.loading(newMsg, { duration: Infinity });
+            toast.loading(latest, { id: activeToastId.current });
           }
         }
       } catch (e) {
-        // Silent fail — network hiccup
+        // silent
       }
     };
 
     poll();
     const id = setInterval(poll, 1200);
     return () => clearInterval(id);
-  }, [parseId, displayedMessages]);
+  }, [parseId]);
 
-  const handleUpload = async (file: File) => {
+  const startUpload = async (file: File) => {
+    // Immediate feedback — this was missing before!
     onFileSelect(file);
+    setIsUploading(true);
+    setParseId(null);
+
+    if (activeToastId.current) toast.dismiss(activeToastId.current);
+    activeToastId.current = toast.loading("Uploading PDF...", { duration: Infinity });
 
     const formData = new FormData();
     formData.append("file", file);
 
-    toast.loading("Uploading your PDF...", { duration: Infinity });
-    toastId.current = null;
-
     try {
-      const res = await fetch("/api/parse/upload", {
-        method: "POST",
-        body: formData,
-      });
-
+      const res = await fetch("/api/parse/upload", { method: "POST", body: formData });
       const data = await res.json();
 
       if (data.success && data.parseId) {
         setParseId(data.parseId);
-        setDisplayedMessages([]);
         lastUpdate.current = Date.now();
-        toast.loading("Flattening PDF — removing form fields...", { duration: Infinity });
+        toast.loading("Flattening PDF — removing form fields...", { id: activeToastId.current });
       } else {
-        toast.error("Upload failed — please try again");
-        onCancel();
+        throw new Error(data.error || "Upload failed");
       }
-    } catch (err) {
-      toast.error("Connection failed");
+    } catch (err: any) {
+      toast.error("Upload failed — please try again");
+      setIsUploading(false);
       onCancel();
     }
   };
@@ -119,48 +115,58 @@ export function Dropzone({ currentFile, onFileSelect, onCancel }: DropzoneProps)
     e.preventDefault();
     const file = e.dataTransfer.files[0];
     if (file && file.type === "application/pdf" && file.size <= MAX_FILE_SIZE_BYTES) {
-      handleUpload(file);
+      startUpload(file);
     } else {
-      toast.error("Please upload a valid PDF under 25 MB");
+      toast.error(file ? `File too large! Max ${MAX_FILE_SIZE_MB} MB` : "Please upload a PDF");
     }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file && file.type === "application/pdf" && file.size <= MAX_FILE_SIZE_BYTES) {
-      handleUpload(file);
-    } else if (file) {
-      toast.error(`File too large! Max ${MAX_FILE_SIZE_MB} MB`);
+    if (!file) return;
+    if (file.type !== "application/pdf") {
+      toast.error("Please upload a PDF");
+      return;
     }
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      toast.error(`File too large! Max ${MAX_FILE_SIZE_MB} MB`);
+      return;
+    }
+    startUpload(file);
   };
 
   return (
-    <Card className={`transition-all duration-300 ${parseId || currentFile ? "ring-primary" : ""}`}>
+    <Card className={`transition-all duration-300 ${isUploading ? "ring-2 ring-primary" : ""}`}>
       <CardContent className="p-12">
         <div
           onDrop={handleDrop}
           onDragOver={(e) => e.preventDefault()}
+          onDragLeave={(e) => e.preventDefault()}
           className="relative flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-12 text-center cursor-pointer hover:border-primary transition-colors"
         >
           <input
             type="file"
             accept=".pdf"
             onChange={handleChange}
-            disabled={!!parseId}
+            disabled={isUploading}
             className="absolute inset-0 opacity-0 cursor-pointer"
           />
 
-          {parseId ? (
+          {isUploading ? (
             <div className="flex flex-col items-center gap-4">
               <Loader2 className="h-12 w-12 animate-spin text-primary" />
-              <p className="text-lg">Hold tight — Grok is reading your packet...</p>
+              <p className="text-lg font-medium">Hold tight — Grok is reading your packet...</p>
             </div>
           ) : currentFile ? (
             <div className="flex items-center gap-4 text-lg">
               <FileText className="h-10 w-10 text-primary" />
               <span className="font-medium truncate max-w-xs">{currentFile.name}</span>
               <button
-                onClick={(e) => { e.stopPropagation(); onCancel(); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onCancel();
+                  setIsUploading(false);
+                }}
                 className="rounded-full p-2 hover:bg-muted"
               >
                 <X className="h-5 w-5" />
