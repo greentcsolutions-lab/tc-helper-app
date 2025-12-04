@@ -2,7 +2,7 @@
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
-import { renderPdfToPngBase64Array } from "@/lib/extractor/renderer";
+import { renderPdfToPngBase64Array } from "@/lib/extractor/pdfrest";
 import { extractFromCriticalPages } from "@/lib/extractor/extractor";
 
 export const runtime = "nodejs";

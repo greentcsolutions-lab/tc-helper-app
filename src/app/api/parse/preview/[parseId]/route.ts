@@ -1,7 +1,7 @@
 // src/app/api/parse/preview/[parseId]/route.ts
 import { NextResponse } from "next/server";
 import { db } from "@lib/prisma";
-import { renderPdfToPngBase64Array } from "@/lib/extractor/renderer";
+import { renderPdfToPngBase64Array } from "@/lib/extractor/pdfrest";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
