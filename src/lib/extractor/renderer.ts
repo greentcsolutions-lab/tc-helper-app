@@ -1,5 +1,5 @@
 // src/lib/extractor/renderer.ts
-import { createCanvas } from "canvas";
+import { createCanvas } from "@napi-rs/canvas";
 
 export interface PageImage {
   pageNumber: number;
