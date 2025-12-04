@@ -1,4 +1,6 @@
 // src/lib/extractor/classifier.ts
+// FINAL FIXED VERSION — handles Vercel cold-start deserialization bug (2025)
+
 import { CLASSIFIER_PROMPT } from "./prompts";
 
 const chunk = <T>(arr: T[], size: number): T[][] =>
@@ -6,14 +8,34 @@ const chunk = <T>(arr: T[], size: number): T[][] =>
     arr.slice(i * size, i * size + size)
   );
 
-export async function classifyCriticalPages(pages: { pageNumber: number; base64: string }[]) {
+export async function classifyCriticalPages(
+  pages: { pageNumber: number; base64: string }[]
+): Promise<{
+  criticalImages: { pageNumber: number; base64: string }[];
+  state: string;
+  criticalPageNumbers: number[];
+}> {
+  // CRITICAL GUARD — fixes "Cannot read properties of undefined (reading '0')"
+  if (!pages || !Array.isArray(pages) || pages.length === 0) {
+    console.error("[classifier] FATAL: pages is empty, undefined, or not an array!", {
+      pages,
+      type: typeof pages,
+      length: pages?.length,
+    });
+    throw new Error("classifyCriticalPages received invalid pages array");
+  }
+
+  console.log(`[classifier] Received ${pages.length} pages — starting batch classification`);
+
   const batches = chunk(pages, 15);
-  const pageMap = new Map<string, number>();
+  const pageMap = new Map<string, number>(); // type → highest page number (latest wins)
   let state = "Unknown";
 
   for (const [i, batch] of batches.entries()) {
     const start = batch[0].pageNumber;
     const end = batch.at(-1)!.pageNumber;
+
+    console.log(`[classifier] Processing batch ${i + 1}/${batches.length} (pages ${start}–${end})`);
 
     const fullPrompt = CLASSIFIER_PROMPT
       .replace("{{BATCH}}", String(i + 1))
@@ -41,16 +63,26 @@ export async function classifyCriticalPages(pages: { pageNumber: number; base64:
       }),
     });
 
+    if (!res.ok) {
+      const text = await res.text();
+      console.error("[classifier] Grok API error:", res.status, text);
+      continue; // skip bad batch, don’t crash entire job
+    }
+
     const text = (await res.json()).choices[0].message.content;
     let json;
     try {
       json = JSON.parse(text.match(/{[\s\S]*}/)?.[0] || "{}");
-    } catch {
-      console.error("Classifier JSON parse failed:", text);
+    } catch (err) {
+      console.error("[classifier] Failed to parse JSON from Grok:", text);
       continue;
     }
 
-    if (json.state) state = json.state;
+    if (json.state) {
+      state = json.state;
+      console.log(`[classifier] Detected state: ${state}`);
+    }
+
     for (const item of json.critical_pages || []) {
       if (!pageMap.has(item.type) || pageMap.get(item.type)! < item.page) {
         pageMap.set(item.type, item.page);
@@ -58,13 +90,16 @@ export async function classifyCriticalPages(pages: { pageNumber: number; base64:
     }
   }
 
+  const criticalPageNumbers = Array.from(pageMap.values()).sort((a, b) => a - b);
   const criticalImages = pages.filter(p =>
-    Array.from(pageMap.values()).includes(p.pageNumber)
+    criticalPageNumbers.includes(p.pageNumber)
   );
+
+  console.log(`[classifier] Classification complete → ${criticalImages.length} critical pages [${criticalPageNumbers.join(", ")}] | State: ${state}`);
 
   return {
     state,
-    criticalPageNumbers: Array.from(pageMap.values()).sort((a, b) => a - b),
+    criticalPageNumbers,
     criticalImages,
   };
 }
