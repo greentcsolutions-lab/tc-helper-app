@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "vercel-build": "next build",
+    "vercel-build": "npm run vercel-prebuild && next build",
+    "vercel-prebuild": "npm rebuild @napi-rs/canvas --build-from-source=false",
     "start": "next start",
     "seed": "ts-node prisma/seed.ts",
     "postinstall": "prisma generate",
