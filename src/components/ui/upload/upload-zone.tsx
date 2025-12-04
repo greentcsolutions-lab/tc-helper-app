@@ -15,12 +15,12 @@ const JOKES = [
   "Parsing legalese — the leading cause of AI therapy bills",
   "Fun fact: This PDF has more pages than my attention span",
   "Still faster than a human reading this packet",
-  "Beep boop... processing bureaucracy...",
+  "Beep boop... processing California bureaucracy...",
   "Grok is now judging your buyer's handwriting",
   "Hang tight — we're teaching the AI to read realtor scribbles",
 ];
 
-export default function UploadZone({ onComplete }: { onComplete?: (data: Record<string, any>) => void }) {
+export default function UploadZone({ onComplete }: { onComplete?: (data: any) => void }) {
   const [view, setView] = useState<UploadView>("idle");
   const [currentFile, setCurrentFile] = useState<File | null>(null);
   const [parseId, setParseId] = useState<string>("");
@@ -29,23 +29,48 @@ export default function UploadZone({ onComplete }: { onComplete?: (data: Record<
   const [isExtracting, setIsExtracting] = useState(false);
 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [liveMessage, setLiveMessage] = useState("Hold tight — analyzing your packet...");
   const lastActivity = useRef(Date.now());
   const [jokeIndex, setJokeIndex] = useState(0);
 
   const router = useRouter();
 
-  // Rotating jokes every 4 seconds while silent
+  // Joke rotation when silent
   useEffect(() => {
     if (!isAnalyzing) return;
 
     const interval = setInterval(() => {
       if (Date.now() - lastActivity.current > 3500) {
         setJokeIndex(prev => (prev + 1) % JOKES.length);
+        setLiveMessage(JOKES[jokeIndex]);
       }
     }, 4000);
 
     return () => clearInterval(interval);
-  }, [isAnalyzing]);
+  }, [isAnalyzing, jokeIndex]);
+
+  // Poll real server messages
+  useEffect(() => {
+    if (!isAnalyzing || !parseId) return;
+
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/parse/status/${parseId}`);
+        if (!res.ok) return;
+        const { messages } = await res.json();
+
+        if (messages.length > 0) {
+          const latest = messages[messages.length - 1];
+          setLiveMessage(latest);
+          lastActivity.current = Date.now();
+        }
+      } catch {}
+    };
+
+    poll();
+    const id = setInterval(poll, 1200);
+    return () => clearInterval(id);
+  }, [isAnalyzing, parseId]);
 
   const validatePdf = async (file: File): Promise<boolean> => {
     const header = await file.slice(0, 8).arrayBuffer();
@@ -53,41 +78,32 @@ export default function UploadZone({ onComplete }: { onComplete?: (data: Record<
     const isPdf = view[0] === 0x25 && view[1] === 0x50 && view[2] === 0x44 && view[3] === 0x46;
 
     if (!isPdf) {
-      toast.error("This doesn't look like a PDF file", {
-        description: "Please select a valid PDF document.",
-      });
+      toast.error("Not a valid PDF", { description: "Please upload a proper PDF file." });
       return false;
     }
-
     if (file.size < 10_000) {
-      toast.error("This file appears corrupted", {
-        description: "Please re-save or re-download the PDF and try again.",
-      });
+      toast.error("File too small", { description: "This PDF might be corrupted." });
       return false;
     }
-
     if (file.size > 25_000_000) {
-      toast.error("File too large", {
-        description: "Maximum file size is 25 MB.",
-      });
+      toast.error("File too large", { description: "Max 25 MB" });
       return false;
     }
-
     return true;
   };
 
   const handleFile = async (file: File) => {
-    const isValid = await validatePdf(file);
-    if (!isValid) return;
+    const valid = await validatePdf(file);
+    if (!valid) return;
 
     setCurrentFile(file);
     setView("uploading");
     setIsAnalyzing(true);
+    setLiveMessage("Hold tight — analyzing your packet...");
     lastActivity.current = Date.now();
     setJokeIndex(0);
   };
 
-  // Upload logic
   useEffect(() => {
     if (!isAnalyzing || !currentFile) return;
 
@@ -96,25 +112,25 @@ export default function UploadZone({ onComplete }: { onComplete?: (data: Record<
       formData.append("file", currentFile);
 
       try {
-        const res = await fetch("/api/parse/upload", {
-          method: "POST",
-          body: formData,
-        });
+        const res = await fetch("/api/parse/upload", { method: "POST", body: formData });
         const data = await res.json();
 
-        lastActivity.current = Date.now(); // Reset joke timer
-
-        if (!res.ok) throw new Error(data.message || "Upload failed");
+        if (!res.ok) throw new Error(data.message || "Failed");
 
         setParseId(data.parseId);
-        setPreviewPages(data.previewPages);
-        setPageCount(data.pageCount);
-        setView("preview");
-        toast.success("Critical pages identified");
+        setLiveMessage("Critical pages identified — loading preview...");
+        lastActivity.current = Date.now();
+
+        setTimeout(() => {
+          setPreviewPages(data.previewPages);
+          setPageCount(data.pageCount);
+          setView("preview");
+          setIsAnalyzing(false);
+        }, 800);
       } catch {
-        toast.error("Upload failed — please try again");
-        reset();
-      } finally {
+        toast.error("Upload failed — try again");
+        setView("idle");
+        setCurrentFile(null);
         setIsAnalyzing(false);
       }
     };
@@ -127,10 +143,8 @@ export default function UploadZone({ onComplete }: { onComplete?: (data: Record<
     try {
       const res = await fetch(`/api/parse/extract/${parseId}`, { method: "POST" });
       const data = await res.json();
+      if (!data.success) throw new Error();
 
-      if (!data.success) throw new Error("Extraction failed");
-
-      toast.success("Extraction complete");
       if (data.needsReview) {
         router.push(`/review/${parseId}`);
       } else {
@@ -138,20 +152,10 @@ export default function UploadZone({ onComplete }: { onComplete?: (data: Record<
         setView("done");
       }
     } catch {
-      toast.error("Extraction failed – please try again");
+      toast.error("Extraction failed");
     } finally {
       setIsExtracting(false);
     }
-  };
-
-  const reset = () => {
-    setView("idle");
-    setCurrentFile(null);
-    setParseId("");
-    setPageCount(0);
-    setPreviewPages([]);
-    setIsAnalyzing(false);
-    setJokeIndex(0);
   };
 
   return (
@@ -161,7 +165,7 @@ export default function UploadZone({ onComplete }: { onComplete?: (data: Record<
           isUploading={false}
           currentFile={null}
           onFileSelect={handleFile}
-          onCancel={reset}
+          onCancel={() => setView("idle")}
         />
       )}
 
@@ -170,9 +174,8 @@ export default function UploadZone({ onComplete }: { onComplete?: (data: Record<
           isUploading={true}
           currentFile={currentFile}
           onFileSelect={() => {}}
-          onCancel={reset}
-          statusMessage="Analyzing your packet..."
-          currentJoke={JOKES[jokeIndex]}
+          onCancel={() => setView("idle")}
+          liveText={liveMessage}
         />
       )}
 
@@ -181,7 +184,7 @@ export default function UploadZone({ onComplete }: { onComplete?: (data: Record<
           <PreviewGallery pages={previewPages} onLoaded={() => {}} />
           <ActionsBar
             onConfirm={handleConfirm}
-            onCancel={reset}
+            onCancel={() => setView("idle")}
             pageCount={pageCount}
             isExtracting={isExtracting}
           />

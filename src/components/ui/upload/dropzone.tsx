@@ -9,8 +9,7 @@ type DropzoneProps = {
   currentFile: File | null;
   onFileSelect: (file: File) => void;
   onCancel: () => void;
-  statusMessage?: string;
-  currentJoke?: string; // ← the rotating joke from upload-zone
+  liveText?: string;
 };
 
 export function Dropzone({
@@ -18,8 +17,7 @@ export function Dropzone({
   currentFile,
   onFileSelect,
   onCancel,
-  statusMessage = "Analyzing your packet...",
-  currentJoke,
+  liveText = "Analyzing your packet...",
 }: DropzoneProps) {
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -50,27 +48,14 @@ export function Dropzone({
             className="absolute inset-0 opacity-0 cursor-pointer"
           />
 
-          {/* UPLOADING STATE — BIG, CENTERED, WITH ROTATING JOKES */}
           {isUploading ? (
             <div className="flex flex-col items-center gap-8">
               <Loader2 className="h-16 w-16 animate-spin text-primary" />
-
-              <div className="max-w-lg space-y-4 text-center">
-                <p className="text-xl font-medium text-foreground">
-                  {statusMessage}
-                </p>
-
-               
-
-                {currentJoke && (
-                  <p className="text-lg italic text-muted-foreground animate-pulse leading-relaxed">
-                    {currentJoke}
-                  </p>
-                )}
-              </div>
+              <p className="text-xl font-medium text-center max-w-lg">
+                {liveText}
+              </p>
             </div>
           ) : currentFile ? (
-            /* FILE SELECTED STATE */
             <div className="flex items-center gap-4 text-lg">
               <FileText className="h-10 w-10 text-primary" />
               <span className="font-medium truncate max-w-md">{currentFile.name}</span>
@@ -85,7 +70,6 @@ export function Dropzone({
               </button>
             </div>
           ) : (
-            /* IDLE STATE */
             <>
               <Upload className="h-16 w-16 text-muted-foreground mb-6" />
               <p className="text-2xl font-semibold text-foreground">
