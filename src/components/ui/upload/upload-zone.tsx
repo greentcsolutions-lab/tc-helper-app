@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
-import { UploadView from "./types";
+import { UploadView } from "./types";
 import { Dropzone } from "./dropzone";
 import { PreviewGallery } from "./preview-gallery";
 import { ActionsBar } from "./actions-bar";
