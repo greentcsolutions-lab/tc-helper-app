@@ -9,6 +9,17 @@ import { PreviewGallery } from "./preview-gallery";
 import { ActionsBar } from "./actions-bar";
 import { useRouter } from "next/navigation";
 
+const JOKES = [
+  "Don't trust AI to identify mushrooms...",
+  "This is why we don't let Grok drive...",
+  "Parsing legalese — the leading cause of AI therapy bills",
+  "Fun fact: This PDF has more pages than my attention span",
+  "Still faster than a human reading this packet",
+  "Beep boop... processing bureaucracy...",
+  "Grok is now judging your buyer's handwriting",
+  "Hang tight — we're teaching the AI to read realtor scribbles",
+];
+
 export default function UploadZone({ onComplete }: { onComplete?: (data: Record<string, any>) => void }) {
   const [view, setView] = useState<UploadView>("idle");
   const [currentFile, setCurrentFile] = useState<File | null>(null);
@@ -16,13 +27,25 @@ export default function UploadZone({ onComplete }: { onComplete?: (data: Record<
   const [pageCount, setPageCount] = useState(0);
   const [previewPages, setPreviewPages] = useState<{ pageNumber: number; base64: string }[]>([]);
   const [isExtracting, setIsExtracting] = useState(false);
-  
-  // ← These three lines are the magic
+
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const analyzingStartTime = useRef<number | null>(null);
-  const [showJoke, setShowJoke] = useState(false);
+  const lastActivity = useRef(Date.now());
+  const [jokeIndex, setJokeIndex] = useState(0);
 
   const router = useRouter();
+
+  // Rotating jokes every 4 seconds while silent
+  useEffect(() => {
+    if (!isAnalyzing) return;
+
+    const interval = setInterval(() => {
+      if (Date.now() - lastActivity.current > 3500) {
+        setJokeIndex(prev => (prev + 1) % JOKES.length);
+      }
+    }, 4000);
+
+    return () => clearInterval(interval);
+  }, [isAnalyzing]);
 
   const validatePdf = async (file: File): Promise<boolean> => {
     const header = await file.slice(0, 8).arrayBuffer();
@@ -30,17 +53,26 @@ export default function UploadZone({ onComplete }: { onComplete?: (data: Record<
     const isPdf = view[0] === 0x25 && view[1] === 0x50 && view[2] === 0x44 && view[3] === 0x46;
 
     if (!isPdf) {
-      toast.error("This doesn't look like a PDF file", { description: "Please select a valid PDF document." });
+      toast.error("This doesn't look like a PDF file", {
+        description: "Please select a valid PDF document.",
+      });
       return false;
     }
+
     if (file.size < 10_000) {
-      toast.error("This file appears corrupted", { description: "Please re-save or re-download the PDF." });
+      toast.error("This file appears corrupted", {
+        description: "Please re-save or re-download the PDF and try again.",
+      });
       return false;
     }
+
     if (file.size > 25_000_000) {
-      toast.error("File too large", { description: "Maximum file size is 25 MB." });
+      toast.error("File too large", {
+        description: "Maximum file size is 25 MB.",
+      });
       return false;
     }
+
     return true;
   };
 
@@ -51,22 +83,11 @@ export default function UploadZone({ onComplete }: { onComplete?: (data: Record<
     setCurrentFile(file);
     setView("uploading");
     setIsAnalyzing(true);
-    analyzingStartTime.current = Date.now();
-    setShowJoke(false);
+    lastActivity.current = Date.now();
+    setJokeIndex(0);
   };
 
-  // This effect guarantees a joke appears after 3.3 seconds
-  useEffect(() => {
-    if (!isAnalyzing) return;
-
-    const timeout = setTimeout(() => {
-      setShowJoke(true);
-    }, 4000);
-
-    return () => clearTimeout(timeout);
-  }, [isAnalyzing]);
-
-  // Actual upload — runs only once when file is selected
+  // Upload logic
   useEffect(() => {
     if (!isAnalyzing || !currentFile) return;
 
@@ -75,8 +96,13 @@ export default function UploadZone({ onComplete }: { onComplete?: (data: Record<
       formData.append("file", currentFile);
 
       try {
-        const res = await fetch("/api/parse/upload", { method: "POST", body: formData });
+        const res = await fetch("/api/parse/upload", {
+          method: "POST",
+          body: formData,
+        });
         const data = await res.json();
+
+        lastActivity.current = Date.now(); // Reset joke timer
 
         if (!res.ok) throw new Error(data.message || "Upload failed");
 
@@ -85,13 +111,11 @@ export default function UploadZone({ onComplete }: { onComplete?: (data: Record<
         setPageCount(data.pageCount);
         setView("preview");
         toast.success("Critical pages identified");
-      } catch (err: any) {
-        toast.error(err.message || "Upload failed");
+      } catch {
+        toast.error("Upload failed — please try again");
         reset();
       } finally {
         setIsAnalyzing(false);
-        analyzingStartTime.current = null;
-        setShowJoke(false);
       }
     };
 
@@ -127,7 +151,7 @@ export default function UploadZone({ onComplete }: { onComplete?: (data: Record<
     setPageCount(0);
     setPreviewPages([]);
     setIsAnalyzing(false);
-    setShowJoke(false);
+    setJokeIndex(0);
   };
 
   return (
@@ -147,8 +171,8 @@ export default function UploadZone({ onComplete }: { onComplete?: (data: Record<
           currentFile={currentFile}
           onFileSelect={() => {}}
           onCancel={reset}
-          statusMessage="Hold tight — analyzing your packet..."
-          isWaitingForJoke={showJoke}  
+          statusMessage="Analyzing your packet..."
+          currentJoke={JOKES[jokeIndex]}
         />
       )}
 
