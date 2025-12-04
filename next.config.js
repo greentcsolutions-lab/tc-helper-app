@@ -1,42 +1,42 @@
 // next.config.js
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  experimental: {
-    // Keep this for canvas/pdfjs-dist natives (your server routes)
-    serverComponentsExternalPackages: ["canvas", "pdfjs-dist"],
-  },
+  // FIXED: Moved from experimental (stable in Next 15.1.4)
+  serverExternalPackages: ["canvas", "pdfjs-dist"],
 
   webpack: (config) => {
-    // Keep this for pdfjs-dist JSON assets
+    // Keep for pdfjs-dist JSON assets (your server routes)
     config.module.rules.push({
       test: /pdfjs-dist[\\/].*\.json$/,
       type: "json",
     });
 
-    // FIX: Exclude broken goober.d.ts (ESM/CommonJS clash) — standard 2025 patch
+    // FIXED: Ignore broken goober.d.ts (ESM/CommonJS clash in Radix deps)
     config.module.rules.push({
       test: /goober\.d\.ts$/,
-      loader: "ignore-loader",
+      use: "null-loader",  // Skips types during bundling (Vercel-safe, runtime unaffected)
     });
 
-    // Force ESM interop for Radix deps (prevents transitive CJS leaks)
-    config.experiments = {
-      ...config.experiments,
-      outputModule: true,
-    };
-
+    // FIXED: Force ESM interop for transitive deps (Radix/goober)
     config.experiments = {
       ...config.experiments,
       topLevelAwait: true,
     };
 
+    // Optional: Loose ESM mode for externals (fallback if needed)
+    config.module.parser = {
+      ...config.module.parser,
+      javascript: {
+        ...config.module.parser.javascript,
+        esmExternals: "loose",
+      },
+    };
+
     return config;
   },
 
-  // Optional: Ignore type errors in node_modules during build (safety net)
-  typescript: {
-    ignoreBuildErrors: false, // Keep strict, but add if needed: true
-  },
+  // Optional: Skip lint in build if warnings spam (uncomment if needed)
+  // eslint: { ignoreDuringBuilds: true },
 };
 
 module.exports = nextConfig;
