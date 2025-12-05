@@ -5,12 +5,13 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { currentUser } from "@clerk/nextjs/server";
+import { CreditCard, History, Sparkles } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
 export default async function Dashboard() {
   const user = await currentUser();
-  if (!user) return null; // Should never happen due to layout redirect
+  if (!user) return null;
 
   const dbUser = await prisma.user.findUnique({
     where: { clerkId: user.id },
@@ -20,58 +21,95 @@ export default async function Dashboard() {
   const hasCredits = dbUser?.credits && dbUser.credits > 0;
 
   return (
-    <div className="container mx-auto p-6 max-w-5xl">
-      <div className="mb-10">
-        <h1 className="text-4xl font-bold mb-2">Welcome back</h1>
-        <p className="text-muted-foreground text-lg">
-          Upload a California real estate packet to extract RPA data instantly.
+    <div className="container mx-auto p-6 max-w-7xl">
+      {/* Hero Greeting */}
+      <div className="mb-12 text-center lg:text-left">
+        <h1 className="text-5xl font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
+          Welcome back
+        </h1>
+        <p className="mt-4 text-xl text-muted-foreground">
+          Upload a California RPA packet • Grok extracts everything in seconds
         </p>
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-8">
+      <div className="grid lg:grid-cols-3 gap-10 xl:gap-12">
+        {/* LEFT: Upload Zone (2/3 width) */}
         <div className="lg:col-span-2">
           {hasCredits ? (
-            <UploadZone />
+            <div className="relative">
+              <div className="absolute -inset-4 bg-gradient-to-r from-primary/20 to-purple-600/10 rounded-3xl blur-3xl -z-10" />
+              <UploadZone />
+            </div>
           ) : (
-            <Card className="border-dashed border-2 border-red-300 bg-red-50">
-              <CardContent className="pt-10 text-center">
-                <div className="text-6xl mb-4">No parses remaining</div>
-                <p className="text-muted-foreground mb-6">
-                  You’ve used all your free parses.
+            <Card className="border-2 border-dashed border-red-400/30 bg-gradient-to-br from-red-50 to-orange-50 dark:from-red-950/40 dark:to-orange-950/30 backdrop-blur-xl">
+              <CardContent className="pt-16 pb-20 text-center">
+                <div className="mx-auto w-24 h-24 bg-red-100 dark:bg-red-900/50 rounded-full flex items-center justify-center mb-8">
+                  <Sparkles className="w-12 h-12 text-red-600 dark:text-red-400" />
+                </div>
+                <h3 className="text-3xl font-bold mb-4">No parses remaining</h3>
+                <p className="text-lg text-muted-foreground mb-8 max-w-sm mx-auto">
+                  You’ve used your free extraction. Upgrade for unlimited AI parsing.
                 </p>
-                <Button asChild size="lg">
-                  <Link href="/dashboard/billing">Add Credits →</Link>
+                <Button asChild size="lg" className="bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700 text-white shadow-lg">
+                  <Link href="/dashboard/billing">
+                    <CreditCard className="mr-2 h-5 w-5" />
+                    Add Credits Now
+                  </Link>
                 </Button>
               </CardContent>
             </Card>
           )}
         </div>
 
+        {/* RIGHT: Quick Actions Sidebar */}
         <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Quick Actions</CardTitle>
+          <Card className="overflow-hidden border-0 shadow-xl bg-gradient-to-br from-primary/5 via-background to-secondary/30 backdrop-blur-xl">
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-transparent rounded-2xl" />
+            <CardHeader className="relative">
+              <CardTitle className="text-2xl flex items-center gap-3">
+                <div className="p-2 bg-primary/10 rounded-xl">
+                  <Sparkles className="w-6 h-6 text-primary" />
+                </div>
+                Quick Actions
+              </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <Button asChild variant="outline" className="w-full justify-start">
-                <Link href="/parses">View Past Parses</Link>
+            <CardContent className="relative space-y-4">
+              <Button
+                asChild
+                variant="secondary"
+                size="lg"
+                className="w-full justify-start text-lg h-14 hover:shadow-lg transition-all hover:scale-105"
+              >
+                <Link href="/parses">
+                  <History className="mr-3 h-5 w-5" />
+                  View Past Parses
+                </Link>
               </Button>
-              <Button asChild variant="outline" className="w-full justify-start">
-                <Link href="/dashboard/billing">Billing & Credits</Link>
+
+              <Button
+                asChild
+                size="lg"
+                className="w-full justify-start text-lg h-14 bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary text-white shadow-lg hover:shadow-xl transition-all hover:scale-105"
+              >
+                <Link href="/dashboard/billing">
+                  <CreditCard className="mr-3 h-5 w-5" />
+                  Billing & Credits
+                </Link>
               </Button>
             </CardContent>
           </Card>
 
-          <Card className="bg-primary/5 border-primary/20">
-            <CardHeader>
-              <CardTitle className="text-lg">Pro Tip</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">
-                Works only with digital PDFs at this time. We are working to add OCR capabilities for scanned documents.
-              </p>
-            </CardContent>
-          </Card>
+          {/* Optional: Credit Balance Badge */}
+          {dbUser?.credits !== undefined && (
+            <Card className="bg-gradient-to-r from-green-500/10 to-emerald-500/10 border-green-500/20">
+              <CardContent className="pt-6 text-center">
+                <p className="text-sm text-muted-foreground">Credits Remaining</p>
+                <p className="text-4xl font-bold text-green-600 dark:text-green-400 mt-2">
+                  {dbUser.credits}
+                </p>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
     </div>

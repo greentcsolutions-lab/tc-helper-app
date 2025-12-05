@@ -119,16 +119,7 @@ export default async function Home() {
           rel="noopener noreferrer"
           className="text-muted-foreground hover:text-foreground underline-offset-4 hover:underline transition"
         >
-          Privacy Policy & California Rights
-        </a>
-
-        <a
-          href="/terms"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-muted-foreground hover:text-foreground underline-offset-4 hover:underline transition"
-        >
-          Terms of Service
+          <u>Privacy Policy & California Rights</u>
         </a>
       </div>
     </div>
