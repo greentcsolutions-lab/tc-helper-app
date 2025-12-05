@@ -27,6 +27,11 @@ export async function renderPdfToPngBase64Array(
 
   console.log("[pdfRest] Starting PDF → PNG conversion", { maxPages: maxPages || "all" });
 
+  const magic = buffer.subarray(0, 8).toString();
+    if (!magic.includes("%PDF")) {
+      throw new Error("Not a valid PDF");
+    }
+
   const form = new FormData();
   form.append("file", bufferToBlob(buffer, "application/pdf"), "document.pdf");
   form.append("output", "rpa_png");

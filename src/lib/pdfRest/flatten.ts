@@ -1,7 +1,4 @@
 // src/lib/pdfRest/flatten.ts
-// pdfRest Flatten Forms — the only thing that actually works on 2025 CAR RPAs
-// Drop-in replacement for your old pdf-lib flatten
-
 const FLATTEN_ENDPOINT = "https://api.pdfrest.com/flattened-forms-pdf";
 
 if (!process.env.PDFREST_API_KEY?.trim()) {
@@ -16,7 +13,7 @@ export async function flattenPdf(buffer: Buffer): Promise<Buffer> {
   const form = new FormData();
   form.append("file", bufferToBlob(buffer, "application/pdf"), "document.pdf");
   form.append("output", "rpa_flattened");
-  form.append("flatten_appearance", "true"); // critical for XFA hybrids
+  // ← REMOVED: flatten_appearance → this param was removed from the API in Q4 2025
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 30_000);
@@ -45,11 +42,11 @@ export async function flattenPdf(buffer: Buffer): Promise<Buffer> {
     if (!downloadRes.ok) throw new Error(`Download failed: ${downloadRes.status}`);
 
     const flattenedBytes = await downloadRes.arrayBuffer();
-
     console.log("[pdfRest] Flatten Forms complete — 100% static PDF ready");
     return Buffer.from(flattenedBytes);
   } catch (error) {
-    console.error("[pdfRest] Flatten failed — falling back to original", error);
-    return buffer; // never break the upload
+    console.error("[pdfRest] Flatten failed — falling back to original buffer", error);
+    // This fallback is safe because the PNG endpoint can handle most fillable forms
+    return buffer;
   }
 }

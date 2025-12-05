@@ -61,27 +61,30 @@ export default async function Dashboard() {
           )}
         </div>
 
-        {/* RIGHT: Quick Actions Sidebar */}
+        {/* RIGHT: PREMIUM QUICK ACTIONS SIDEBAR */}
         <div className="space-y-6">
-          <Card className="overflow-hidden border-0 shadow-xl bg-gradient-to-br from-primary/5 via-background to-secondary/30 backdrop-blur-xl">
-            <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-transparent rounded-2xl" />
-            <CardHeader className="relative">
-              <CardTitle className="text-2xl flex items-center gap-3">
-                <div className="p-2 bg-primary/10 rounded-xl">
-                  <Sparkles className="w-6 h-6 text-primary" />
+          <Card className="overflow-hidden border-0 shadow-2xl bg-gradient-to-br from-primary/10 via-background to-purple-600/5 backdrop-blur-xl">
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-transparent to-purple-600/10 rounded-3xl" />
+            
+            <CardHeader className="relative pb-8">
+              <CardTitle className="text-3xl font-bold flex items-center gap-4">
+                <div className="p-3 bg-primary/20 rounded-2xl backdrop-blur-sm">
+                  <Sparkles className="w-8 h-8 text-primary" />
                 </div>
                 Quick Actions
               </CardTitle>
+              <p className="text-muted-foreground mt-2 text-lg">Everything you need, instantly</p>
             </CardHeader>
-            <CardContent className="relative space-y-4">
+
+            <CardContent className="relative space-y-5">
               <Button
                 asChild
                 variant="secondary"
                 size="lg"
-                className="w-full justify-start text-lg h-14 hover:shadow-lg transition-all hover:scale-105"
+                className="w-full justify-start text-lg h-16 hover:shadow-xl transition-all hover:scale-105 hover:bg-accent/80"
               >
                 <Link href="/parses">
-                  <History className="mr-3 h-5 w-5" />
+                  <History className="mr-4 h-6 w-6" />
                   View Past Parses
                 </Link>
               </Button>
@@ -89,17 +92,17 @@ export default async function Dashboard() {
               <Button
                 asChild
                 size="lg"
-                className="w-full justify-start text-lg h-14 bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary text-white shadow-lg hover:shadow-xl transition-all hover:scale-105"
+                className="w-full justify-start text-lg h-16 bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary text-white shadow-xl hover:shadow-2xl transition-all hover:scale-105"
               >
                 <Link href="/dashboard/billing">
-                  <CreditCard className="mr-3 h-5 w-5" />
+                  <CreditCard className="mr-4 h-6 w-6" />
                   Billing & Credits
                 </Link>
               </Button>
             </CardContent>
           </Card>
 
-          {/* Optional: Credit Balance Badge */}
+          {/* Credit Balance Badge */}
           {dbUser?.credits !== undefined && (
             <Card className="bg-gradient-to-r from-green-500/10 to-emerald-500/10 border-green-500/20">
               <CardContent className="pt-6 text-center">
