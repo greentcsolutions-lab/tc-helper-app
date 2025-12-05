@@ -107,18 +107,33 @@ export default async function Home() {
         </section>
       </main>
 
-      <footer className="border-t py-12">
-        <div className="container mx-auto px-4 text-center text-muted-foreground">
-          <p>© 2025 TC Helper. All rights reserved.</p>
-          <a
-            href="/privacy"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-sm text-muted-foreground hover:text-foreground underline-offset-4 hover:underline">
-            Privacy Policy
-          </a>
-        </div>
-      </footer>
+      <footer className="border-t py-12 mt-24">
+  <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
+    <div className="flex flex-col sm:flex-row justify-center items-center gap-2 sm:gap-6">
+      <p>© 2025 TC Helper. All rights reserved.</p>
+
+      <div className="flex gap-6">
+        <a
+          href="/privacy"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-muted-foreground hover:text-foreground underline-offset-4 hover:underline transition"
+        >
+          Privacy Policy & California Rights
+        </a>
+
+        <a
+          href="/terms"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-muted-foreground hover:text-foreground underline-offset-4 hover:underline transition"
+        >
+          Terms of Service
+        </a>
+      </div>
+    </div>
+  </div>
+</footer>
     </div>
   );
 }
