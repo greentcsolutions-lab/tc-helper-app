@@ -104,16 +104,14 @@ export default async function Home() {
 
               {/* Standard — wrapped in PremiumCard */}
               <PremiumCard glow className="ring-2 ring-primary/30 relative overflow-hidden">
-                <div className="absolute top-0 right-0">
-                <div className="relative">
-                  {/* The actual ribbon */}
-                    <div className="absolute top-0 right-0 w-40 h-40 overflow-hidden">
-                    <div className="absolute top-0 right-0 w-32 bg-gradient-to-br from-primary to-primary/90 text-white text-sm font-bold py-2 px-10 transform origin-bottom-left rotate-45 translate-x-8 -translate-y-4 shadow-lg">
-                       MOST POPULAR
-                     </div>
-                    </div>
-                </div>
-                </div>
+                {/*ribbon */}
+                <div className="absolute top-0 right-0 pointer-events-none">
+  <div className="relative w-40 h-40 overflow-hidden">
+    <div className="absolute top-[22px] right-[-44px] w-48 bg-gradient-to-br from-primary to-primary/90 text-white font-bold text-sm uppercase tracking-wider py-2.5 px-12 text-center shadow-2xl transform rotate-45">
+      Most Popular
+    </div>
+  </div>
+</div>
 
                 <CardHeader className="pt-12 pb-8">
                   <h4 className="text-3xl font-bold mb-4">Standard</h4>
