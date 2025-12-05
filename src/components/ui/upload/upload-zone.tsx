@@ -29,7 +29,7 @@ export default function UploadZone({ onComplete }: { onComplete?: (data: any) =>
   const [isExtracting, setIsExtracting] = useState(false);
 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [liveMessage, setLiveMessage] = useState("Hold tight — analyzing your packet...");
+  const [liveMessage, setLiveMessage] = useState("Hang tight — analyzing your packet...");
   const lastActivity = useRef(Date.now());
   const [jokeIndex, setJokeIndex] = useState(0);
 
