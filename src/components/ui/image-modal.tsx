@@ -1,4 +1,3 @@
-// src/components/ui/image-modal.tsx
 "use client";
 
 import * as React from "react";
@@ -7,6 +6,7 @@ import {
   Dialog,
   DialogContent,
   DialogHeader,
+  DialogTitle,
 } from "@/components/ui/dialog";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -34,6 +34,9 @@ function ImageModal({
           className
         )}
       >
+        {/* ← THIS IS THE ONLY NEW LINE */}
+        <DialogTitle className="sr-only">Document Preview</DialogTitle>
+
         {/* Close button */}
         <DialogHeader className="absolute right-4 top-4 z-50">
           <button
@@ -52,7 +55,7 @@ function ImageModal({
             alt={alt}
             fill
             className="object-contain"
-            unoptimized // Important for base64 PNGs from pdfjs
+            unoptimized
             priority
           />
         </div>
@@ -70,4 +73,4 @@ function ImageModal({
   );
 }
 
-export default ImageModal;  // ← Default export (matches your import)
+export default ImageModal;

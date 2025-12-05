@@ -1,4 +1,6 @@
 // src/app/api/parse/extract/[parseId]/route.ts
+// ← ONLY CHANGE: Added Clerk → CUID lookup at the top
+
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
@@ -8,18 +10,28 @@ import { extractFromCriticalPages } from "@/lib/extractor/extractor";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-// CORRECT Next.js 15 App Router signature for dynamic routes
 export async function POST(
   request: NextRequest,
-  { params }: { params: Promise<{ parseId: string }> }  // ← Promise-wrapped!
+  { params }: { params: Promise<{ parseId: string }> }
 ) {
-  const { userId } = await auth();
-  if (!userId) return new Response("Unauthorized", { status: 401 });
+  const { userId: clerkUserId } = await auth();
+  if (!clerkUserId) return new Response("Unauthorized", { status: 401 });
 
-  const { parseId } = await params;  // ← await the params
+  // ← THIS IS THE ONLY NEW CODE (fixes 400 error)
+  const user = await db.user.findUnique({
+    where: { clerkId: clerkUserId },
+    select: { id: true },
+  });
+
+  if (!user) {
+    return new Response("User not found", { status: 404 });
+  }
+  // ← END OF NEW CODE
+
+  const { parseId } = await params;
 
   const parse = await db.parse.findUnique({
-    where: { id: parseId, userId },
+    where: { id: parseId, userId: user.id },  // ← Now using correct CUID
     select: { pdfBuffer: true, criticalPageNumbers: true, status: true },
   });
 

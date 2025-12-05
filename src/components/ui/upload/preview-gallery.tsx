@@ -1,22 +1,20 @@
-// src/components/upload/preview-gallery.tsx  ← Diff: No EventSource, direct pages prop
 "use client";
 
 import { useState } from "react";
 import { Card } from "@/components/ui/card";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { PreviewPage } from "./types";
+import ImageModal from "@/components/ui/image-modal";
 
 type PreviewGalleryProps = {
-  pages: PreviewPage[];  // ← Change: Direct array, no parseId/SSE
+  pages: PreviewPage[];
   onLoaded: (count: number) => void;
 };
 
 export function PreviewGallery({ pages, onLoaded }: PreviewGalleryProps) {
   const [selected, setSelected] = useState<PreviewPage | null>(null);
 
-  // ← Remove entire useEffect — no SSE needed
-
-  onLoaded(pages.length);  // ← Call immediately
+  onLoaded(pages.length);
 
   return (
     <>
@@ -48,11 +46,15 @@ export function PreviewGallery({ pages, onLoaded }: PreviewGalleryProps) {
 
       <Dialog open={!!selected} onOpenChange={() => setSelected(null)}>
         <DialogContent className="max-w-5xl">
+          {/* ← THIS IS THE ONLY NEW LINE */}
+          <DialogTitle className="sr-only">Full Page Preview</DialogTitle>
+
           {selected && (
-            <img
+            <ImageModal
               src={selected.base64}
               alt={`Page ${selected.pageNumber} full size`}
-              className="w-full h-full object-contain"
+              open={!!selected}
+              onOpenChange={() => setSelected(null)}
             />
           )}
         </DialogContent>

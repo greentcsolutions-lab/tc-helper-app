@@ -65,6 +65,9 @@ function DialogContent({
         )}
         {...props}
       >
+        {/* ← THIS IS THE ONLY NEW LINE */}
+        <DialogPrimitive.Title className="sr-only">Dialog</DialogPrimitive.Title>
+
         {children}
         {showCloseButton && (
           <DialogPrimitive.Close
