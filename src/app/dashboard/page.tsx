@@ -22,7 +22,7 @@ export default async function Dashboard() {
 
   return (
     <div className="container mx-auto p-6 max-w-7xl">
-      {/* Hero Greeting */}
+      {/* Hero */}
       <div className="mb-12 text-center lg:text-left">
         <h1 className="text-5xl font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
           Welcome back
@@ -32,12 +32,12 @@ export default async function Dashboard() {
         </p>
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-10 xl:gap-12">
+      {/* MAIN GRID — generous spacing + proper card separation */}
+      <div className="grid lg:grid-cols-3 gap-12 xl:gap-16">
         {/* LEFT: Upload Zone (2/3 width) */}
         <div className="lg:col-span-2">
           {hasCredits ? (
-            <div className="relative">
-              <div className="absolute -inset-4 bg-gradient-to-r from-primary/20 to-purple-600/10 rounded-3xl blur-3xl -z-10" />
+            <div className="p-8 lg:p-12"> {/* THIS IS THE ONLY CHANGE — gives UploadZone breathing room */}
               <UploadZone />
             </div>
           ) : (
@@ -61,53 +61,42 @@ export default async function Dashboard() {
           )}
         </div>
 
-        {/* RIGHT: PREMIUM QUICK ACTIONS SIDEBAR */}
-        <div className="space-y-6">
-          <Card className="overflow-hidden border-0 shadow-2xl bg-gradient-to-br from-primary/10 via-background to-purple-600/5 backdrop-blur-xl">
-            <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-transparent to-purple-600/10 rounded-3xl" />
-            
-            <CardHeader className="relative pb-8">
-              <CardTitle className="text-3xl font-bold flex items-center gap-4">
-                <div className="p-3 bg-primary/20 rounded-2xl backdrop-blur-sm">
-                  <Sparkles className="w-8 h-8 text-primary" />
+        {/* RIGHT: Sidebar */}
+        <div className="space-y-12"> {/* increased from space-y-6 → space-y-12 */}
+          {/* Quick Actions */}
+          <Card className="overflow-hidden border-0 shadow-xl bg-gradient-to-br from-primary/5 via-background to-secondary/30 backdrop-blur-xl">
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-transparent rounded-2xl" />
+            <CardHeader className="relative">
+              <CardTitle className="text-2xl flex items-center gap-3">
+                <div className="p-2 bg-primary/10 rounded-xl">
+                  <Sparkles className="w-6 h-6 text-primary" />
                 </div>
                 Quick Actions
               </CardTitle>
-              <p className="text-muted-foreground mt-2 text-lg">Everything you need, instantly</p>
             </CardHeader>
-
-            <CardContent className="relative space-y-5">
-              <Button
-                asChild
-                variant="secondary"
-                size="lg"
-                className="w-full justify-start text-lg h-16 hover:shadow-xl transition-all hover:scale-105 hover:bg-accent/80"
-              >
+            <CardContent className="relative space-y-4">
+              <Button asChild variant="secondary" size="lg" className="w-full justify-start text-lg h-14 hover:shadow-lg hover:scale-105 transition-all">
                 <Link href="/parses">
-                  <History className="mr-4 h-6 w-6" />
+                  <History className="mr-3 h-5 w-5" />
                   View Past Parses
                 </Link>
               </Button>
 
-              <Button
-                asChild
-                size="lg"
-                className="w-full justify-start text-lg h-16 bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary text-white shadow-xl hover:shadow-2xl transition-all hover:scale-105"
-              >
+              <Button asChild size="lg" className="w-full justify-start text-lg h-14 bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary text-white shadow-lg hover:shadow-xl hover:scale-105 transition-all">
                 <Link href="/dashboard/billing">
-                  <CreditCard className="mr-4 h-6 w-6" />
+                  <CreditCard className="mr-3 h-5 w-5" />
                   Billing & Credits
                 </Link>
               </Button>
             </CardContent>
           </Card>
 
-          {/* Credit Balance Badge */}
+          {/* Credits Badge */}
           {dbUser?.credits !== undefined && (
             <Card className="bg-gradient-to-r from-green-500/10 to-emerald-500/10 border-green-500/20">
-              <CardContent className="pt-6 text-center">
+              <CardContent className="pt-8 pb-10 text-center">
                 <p className="text-sm text-muted-foreground">Credits Remaining</p>
-                <p className="text-4xl font-bold text-green-600 dark:text-green-400 mt-2">
+                <p className="text-5xl font-bold text-green-600 dark:text-green-400 mt-3">
                   {dbUser.credits}
                 </p>
               </CardContent>

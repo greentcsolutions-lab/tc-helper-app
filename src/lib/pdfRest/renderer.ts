@@ -31,7 +31,9 @@ export async function renderPdfToPngBase64Array(
     if (!magic.includes("%PDF")) {
       throw new Error("Not a valid PDF");
     }
-
+  
+  console.log("[pdfRest] PDF magic valid, size post-flatten:", buffer.length, "bytes");
+  
   const form = new FormData();
   form.append("file", bufferToBlob(buffer, "application/pdf"), "document.pdf");
   form.append("output", "rpa_png");

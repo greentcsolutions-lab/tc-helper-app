@@ -102,14 +102,21 @@ export default async function Home() {
                 </SignUpButton>
               </Card>
 
-              {/* Pro Monthly — wrapped in PremiumCard */}
+              {/* Standard — wrapped in PremiumCard */}
               <PremiumCard glow className="ring-2 ring-primary/30 relative overflow-hidden">
-                <div className="absolute -right-12 top-8 rotate-12 bg-gradient-to-r from-primary to-primary/80 px-16 py-2 text-sm font-bold text-white shadow-lg">
-                  MOST POPULAR
+                <div className="absolute top-0 right-0">
+                <div className="relative">
+                  {/* The actual ribbon */}
+                    <div className="absolute top-0 right-0 w-40 h-40 overflow-hidden">
+                    <div className="absolute top-0 right-0 w-32 bg-gradient-to-br from-primary to-primary/90 text-white text-sm font-bold py-2 px-10 transform origin-bottom-left rotate-45 translate-x-8 -translate-y-4 shadow-lg">
+                       MOST POPULAR
+                     </div>
+                    </div>
+                </div>
                 </div>
 
                 <CardHeader className="pt-12 pb-8">
-                  <h4 className="text-3xl font-bold mb-4">Pro Monthly</h4>
+                  <h4 className="text-3xl font-bold mb-4">Standard</h4>
                   <div className="mb-6">
                     <span className="text-5xl font-bold">$9.99</span>
                     <span className="text-xl text-muted-foreground">/month</span>
