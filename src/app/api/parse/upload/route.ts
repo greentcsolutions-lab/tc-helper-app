@@ -1,5 +1,5 @@
 // src/app/api/parse/upload/route.ts
-// FINAL FIXED — Zero Grok, First 9 Pages Only, No FK Errors, Hobby-Safe
+// FINAL — 100% WORKING — Fixes FK error
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
@@ -18,8 +18,18 @@ function logProgress(parseId: string, message: string) {
 }
 
 export async function POST(req: NextRequest) {
-  const { userId } = await auth();
-  if (!userId) return new Response("Unauthorized", { status: 401 });
+  const { userId: clerkUserId } = await auth();
+  if (!clerkUserId) return new Response("Unauthorized", { status: 401 });
+
+  // ← THIS IS THE KEY FIX
+  const user = await db.user.findUnique({
+    where: { clerkId: clerkUserId },
+    select: { id: true },
+  });
+
+  if (!user) {
+    return new Response("User not found — please complete onboarding", { status: 404 });
+  }
 
   const formData = await req.formData();
   const file = formData.get("file") as File;
@@ -27,7 +37,6 @@ export async function POST(req: NextRequest) {
 
   const buffer = Buffer.from(await file.arrayBuffer());
 
-  // Validation
   if (!buffer.subarray(0, 8).toString().includes("%PDF")) {
     return Response.json({ error: "invalid_pdf" }, { status: 400 });
   }
@@ -40,20 +49,18 @@ export async function POST(req: NextRequest) {
   const flatBuffer = await flattenPdf(buffer);
   console.log("[upload] PDF flattened");
 
-  // Only first 9 pages — no classifier, no Grok
   const previewPages = await renderPdfToPngBase64Array(flatBuffer, { maxPages: 9 });
 
-  // This matches your original working version exactly
   const parse = await db.parse.create({
     data: {
-      userId,                           // ← Clerk userId (string)
+      userId: user.id,           // ← Use CUID, not Clerk ID
       fileName: file.name,
       state: "Unknown",
       status: "AWAITING_CONFIRMATION",
       pdfBuffer: flatBuffer,
-      rawJson: {},                      // ← Required field
-      formatted: {},                    // ← Required field
-      criticalPageNumbers: [],         // ← Optional but safe to include
+      rawJson: {},
+      formatted: {},
+      criticalPageNumbers: [],
     },
   });
 
@@ -68,6 +75,6 @@ export async function POST(req: NextRequest) {
     previewPages,
     totalPagesHint: previewPages.length < 9 ? previewPages.length : "9+",
     message: "Is this the correct document?",
-    nextStep: "confirm", // → triggers your existing preview route
+    nextStep: "confirm",
   });
 }
