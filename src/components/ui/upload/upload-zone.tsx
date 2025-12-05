@@ -158,7 +158,7 @@ export default function UploadZone({ onComplete }: { onComplete?: (data: any) =>
     }
   };
 
-  return (
+    return (
     <div className="relative">
       {view === "idle" && (
         <Dropzone
@@ -189,6 +189,28 @@ export default function UploadZone({ onComplete }: { onComplete?: (data: any) =>
             isExtracting={isExtracting}
           />
         </>
+      )}
+
+      {/* ← NEW PRIVACY NOTICE (appears on all three views) */}
+      {(view === "idle" || view === "uploading") && (
+        <div className="mt-8 text-center px-4">
+          <p className="text-sm text-muted-foreground max-w-2xl mx-auto leading-relaxed">
+            By uploading, you agree to secure processing of your document via trusted U.S. and EU providers
+            (PDFRest & xAI Grok). Your PDF and all images are{" "}
+            <span className="font-medium text-foreground">automatically deleted within minutes</span> after extraction.
+            We never sell or share your data.
+          </p>
+          <p className="mt-3">
+            <a
+              href="/privacy"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm font-medium text-primary hover:underline"
+            >
+              California Privacy Rights (CCPA/CPRA) • Full Policy →
+            </a>
+          </p>
+        </div>
       )}
     </div>
   );
