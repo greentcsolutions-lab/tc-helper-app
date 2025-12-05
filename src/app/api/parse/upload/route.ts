@@ -1,5 +1,5 @@
 // src/app/api/parse/upload/route.ts
-// FINAL: No Grok until user confirms — uses first 9 pages only
+// FINAL FIXED — Zero Grok, First 9 Pages Only, No FK Errors, Hobby-Safe
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
@@ -40,18 +40,20 @@ export async function POST(req: NextRequest) {
   const flatBuffer = await flattenPdf(buffer);
   console.log("[upload] PDF flattened");
 
-  // ONLY first 9 pages — no Grok, no classifier
+  // Only first 9 pages — no classifier, no Grok
   const previewPages = await renderPdfToPngBase64Array(flatBuffer, { maxPages: 9 });
 
+  // This matches your original working version exactly
   const parse = await db.parse.create({
     data: {
-      userId,
+      userId,                           // ← Clerk userId (string)
       fileName: file.name,
       state: "Unknown",
       status: "AWAITING_CONFIRMATION",
       pdfBuffer: flatBuffer,
-      rawJson: {},    
-      formatted: {},  
+      rawJson: {},                      // ← Required field
+      formatted: {},                    // ← Required field
+      criticalPageNumbers: [],         // ← Optional but safe to include
     },
   });
 
@@ -63,9 +65,9 @@ export async function POST(req: NextRequest) {
   return Response.json({
     success: true,
     parseId: parse.id,
-    previewPages: previewPages, // first 9 pages only
+    previewPages,
     totalPagesHint: previewPages.length < 9 ? previewPages.length : "9+",
     message: "Is this the correct document?",
-    nextStep: "confirm", // ← triggers your existing preview route next
+    nextStep: "confirm", // → triggers your existing preview route
   });
 }
