@@ -107,7 +107,7 @@ export default async function Home() {
                 {/*ribbon */}
                 <div className="absolute top-0 right-0 pointer-events-none">
   <div className="relative w-40 h-40 overflow-hidden">
-    <div className="absolute top-[22px] right-[-44px] w-48 bg-gradient-to-br from-primary to-primary/90 text-white font-bold text-sm uppercase tracking-wider py-2.5 px-12 text-center shadow-2xl transform rotate-45">
+    <div className="absolute top-[22px] right-[-44px] w-64 bg-gradient-to-br from-primary to-primary/90 text-white font-bold text-sm uppercase tracking-wider py-2.5 px-12 text-center shadow-2xl transform rotate-45">
       Most Popular
     </div>
   </div>
