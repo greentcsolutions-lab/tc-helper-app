@@ -110,6 +110,13 @@ export default async function Home() {
       <footer className="border-t py-12">
         <div className="container mx-auto px-4 text-center text-muted-foreground">
           <p>© 2025 TC Helper. All rights reserved.</p>
+          <a
+            href="/privacy"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm text-muted-foreground hover:text-foreground underline-offset-4 hover:underline">
+            Privacy Policy
+          </a>
         </div>
       </footer>
     </div>

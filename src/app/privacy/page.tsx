@@ -15,7 +15,7 @@ export default function PrivacyPage() {
         <section>
           <h2>1. What We Do (In Plain English)</h2>
           <p>
-            You upload a California real estate purchase packet (RPA, counters, disclosures, etc.).
+            You upload a real estate purchase contract (purchase agreement, counters, disclosures, etc.).
             We turn it into images, run Grok vision over the critical pages, and give you back a clean JSON
             with price, buyer/seller names, dates, contingencies, etc. That’s it.
           </p>
@@ -33,7 +33,7 @@ export default function PrivacyPage() {
         </section>
 
         <section>
-          <h2>3. We Never Do</h2>
+          <h2>3. We <strong>Never</strong></h2>
           <ul className="list-disc pl-6 space-y-2">
             <li>Sell, rent, or share your documents or personal information</li>
             <li>Use your PDFs or images to train any AI models</li>
@@ -52,8 +52,8 @@ export default function PrivacyPage() {
             <li>Not be discriminated against for exercising these rights</li>
           </ul>
           <p className="mt-4">
-            To exercise any right, email <strong>info@tchelper.app</strong> or use the “My Data Rights” link in your account.
-            We will respond within 45 days (90 if needed).
+            To exercise any right, email us at <strong>info@tchelper.app</strong>.
+            We will respond within 30 days.
           </p>
         </section>
 
@@ -62,7 +62,7 @@ export default function PrivacyPage() {
           <p>
             Questions? Reach us at{" "}
             <a href="mailto:info@tchelper.app" className="underline">
-              privacy@yourdomain.com
+              info@tchelper.app
             </a>
           </p>
         </section>
