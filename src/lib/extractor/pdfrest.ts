@@ -1,5 +1,5 @@
 // src/lib/extractor/pdfrest.ts
-// 2025-12-04 — FINAL VERSION: Handles pdfRest's broken comma-separated outputUrl on free tier
+// FINAL 2025 VERSION — supports maxPages for instant first-9-page preview
 
 import { bufferToBlob } from "@/lib/utils";
 
@@ -15,13 +15,22 @@ export interface PdfRestPage {
   base64: string;
 }
 
-export async function renderPdfToPngBase64Array(buffer: Buffer): Promise<PdfRestPage[]> {
-  console.log("[pdfRest] Starting PDF → PNG conversion");
+export interface RenderOptions {
+  maxPages?: number;
+}
+
+export async function renderPdfToPngBase64Array(
+  buffer: Buffer,
+  options: RenderOptions = {}
+): Promise<PdfRestPage[]> {
+  const { maxPages } = options;
+
+  console.log("[pdfRest] Starting PDF → PNG conversion", { maxPages: maxPages || "all" });
 
   const form = new FormData();
   form.append("file", bufferToBlob(buffer, "application/pdf"), "document.pdf");
   form.append("output", "rpa_png");
-  form.append("resolution", "285"); // 285 DPI for speed + accuracy. If handwritten forms fail frequently, up to 300 (per grok API docs)
+  form.append("resolution", "290");
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 55_000);
@@ -42,50 +51,55 @@ export async function renderPdfToPngBase64Array(buffer: Buffer): Promise<PdfRest
     }
 
     const json = await res.json();
-    console.log("[pdfRest] Raw response:", JSON.stringify(json, null, 2));
+    console.log("[pdfRest] Raw response received");
 
-    // FIX THE BROKEN FREE-TIER BUG: outputUrl is sometimes a comma-separated string
+    // Handle broken comma-separated outputUrl (free tier bug)
     let outputUrls: string[] = [];
 
     if (Array.isArray(json.outputUrl)) {
       outputUrls = json.outputUrl;
     } else if (typeof json.outputUrl === "string") {
-      // Split by comma-separated URLs (the bug)
-      outputUrls = json.outputUrl.split(",").filter(Boolean);
+      outputUrls = json.outputUrl.split(",").map((s: string) => s.trim()).filter(Boolean);
     } else if (Array.isArray(json.outputUrls)) {
       outputUrls = json.outputUrls;
     } else if (typeof json.outputUrls === "string") {
-      outputUrls = json.outputUrls.split(",").filter(Boolean);
+      outputUrls = json.outputUrls.split(",").map((s: string) => s.trim()).filter(Boolean);
     }
 
     if (outputUrls.length === 0) {
-      throw new Error("No valid output URLs found in pdfRest response");
+      throw new Error("No output URLs from pdfRest");
     }
 
-    console.log(`[pdfRest] Fixed & extracted ${outputUrls.length} valid PNG URLs`);
+    console.log(`[pdfRest] Found ${outputUrls.length} PNG URLs`);
 
-    const pages = await Promise.all(
-      outputUrls.map(async (url: string, i: number) => {
-        console.log(`[pdfRest] Downloading page ${i + 1}...`);
-        const imgRes = await fetch(url.trim()); // ← public URL, no auth needed
+    const downloadPromises = outputUrls.map(async (url: string, i: number) => {
+      // STOP EARLY if maxPages is set
+      if (maxPages !== undefined && i >= maxPages) {
+        return null;
+      }
 
-        if (!imgRes.ok) {
-          const err = await imgRes.text();
-          throw new Error(`PNG fetch failed (page ${i + 1}): ${imgRes.status} ${err}`);
-        }
+      console.log(`[pdfRest] Downloading page ${i + 1}${maxPages ? ` (max: ${maxPages})` : ""}`);
+      const imgRes = await fetch(url.trim());
 
-        const arrayBuffer = await imgRes.arrayBuffer();
-        const base64 = Buffer.from(arrayBuffer).toString("base64");
+      if (!imgRes.ok) {
+        const err = await imgRes.text();
+        throw new Error(`Failed to fetch PNG (page ${i + 1}): ${err}`);
+      }
 
-        return {
-          pageNumber: i + 1,
-          base64: `data:image/png;base64,${base64}`,
-        };
-      })
-    );
+      const arrayBuffer = await imgRes.arrayBuffer();
+      const base64 = Buffer.from(arrayBuffer).toString("base64");
 
-    console.log(`[pdfRest] SUCCESS: ${pages.length} pages converted`);
-    return pages;
+      return {
+        pageNumber: i + 1,
+        base64: `data:image/png;base64,${base64}`,
+      };
+    });
+
+    const pages = await Promise.all(downloadPromises);
+    const filteredPages = pages.filter((p): p is PdfRestPage => p !== null);
+
+    console.log(`[pdfRest] SUCCESS: Returned ${filteredPages.length} pages`);
+    return filteredPages;
   } catch (error: any) {
     clearTimeout(timeoutId);
     console.error("[pdfRest] FAILED:", error.message);
