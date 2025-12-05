@@ -1,4 +1,4 @@
-// src/lib/extractor/pdfrest.ts
+// src/lib/pdfRest/renderer.ts
 // FINAL 2025 VERSION — supports maxPages for instant first-9-page preview
 
 import { bufferToBlob } from "@/lib/utils";

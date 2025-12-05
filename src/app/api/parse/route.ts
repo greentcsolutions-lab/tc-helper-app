@@ -2,8 +2,8 @@
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
-import { flattenPdf } from "@/lib/pdf/flatten";
-import { renderPdfToPngBase64Array } from "@/lib/extractor/pdfrest";import { classifyCriticalPages } from "@/lib/extractor/classifier";
+import { flattenPdf } from "@/lib/pdfRest/flatten";
+import { renderPdfToPngBase64Array } from "@/lib/pdfRest/renderer";import { classifyCriticalPages } from "@/lib/extractor/classifier";
 import { extractFromCriticalPages } from "@/lib/extractor/extractor";
 
 export const runtime = "nodejs";
