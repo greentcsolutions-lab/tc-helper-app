@@ -1,4 +1,4 @@
-// next.config.js — 2025 Clean Edition (pdfRest + Grok-4-vision only)
+// next.config.js — 2025 Clean Edition (pdfRest + Grok-4-vision only) + 413 FIX
 
 const nextConfig = {
   // No more native packages — we're pure serverless now
@@ -8,10 +8,12 @@ const nextConfig = {
   typescript: { ignoreBuildErrors: true },
   eslint: { ignoreDuringBuilds: true },
 
-  // All experimental canvas/pdfjs hacks — GONE FOREVER
+  // THIS IS THE ONLY NEW BLOCK — kills the 413 error forever
   experimental: {
-    // No more excluding native binaries from tracing
-    // outputFileTracingExcludes: {} — not needed
+    serverActions: {
+      // Your nuclear-flattened California RPAs are ~2–2.5 MB → 30 MB gives plenty of headroom
+      bodySizeLimit: "30mb",
+    },
   },
 
   // No more Webpack rules, aliases, or warnings for pdfjs-dist
