@@ -1,3 +1,5 @@
+// src/components/ui/dialog.tsx
+
 "use client"
 
 import * as React from "react"
@@ -65,9 +67,6 @@ function DialogContent({
         )}
         {...props}
       >
-        {/* ← THIS IS THE ONLY NEW LINE */}
-        <DialogPrimitive.Title className="sr-only">Dialog</DialogPrimitive.Title>
-
         {children}
         {showCloseButton && (
           <DialogPrimitive.Close
