@@ -1,5 +1,3 @@
-// next.config.js — 2025 Clean Edition (pdfRest + Grok-4-vision only) + 413 FIX
-
 const nextConfig = {
   // No more native packages — we're pure serverless now
   serverExternalPackages: [],
