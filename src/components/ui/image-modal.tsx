@@ -11,6 +11,10 @@ import {
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+// Tiny blur placeholder
+const BLUR_PLACEHOLDER =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+
 interface ImageModalProps {
   src: string;
   alt?: string;
@@ -34,7 +38,6 @@ function ImageModal({
           className
         )}
       >
-        {/* ← THIS IS THE ONLY NEW LINE */}
         <DialogTitle className="sr-only">Document Preview</DialogTitle>
 
         {/* Close button */}
@@ -48,7 +51,7 @@ function ImageModal({
           </button>
         </DialogHeader>
 
-        {/* Full-screen image */}
+        {/* Full-screen image with blur placeholder */}
         <div className="relative w-full h-full flex items-center justify-center">
           <Image
             src={src}
@@ -57,6 +60,8 @@ function ImageModal({
             className="object-contain"
             unoptimized
             priority
+            placeholder="blur"
+            blurDataURL={BLUR_PLACEHOLDER}
           />
         </div>
 

@@ -24,7 +24,7 @@ export async function renderPdfToPngBase64Array(
   options: RenderOptions = {}
 ): Promise<PdfRestPage[]> {
   const { maxPages } = options;
-  const TARGET_DPI = 290;
+  const TARGET_DPI = 290; //ultimate
 
   console.log("[Nutrient] Starting single-page flatten + PNG", {
     fileSizeBytes: buffer.length,
