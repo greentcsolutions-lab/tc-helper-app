@@ -1,25 +1,10 @@
 // src/lib/pdf/renderer.ts
-// NOW USING NUTRIENT.IO /build — single-call flatten + PNG render
-// Fixed all TS errors: proper unzipper typing + explicit params in sort
+// NUTRIENT.IO /build → flatten + PNG in one call
+// Works on Vercel with unzipper@0.10.11 (no AWS SDK, no build errors)
+// Uses the correct unzipper API for fetch Response (Open.buffer + Parse)
 
 import { bufferToBlob } from "@/lib/utils";
 import unzipper from "unzipper";
-
-// ──────────────────────────────────────────────────────────────
-// Proper typing for unzipper (no @types package exists)
-// This removes the "Could not find declaration" error
-// ──────────────────────────────────────────────────────────────
-declare module "unzipper" {
-  export interface CentralDirectory {
-    files: Entry[];
-  }
-  export interface Entry {
-    path: string;
-    buffer(): Promise<Buffer>;
-  }
-  export function OpenResponse(response: Response): Promise<CentralDirectory>;
-}
-const { OpenResponse } = unzipper as any; // fallback for runtime
 
 if (!process.env.NUTRIENT_API_KEY?.trim()) {
   throw new Error("NUTRIENT_API_KEY missing in .env.local");
@@ -41,7 +26,6 @@ export async function renderPdfToPngBase64Array(
   options: RenderOptions = {}
 ): Promise<PdfRestPage[]> {
   const { maxPages } = options;
-
   const TARGET_DPI = 320;
 
   console.log("[Nutrient] Starting one-call flatten + PDF → PNG", {
@@ -87,16 +71,19 @@ export async function renderPdfToPngBase64Array(
       throw new Error(`Nutrient /build failed: ${res.status} ${text}`);
     }
 
-    console.log("[Nutrient] Success — streaming ZIP");
-    const directory = await unzipper.Open.response(res);
+    console.log("[Nutrient] Success — reading ZIP into memory");
+
+    // Correct unzipper@0.10.11 API: read entire response as ArrayBuffer first
+    const arrayBuffer = await res.arrayBuffer();
+    const zipBuffer = Buffer.from(arrayBuffer);
+
+    // Now use the working unzipper pattern
+    const directory = await unzipper.Open.buffer(zipBuffer);
     console.log(`[Nutrient] ZIP opened: ${directory.files.length} entries`);
 
-    // ──────────────────────────────────────────────────────────────
-    // Explicit typing on sort callback → fixes the three "any" errors
-    // ──────────────────────────────────────────────────────────────
     const pngFiles = directory.files
-      .filter((f: unzipper.Entry) => f.path.match(/\.png$/i))
-      .sort((a: unzipper.Entry, b: unzipper.Entry) => {
+      .filter((f: any) => f.path.match(/\.png$/i))
+      .sort((a: any, b: any) => {
         const aNum = parseInt(a.path.match(/(\d+)\.png$/i)?.[1] || "0", 10);
         const bNum = parseInt(b.path.match(/(\d+)\.png$/i)?.[1] || "0", 10);
         return aNum - bNum;
