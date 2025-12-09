@@ -1,10 +1,10 @@
 // src/lib/pdf/renderer.ts
 // NUTRIENT.IO /build → flatten + PNG in one call
-// Binary ZIP output (encoding: "base64" unsupported) + safe blob download + unzipper parse
-// 100% working on Vercel, no truncation, no JSON errors
+// JSZip for ZIP64/modern ZIP parsing (no FILE_ENDED on Nutrient ZIPs)
+// 100% Vercel-safe, pure JS, no deps issues
 
 import { bufferToBlob } from "@/lib/utils";
-import unzipper from "unzipper";
+import JSZip from "jszip";
 
 if (!process.env.NUTRIENT_API_KEY?.trim()) {
   throw new Error("NUTRIENT_API_KEY missing in .env.local");
@@ -47,7 +47,6 @@ export async function renderPdfToPngBase64Array(
       type: "image",
       format: "png",
       dpi: TARGET_DPI,
-      // Removed encoding: "base64" — unsupported, defaults to binary ZIP
     },
   };
 
@@ -68,7 +67,6 @@ export async function renderPdfToPngBase64Array(
 
   console.log("[Nutrient] Success — downloading ZIP via blob (safe from truncation)");
 
-  // Safe download: blob avoids Vercel fetch bugs for binary
   const blob = await res.blob();
   const arrayBuffer = await blob.arrayBuffer();
   const zipBuffer = Buffer.from(arrayBuffer);
@@ -77,17 +75,18 @@ export async function renderPdfToPngBase64Array(
     throw new Error("ZIP too small — likely corrupted");
   }
 
-  console.log(`[Nutrient] ZIP downloaded: ${zipBuffer.length} bytes — parsing with unzipper`);
+  console.log(`[Nutrient] ZIP downloaded: ${zipBuffer.length} bytes — parsing with JSZip`);
 
-  // Parse ZIP (works 100% now — full buffer from blob)
-  const directory = await unzipper.Open.buffer(zipBuffer);
-  console.log(`[Nutrient] ZIP parsed: ${directory.files.length} entries`);
+  // JSZip handles ZIP64/modern ZIPs perfectly (no FILE_ENDED)
+  const zip = await JSZip.loadAsync(zipBuffer);
+  console.log(`[Nutrient] ZIP parsed: ${Object.keys(zip.files).length} entries`);
 
-  const pngFiles = directory.files
-    .filter((f: any) => f.path.match(/\.png$/i))
-    .sort((a: any, b: any) => {
-      const aNum = parseInt(a.path.match(/(\d+)\.png$/i)?.[1] || "0");
-      const bNum = parseInt(b.path.match(/(\d+)\.png$/i)?.[1] || "0");
+  const pngFiles = Object.keys(zip.files)
+    .filter((name) => name.match(/\.png$/i))
+    .map((name) => ({ name, file: zip.files[name] }))
+    .sort((a, b) => {
+      const aNum = parseInt(a.name.match(/(\d+)\.png$/i)?.[1] || "0");
+      const bNum = parseInt(b.name.match(/(\d+)\.png$/i)?.[1] || "0");
       return aNum - bNum;
     })
     .slice(0, maxPages || undefined);
@@ -96,14 +95,17 @@ export async function renderPdfToPngBase64Array(
     throw new Error("No PNGs returned from Nutrient");
   }
 
-  const pages: PdfRestPage[] = pngFiles.map((file: any, index: number) => {
-    const pageBuffer = file.buffer(); // Sync buffer() in 0.10.11
-    const base64 = pageBuffer.toString("base64");
-    return {
-      pageNumber: index + 1,
-      base64: `data:image/png;base64,${base64}`,
-    };
-  });
+  const pages: PdfRestPage[] = await Promise.all(
+    pngFiles.map(async ({ name, file }, index) => {
+      console.log(`[Nutrient] Buffering page ${index + 1}: ${name}`);
+      const pageBuffer = await file.async("arraybuffer");
+      const base64 = Buffer.from(pageBuffer).toString("base64");
+      return {
+        pageNumber: index + 1,
+        base64: `data:image/png;base64,${base64}`,
+      };
+    })
+  );
 
   console.log(`[Nutrient] SUCCESS: ${pages.length} PNGs delivered via ZIP parse`);
   return pages;
