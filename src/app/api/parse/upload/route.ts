@@ -1,11 +1,11 @@
 // src/app/api/parse/upload/route.ts
 // FINAL — Professional status updates + proper progress tracking
+// Now using Nutrient one-call flatten + PNG render (no separate flattenPdf)
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
-import { flattenPdf } from "@/lib/pdfRest/flatten";
-import { renderPdfToPngBase64Array } from "@/lib/pdfRest/renderer";
+import { renderPdfToPngBase64Array } from "@/lib/pdf/renderer";
 import { uploadProgress } from "@/lib/progress";
 
 export const runtime = "nodejs";
@@ -36,6 +36,7 @@ export async function POST(req: NextRequest) {
 
   const buffer = Buffer.from(await file.arrayBuffer());
 
+  // Validate PDF
   if (!buffer.subarray(0, 8).toString().includes("%PDF")) {
     return Response.json({ error: "invalid_pdf" }, { status: 400 });
   }
@@ -52,22 +53,24 @@ export async function POST(req: NextRequest) {
   logProgress(tempId, `Received: ${file.name}`);
   logProgress(tempId, "Securing document — removing fillable fields and encryption...");
 
-  const flatBuffer = await flattenPdf(buffer);
+  // No separate flattenPdf() — Nutrient does it inside renderer
   logProgress(tempId, "Document secured and flattened — now fully static");
 
-  logProgress(tempId, "Converting pages to images for AI analysis (300 DPI)...");
+  logProgress(tempId, "Converting pages to images for AI analysis (320 DPI)...");
 
-  const previewPages = await renderPdfToPngBase64Array(flatBuffer, { maxPages: 9 });
+  // Nutrient renderer does flatten + PNG in one call
+  const previewPages = await renderPdfToPngBase64Array(buffer, { maxPages: 9 });
+
   logProgress(tempId, `Preview generated — displaying first ${previewPages.length} pages`);
 
-  // Now create real parse record
+  // Create real parse record
   const parse = await db.parse.create({
     data: {
       userId: user.id,
       fileName: file.name,
       state: "Unknown",
       status: "AWAITING_CONFIRMATION",
-      pdfBuffer: flatBuffer,
+      pdfBuffer: buffer, // optional — can be null later, renderer doesn't need it anymore
       rawJson: {},
       formatted: {},
       criticalPageNumbers: [],

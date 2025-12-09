@@ -6,7 +6,7 @@ import { CLASSIFIER_PROMPT } from "./prompts";
 // for debugging API keys
 console.log("[classifier] XAI_API_KEY present:", !!process.env.XAI_API_KEY);
 console.log("[classifier] First 10 chars:", process.env.XAI_API_KEY?.slice(0, 10));
-console.log("[classifier] PDFREST_API_KEY loaded:", !!process.env.PDFREST_API_KEY);
+console.log("[classifier] Nutrient API loaded:", !!process.env.NUTRIENT_API_KEY);
 
 const chunk = <T>(arr: T[], size: number): T[][] =>
   Array.from({ length: Math.ceil(arr.length / size) }, (_, i) =>

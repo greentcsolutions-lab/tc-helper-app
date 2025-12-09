@@ -196,7 +196,7 @@ export default function UploadZone({ onComplete }: { onComplete?: (data: any) =>
         <div className="mt-8 text-center px-4">
           <p className="text-sm text-muted-foreground max-w-2xl mx-auto leading-relaxed">
             By uploading, you agree to secure processing of your document via trusted U.S. and EU providers
-            (PDFRest & xAI Grok). Your PDF and all images are{" "}
+            (Nutrient API & xAI Grok). Your PDF and all images are{" "}
             <span className="font-medium text-foreground">automatically deleted within minutes</span> after extraction.
             We never sell or share your data.
           </p>

@@ -1,9 +1,14 @@
 // src/app/api/parse/route.ts
+// Updated for Nutrient one-call flatten + PNG render (no separate flattenPdf)
+// Full pipeline: upload → classify → extract in one go
+// Remove flattenPdf entirely – Nutrient renderer handles it internally
+// Not currently being used in production
+
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
-import { flattenPdf } from "@/lib/pdfRest/flatten";
-import { renderPdfToPngBase64Array } from "@/lib/pdfRest/renderer";import { classifyCriticalPages } from "@/lib/extractor/classifier";
+import { renderPdfToPngBase64Array } from "@/lib/pdf/renderer";
+import { classifyCriticalPages } from "@/lib/extractor/classifier";
 import { extractFromCriticalPages } from "@/lib/extractor/extractor";
 
 export const runtime = "nodejs";
@@ -18,7 +23,6 @@ export async function POST(req: NextRequest) {
   if (!file) return new Response("No file uploaded", { status: 400 });
 
   const buffer = Buffer.from(await file.arrayBuffer());
-  const flatBuffer = await flattenPdf(buffer);
 
   // Create parse record (temp storage of pdfBuffer)
   const parse = await db.parse.create({
@@ -29,13 +33,13 @@ export async function POST(req: NextRequest) {
       rawJson: {},
       formatted: {},
       status: "PENDING",
-      pdfBuffer: flatBuffer, // ← stored only temporarily
+      pdfBuffer: buffer, // ← stored only temporarily
     },
   });
 
   try {
-    // Full pipeline
-    const allPages = await renderPdfToPngBase64Array(flatBuffer);
+    // Full pipeline – no separate flatten; Nutrient does it in renderer
+    const allPages = await renderPdfToPngBase64Array(buffer);
     const { criticalImages, state, criticalPageNumbers } = await classifyCriticalPages(allPages);
     const result = await extractFromCriticalPages(criticalImages);
 

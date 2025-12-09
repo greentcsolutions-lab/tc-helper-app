@@ -25,7 +25,7 @@ export default function PrivacyPage() {
           <h2>2. Data Flow & Deletion Timeline</h2>
           <ul className="list-disc pl-6 space-y-2">
             <li>PDF arrives → instantly flattened in memory with pdf-lib (no storage)</li>
-            <li>Static PDF sent to PDFRest (EU) → converted to PNGs → auto-deleted within 10 minutes</li>
+            <li>Static PDF sent to Nutriend API → converted to PNGs → auto-deleted within 10 minutes</li>
             <li>PNGs sent to xAI Grok (U.S.) → vision extraction → deleted after extraction completes</li>
             <li>Original PDF buffer deleted from our database the second extraction finishes</li>
             <li>Final extracted JSON kept only while you need it (you can delete anytime)</li>

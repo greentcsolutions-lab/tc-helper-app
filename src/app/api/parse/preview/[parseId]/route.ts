@@ -4,7 +4,7 @@
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
-import { renderPdfToPngBase64Array } from "@/lib/pdfRest/renderer";
+import { renderPdfToPngBase64Array } from "@/lib/pdf/renderer";
 import { classifyCriticalPages } from "@/lib/extractor/classifier";
 import { uploadProgress } from "@/lib/progress";
 
