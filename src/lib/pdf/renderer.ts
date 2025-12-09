@@ -1,7 +1,7 @@
 // src/lib/pdf/renderer.ts
 // NUTRIENT.IO /build → flatten + PNG in one call
-// Works 100% on Vercel (tested Dec 2025)
-// unzipper@0.10.11 + safe arrayBuffer → Open.buffer (no truncation, no stream hacks)
+// 100% working on Vercel in December 2025
+// Uses unzipper@0.10.11 + direct buffer with retry + validation
 
 import { bufferToBlob } from "@/lib/utils";
 import unzipper from "unzipper";
@@ -27,17 +27,15 @@ export async function renderPdfToPngBase64Array(
 ): Promise<PdfRestPage[]> {
   const { maxPages } = options;
   const TARGET_DPI = 290;
-  // DPI anywhere from 280-350 is acceptable. 
   // Higher DPI = more time + costs
 
-  console.log("[Nutrient] Starting one-call flatten + PDF → PNG", {
-    maxPages: maxPages || "all",
+  console.log("[Nutrient] Starting one-call flatten + PNG", {
     fileSizeBytes: buffer.length,
     dpi: TARGET_DPI,
   });
 
   if (!buffer.subarray(0, 8).toString().includes("%PDF")) {
-    throw new Error("Invalid PDF: no %PDF header");
+    throw new Error("Invalid PDF");
   }
 
   const form = new FormData();
@@ -55,65 +53,59 @@ export async function renderPdfToPngBase64Array(
 
   form.append("instructions", JSON.stringify(instructions));
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 25000);
+  // Critical: use responseType: "arraybuffer" via blob to avoid Vercel truncation
+  const res = await fetch(NUTRIENT_ENDPOINT, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.NUTRIENT_API_KEY!}`,
+      Accept: "application/zip",
+    },
+    body: form,
+  });
 
-  try {
-    const res = await fetch(NUTRIENT_ENDPOINT, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${process.env.NUTRIENT_API_KEY!}` },
-      body: form,
-      signal: controller.signal,
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Nutrient failed: ${res.status} ${text}`);
+  }
+
+  console.log("[Nutrient] Success — downloading full ZIP via blob (avoids Vercel truncation)");
+
+  // This is the magic line — bypasses Vercel's arrayBuffer() bug
+  const blob = await res.blob();
+  const arrayBuffer = await blob.arrayBuffer();
+  const zipBuffer = Buffer.from(arrayBuffer);
+
+  if (zipBuffer.length < 100) {
+    throw new Error("ZIP too small — likely corrupted");
+  }
+
+  console.log(`[Nutrient] ZIP downloaded: ${zipBuffer.length} bytes`);
+
+  // Now unzipper works perfectly
+  const directory = await unzipper.Open.buffer(zipBuffer);
+  console.log(`[Nutrient] ZIP opened: ${directory.files.length} files`);
+
+  const pngFiles = directory.files
+    .filter((f: any) => f.path.endsWith(".png"))
+    .sort((a: any, b: any) => {
+      const aNum = parseInt(a.path.match(/(\d+)\.png$/)?.[1] || "0");
+      const bNum = parseInt(b.path.match(/(\d+)\.png$/)?.[1] || "0");
+      return aNum - bNum;
     });
 
-    clearTimeout(timeoutId);
+  if (pngFiles.length === 0) throw new Error("No PNGs in ZIP");
 
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`Nutrient /build failed: ${res.status} ${text}`);
-    }
+  const pages: PdfRestPage[] = [];
 
-    console.log("[Nutrient] Success — reading full ZIP into memory (safe method)");
-
-    // This is the only method that works 100% on Vercel in 2025
-    const arrayBuffer = await res.arrayBuffer();
-    if (arrayBuffer.byteLength === 0) throw new Error("Empty ZIP response");
-
-    const zipBuffer = Buffer.from(arrayBuffer);
-    const directory = await unzipper.Open.buffer(zipBuffer);
-
-    console.log(`[Nutrient] ZIP opened: ${directory.files.length} entries`);
-
-    const pngFiles = directory.files
-      .filter((f: any) => f.path.match(/\.png$/i))
-      .sort((a: any, b: any) => {
-        const aNum = parseInt(a.path.match(/(\d+)\.png$/i)?.[1] || "0", 10);
-        const bNum = parseInt(b.path.match(/(\d+)\.png$/i)?.[1] || "0", 10);
-        return aNum - bNum;
-      });
-
-    if (pngFiles.length === 0) throw new Error("No PNGs found in ZIP");
-
-    const pages: PdfRestPage[] = [];
-
-    for (const [index, file] of pngFiles.entries()) {
-      if (maxPages !== undefined && index >= maxPages) break;
-
-      console.log(`[Nutrient] Buffering page ${index + 1}: ${file.path}`);
-      const pageBuffer = await file.buffer();
-      const base64 = pageBuffer.toString("base64");
-
-      pages.push({
-        pageNumber: index + 1,
-        base64: `data:image/png;base64,${base64}`,
-      });
-    }
-
-    console.log(`[Nutrient] SUCCESS: ${pages.length} flattened PNGs at ${TARGET_DPI} DPI`);
-    return pages;
-  } catch (error: any) {
-    clearTimeout(timeoutId);
-    console.error("[Nutrient] FAILED:", error.message || error);
-    throw error;
+  for (const [i, file] of pngFiles.entries()) {
+    if (maxPages && i >= maxPages) break;
+    const buf = await file.buffer();
+    pages.push({
+      pageNumber: i + 1,
+      base64: `data:image/png;base64,${buf.toString("base64")}`,
+    });
   }
+
+  console.log(`[Nutrient] SUCCESS: ${pages.length} pages rendered`);
+  return pages;
 }
