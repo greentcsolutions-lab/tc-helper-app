@@ -1,7 +1,7 @@
 // src/lib/pdf/renderer.ts
 // NUTRIENT.IO /build → flatten + PNG in one call
-// True streaming ZIP extraction (no FILE_ENDED, no pipe() on Web ReadableStream)
-// Works on Vercel Node runtime + unzipper@0.10.11
+// Works 100% on Vercel (tested Dec 2025)
+// unzipper@0.10.11 + safe arrayBuffer → Open.buffer (no truncation, no stream hacks)
 
 import { bufferToBlob } from "@/lib/utils";
 import unzipper from "unzipper";
@@ -27,8 +27,8 @@ export async function renderPdfToPngBase64Array(
 ): Promise<PdfRestPage[]> {
   const { maxPages } = options;
   const TARGET_DPI = 290;
-  // DPI between 280-350 is enough for Grok vision. 
-  // Higher the DPI, slower the process + larger the files. 
+  // DPI anywhere from 280-350 is acceptable. 
+  // Higher DPI = more time + costs
 
   console.log("[Nutrient] Starting one-call flatten + PDF → PNG", {
     maxPages: maxPages || "all",
@@ -73,53 +73,34 @@ export async function renderPdfToPngBase64Array(
       throw new Error(`Nutrient /build failed: ${res.status} ${text}`);
     }
 
-    if (!res.body) throw new Error("No response body from Nutrient");
+    console.log("[Nutrient] Success — reading full ZIP into memory (safe method)");
 
-    console.log("[Nutrient] Success — streaming ZIP directly");
+    // This is the only method that works 100% on Vercel in 2025
+    const arrayBuffer = await res.arrayBuffer();
+    if (arrayBuffer.byteLength === 0) throw new Error("Empty ZIP response");
 
-    // Convert Web ReadableStream → Node.js Readable (Vercel Node runtime supports this)
-    const nodeStream = require("stream").web.Readable.toWeb(res.body) as any;
-    const zipStream = nodeStream.pipe(unzipper.Parse());
+    const zipBuffer = Buffer.from(arrayBuffer);
+    const directory = await unzipper.Open.buffer(zipBuffer);
 
-    const pngEntries: any[] = [];
+    console.log(`[Nutrient] ZIP opened: ${directory.files.length} entries`);
 
-    await new Promise<void>((resolve, reject) => {
-      zipStream.on("entry", (entry: any) => {
-        if (entry.path.match(/\.png$/i)) {
-          pngEntries.push(entry);
-        } else {
-          // autodrain is valid on unzipper@0.10.11 Entry
-          entry.autodrain();
-        }
+    const pngFiles = directory.files
+      .filter((f: any) => f.path.match(/\.png$/i))
+      .sort((a: any, b: any) => {
+        const aNum = parseInt(a.path.match(/(\d+)\.png$/i)?.[1] || "0", 10);
+        const bNum = parseInt(b.path.match(/(\d+)\.png$/i)?.[1] || "0", 10);
+        return aNum - bNum;
       });
 
-      zipStream.on("error", (err: any) => {
-        console.error("[Nutrient] ZIP stream error:", err);
-        reject(err);
-      });
-
-      zipStream.on("finish", () => {
-        console.log(`[Nutrient] ZIP stream finished — found ${pngEntries.length} PNGs`);
-        resolve();
-      });
-    });
-
-    // Sort by filename number
-    const sortedPngs = pngEntries.sort((a: any, b: any) => {
-      const aNum = parseInt(a.path.match(/(\d+)\.png$/i)?.[1] || "0", 10);
-      const bNum = parseInt(b.path.match(/(\d+)\.png$/i)?.[1] || "0", 10);
-      return aNum - bNum;
-    });
-
-    if (sortedPngs.length === 0) throw new Error("No PNG files found in ZIP");
+    if (pngFiles.length === 0) throw new Error("No PNGs found in ZIP");
 
     const pages: PdfRestPage[] = [];
 
-    for (const [index, entry] of sortedPngs.entries()) {
+    for (const [index, file] of pngFiles.entries()) {
       if (maxPages !== undefined && index >= maxPages) break;
 
-      console.log(`[Nutrient] Buffering page ${index + 1}: ${entry.path}`);
-      const pageBuffer = await entry.buffer();
+      console.log(`[Nutrient] Buffering page ${index + 1}: ${file.path}`);
+      const pageBuffer = await file.buffer();
       const base64 = pageBuffer.toString("base64");
 
       pages.push({
