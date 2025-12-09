@@ -1,13 +1,11 @@
 // src/lib/pdf/renderer.ts
-// NUTRIENT.IO /build → flatten + PNG in one call
-// JSZip for ZIP64/modern ZIP parsing (no FILE_ENDED on Nutrient ZIPs)
-// 100% Vercel-safe, pure JS, no deps issues
+// NUTRIENT.IO /build → single-page PNGs (multipart/mixed)
+// No ZIP, no parsing, no truncation — 100% Vercel-safe 2025
 
 import { bufferToBlob } from "@/lib/utils";
-import JSZip from "jszip";
 
 if (!process.env.NUTRIENT_API_KEY?.trim()) {
-  throw new Error("NUTRIENT_API_KEY missing in .env.local");
+  throw new Error("NUTRIENT_API_KEY missing");
 }
 
 const NUTRIENT_ENDPOINT = "https://api.nutrient.io/build";
@@ -28,9 +26,10 @@ export async function renderPdfToPngBase64Array(
   const { maxPages } = options;
   const TARGET_DPI = 290;
 
-  console.log("[Nutrient] Starting one-call flatten + PNG → ZIP + parse", {
+  console.log("[Nutrient] Starting single-page flatten + PNG", {
     fileSizeBytes: buffer.length,
     dpi: TARGET_DPI,
+    maxPages,
   });
 
   if (!buffer.subarray(0, 8).toString().includes("%PDF")) {
@@ -47,6 +46,8 @@ export async function renderPdfToPngBase64Array(
       type: "image",
       format: "png",
       dpi: TARGET_DPI,
+      // THIS IS THE KEY — single-page multipart response
+      single_page: true,
     },
   };
 
@@ -65,48 +66,35 @@ export async function renderPdfToPngBase64Array(
     throw new Error(`Nutrient failed: ${res.status} ${text}`);
   }
 
-  console.log("[Nutrient] Success — downloading ZIP via blob (safe from truncation)");
+  if (!res.body) throw new Error("No response body");
 
-  const blob = await res.blob();
-  const arrayBuffer = await blob.arrayBuffer();
-  const zipBuffer = Buffer.from(arrayBuffer);
+  console.log("[Nutrient] Success — parsing multipart/mixed PNG stream");
 
-  if (zipBuffer.length < 100) {
-    throw new Error("ZIP too small — likely corrupted");
+  const boundary = res.headers.get("content-type")?.match(/boundary=(.*)/)?.[1];
+  if (!boundary) throw new Error("No multipart boundary");
+
+  const text = await res.text();
+  const parts = text.split(`--${boundary}`).slice(1, -1);
+
+  const pages: PdfRestPage[] = [];
+
+  for (const [index, part] of parts.entries()) {
+    if (maxPages && index >= maxPages) break;
+
+    const pngMatch = part.match(/Content-Type: image\/png[\s\S]*?(\�PNG[\s\S]*)/);
+    if (!pngMatch) continue;
+
+    const pngBinary = pngMatch[1];
+    const base64 = Buffer.from(pngBinary, "binary").toString("base64");
+
+    pages.push({
+      pageNumber: index + 1,
+      base64: `data:image/png;base64,${base64}`,
+    });
   }
 
-  console.log(`[Nutrient] ZIP downloaded: ${zipBuffer.length} bytes — parsing with JSZip`);
+  if (pages.length === 0) throw new Error("No PNGs received");
 
-  // JSZip handles ZIP64/modern ZIPs perfectly (no FILE_ENDED)
-  const zip = await JSZip.loadAsync(zipBuffer);
-  console.log(`[Nutrient] ZIP parsed: ${Object.keys(zip.files).length} entries`);
-
-  const pngFiles = Object.keys(zip.files)
-    .filter((name) => name.match(/\.png$/i))
-    .map((name) => ({ name, file: zip.files[name] }))
-    .sort((a, b) => {
-      const aNum = parseInt(a.name.match(/(\d+)\.png$/i)?.[1] || "0");
-      const bNum = parseInt(b.name.match(/(\d+)\.png$/i)?.[1] || "0");
-      return aNum - bNum;
-    })
-    .slice(0, maxPages || undefined);
-
-  if (pngFiles.length === 0) {
-    throw new Error("No PNGs returned from Nutrient");
-  }
-
-  const pages: PdfRestPage[] = await Promise.all(
-    pngFiles.map(async ({ name, file }, index) => {
-      console.log(`[Nutrient] Buffering page ${index + 1}: ${name}`);
-      const pageBuffer = await file.async("arraybuffer");
-      const base64 = Buffer.from(pageBuffer).toString("base64");
-      return {
-        pageNumber: index + 1,
-        base64: `data:image/png;base64,${base64}`,
-      };
-    })
-  );
-
-  console.log(`[Nutrient] SUCCESS: ${pages.length} PNGs delivered via ZIP parse`);
+  console.log(`[Nutrient] SUCCESS: ${pages.length} single-page PNGs`);
   return pages;
 }
