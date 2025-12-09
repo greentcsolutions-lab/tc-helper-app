@@ -1,7 +1,7 @@
 // src/lib/pdf/renderer.ts
 // NUTRIENT.IO /build → flatten + PNG in one call
-// Works on Vercel with unzipper@0.10.11 (no AWS SDK, no build errors)
-// Uses the correct unzipper API for fetch Response (Open.buffer + Parse)
+// True streaming ZIP extraction (no FILE_ENDED, no pipe() on Web ReadableStream)
+// Works on Vercel Node runtime + unzipper@0.10.11
 
 import { bufferToBlob } from "@/lib/utils";
 import unzipper from "unzipper";
@@ -26,7 +26,9 @@ export async function renderPdfToPngBase64Array(
   options: RenderOptions = {}
 ): Promise<PdfRestPage[]> {
   const { maxPages } = options;
-  const TARGET_DPI = 320;
+  const TARGET_DPI = 290;
+  // DPI between 280-350 is enough for Grok vision. 
+  // Higher the DPI, slower the process + larger the files. 
 
   console.log("[Nutrient] Starting one-call flatten + PDF → PNG", {
     maxPages: maxPages || "all",
@@ -54,7 +56,7 @@ export async function renderPdfToPngBase64Array(
   form.append("instructions", JSON.stringify(instructions));
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 20000);
+  const timeoutId = setTimeout(() => controller.abort(), 25000);
 
   try {
     const res = await fetch(NUTRIENT_ENDPOINT, {
@@ -71,33 +73,53 @@ export async function renderPdfToPngBase64Array(
       throw new Error(`Nutrient /build failed: ${res.status} ${text}`);
     }
 
-    console.log("[Nutrient] Success — reading ZIP into memory");
+    if (!res.body) throw new Error("No response body from Nutrient");
 
-    // Correct unzipper@0.10.11 API: read entire response as ArrayBuffer first
-    const arrayBuffer = await res.arrayBuffer();
-    const zipBuffer = Buffer.from(arrayBuffer);
+    console.log("[Nutrient] Success — streaming ZIP directly");
 
-    // Now use the working unzipper pattern
-    const directory = await unzipper.Open.buffer(zipBuffer);
-    console.log(`[Nutrient] ZIP opened: ${directory.files.length} entries`);
+    // Convert Web ReadableStream → Node.js Readable (Vercel Node runtime supports this)
+    const nodeStream = require("stream").web.Readable.toWeb(res.body) as any;
+    const zipStream = nodeStream.pipe(unzipper.Parse());
 
-    const pngFiles = directory.files
-      .filter((f: any) => f.path.match(/\.png$/i))
-      .sort((a: any, b: any) => {
-        const aNum = parseInt(a.path.match(/(\d+)\.png$/i)?.[1] || "0", 10);
-        const bNum = parseInt(b.path.match(/(\d+)\.png$/i)?.[1] || "0", 10);
-        return aNum - bNum;
+    const pngEntries: any[] = [];
+
+    await new Promise<void>((resolve, reject) => {
+      zipStream.on("entry", (entry: any) => {
+        if (entry.path.match(/\.png$/i)) {
+          pngEntries.push(entry);
+        } else {
+          // autodrain is valid on unzipper@0.10.11 Entry
+          entry.autodrain();
+        }
       });
 
-    if (pngFiles.length === 0) throw new Error("No PNGs in ZIP");
+      zipStream.on("error", (err: any) => {
+        console.error("[Nutrient] ZIP stream error:", err);
+        reject(err);
+      });
+
+      zipStream.on("finish", () => {
+        console.log(`[Nutrient] ZIP stream finished — found ${pngEntries.length} PNGs`);
+        resolve();
+      });
+    });
+
+    // Sort by filename number
+    const sortedPngs = pngEntries.sort((a: any, b: any) => {
+      const aNum = parseInt(a.path.match(/(\d+)\.png$/i)?.[1] || "0", 10);
+      const bNum = parseInt(b.path.match(/(\d+)\.png$/i)?.[1] || "0", 10);
+      return aNum - bNum;
+    });
+
+    if (sortedPngs.length === 0) throw new Error("No PNG files found in ZIP");
 
     const pages: PdfRestPage[] = [];
 
-    for (const [index, file] of pngFiles.entries()) {
+    for (const [index, entry] of sortedPngs.entries()) {
       if (maxPages !== undefined && index >= maxPages) break;
 
-      console.log(`[Nutrient] Buffering page ${index + 1}: ${file.path}`);
-      const pageBuffer = await file.buffer();
+      console.log(`[Nutrient] Buffering page ${index + 1}: ${entry.path}`);
+      const pageBuffer = await entry.buffer();
       const base64 = pageBuffer.toString("base64");
 
       pages.push({
@@ -110,7 +132,7 @@ export async function renderPdfToPngBase64Array(
     return pages;
   } catch (error: any) {
     clearTimeout(timeoutId);
-    console.error("[Nutrient] FAILED:", error.message);
+    console.error("[Nutrient] FAILED:", error.message || error);
     throw error;
   }
 }
