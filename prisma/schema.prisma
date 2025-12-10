@@ -53,9 +53,15 @@ model Parse {
 
   counterInfo          Json?
   pdfBuffer            Bytes?                               // temporarily stored, nuked after parsing
-  criticalPageNumbers  Int[]     @default([])               // ← WAS MISSING
-  status               String    @default("PENDING")        // ← WAS MISSING
+  criticalPageNumbers  Int[]     @default([])               
+  status               String    @default("PENDING")        
   finalizedAt          DateTime?
+
+  // ←←←←←←←←←←←←←← ADD THESE 4 NEW FIELDS ONLY ←←←←←←←←←←←←←←
+  renderZipUrl         String?   // pre-signed S3 URL (expires in 1 hour)
+  renderZipKey         String?   // permanent S3 object key for cleanup / re-use
+  pageCount            Int?      // total pages from Nutrient render
+  errorMessage         String?   // populated only on RENDER_FAILED
 
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt

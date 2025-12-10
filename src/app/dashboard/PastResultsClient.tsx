@@ -1,3 +1,5 @@
+// src/app/dashboard/PastResultsClient.tsx
+
 "use client";
 
 import { format } from "date-fns";
@@ -90,9 +92,9 @@ export default function PastResultsClient({ initialParses }: { initialParses: an
       <div className="mb-8 flex items-center justify-between gap-4">
         <h1 className="text-4xl font-bold">Your RPA Results</h1>
         <Button asChild variant="outline">
-          <Link href="/dashboard">
+          <Link href="/upload">
             <Home className="h-4 w-4 mr-2" />
-            Back to Dashboard
+            Upload New File
           </Link>
         </Button>
       </div>

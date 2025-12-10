@@ -21,7 +21,7 @@ export default async function Home() {
             {user ? (
               <>
                 <Button variant="ghost" asChild>
-                  <Link href="/dashboard">Dashboard</Link>
+                  <Link href="/upload">New File</Link>
                 </Button>
                 <UserButton />
               </>

@@ -1,11 +1,8 @@
 // src/app/api/parse/upload/route.ts
-// FINAL — Professional status updates + proper progress tracking
-// Now using Nutrient one-call flatten + PNG render (no separate flattenPdf)
-
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
-import { renderPdfToPngBase64Array } from "@/lib/pdf/renderer";
+import { renderPdfToS3Direct } from "@/lib/pdf/renderer-s3";
 import { uploadProgress } from "@/lib/progress";
 
 export const runtime = "nodejs";
@@ -36,7 +33,6 @@ export async function POST(req: NextRequest) {
 
   const buffer = Buffer.from(await file.arrayBuffer());
 
-  // Validate PDF
   if (!buffer.subarray(0, 8).toString().includes("%PDF")) {
     return Response.json({ error: "invalid_pdf" }, { status: 400 });
   }
@@ -46,56 +42,78 @@ export async function POST(req: NextRequest) {
 
   console.log(`[upload] Processing ${file.name} (${(buffer.length / 1e6).toFixed(1)} MB)`);
 
-  // Initialize progress early
   const tempId = crypto.randomUUID();
   uploadProgress.set(tempId, []);
 
   logProgress(tempId, `Received: ${file.name}`);
-  logProgress(tempId, "Securing document — removing fillable fields and encryption...");
+  logProgress(tempId, "Securing document — flattening form fields and signatures...");
+  logProgress(tempId, "Sending to secure rendering engine (Nutrient → S3 direct)...");
 
-  // No separate flattenPdf() — Nutrient does it inside renderer
-  logProgress(tempId, "Document secured and flattened — now fully static");
-
-  logProgress(tempId, "Converting pages to images for AI analysis (320 DPI)...");
-
-  // Nutrient renderer does flatten + PNG in one call
-  const previewPages = await renderPdfToPngBase64Array(buffer, { maxPages: 9 });
-
-  logProgress(tempId, `Preview generated — displaying first ${previewPages.length} pages`);
-
-  // Create real parse record
+  // Create parse record first
   const parse = await db.parse.create({
     data: {
       userId: user.id,
       fileName: file.name,
       state: "Unknown",
-      status: "AWAITING_CONFIRMATION",
-      pdfBuffer: buffer, // optional — can be null later, renderer doesn't need it anymore
+      status: "PROCESSING",
+      pdfBuffer: buffer,
       rawJson: {},
       formatted: {},
       criticalPageNumbers: [],
     },
   });
 
-  // Migrate progress to real parseId with realistic timestamps
-  const baseTime = Date.now();
-  const progressHistory = [
-    { message: `Received: ${file.name}`, timestamp: baseTime - 28000 },
-    { message: "Securing document — removing fillable fields and encryption...", timestamp: baseTime - 24000 },
-    { message: "Document secured and flattened — now fully static", timestamp: baseTime - 20000 },
-    { message: "Converting pages to images for AI extraction...", timestamp: baseTime - 15000 },
-    { message: `Preview generated — displaying first ${previewPages.length} pages`, timestamp: baseTime - 6000 },
-    { message: "Ready for review — click Continue when confirmed", timestamp: baseTime - 1000 },
-  ];
+  // Migrate progress
+  uploadProgress.delete(tempId);
+  uploadProgress.set(parse.id, [
+    { message: `Received: ${file.name}`, timestamp: Date.now() - 30000 },
+    { message: "Securing document — flattening form fields and signatures...", timestamp: Date.now() - 25000 },
+    { message: "Sending to secure rendering engine (Nutrient → S3 direct)...", timestamp: Date.now() - 20000 },
+  ]);
 
-  uploadProgress.set(parse.id, progressHistory);
+  // Background render
+  (async () => {
+    try {
+      logProgress(parse.id, "Rendering pages to high-res PNGs (310 DPI)...");
+
+      const result = await renderPdfToS3Direct(buffer, {
+        parseId: parse.id,
+        dpi: 310,
+      });
+
+      logProgress(parse.id, `Render complete — ${result.pageCount} pages ready`);
+      logProgress(parse.id, "Ready for AI analysis — click Continue");
+
+      await db.parse.update({
+        where: { id: parse.id },
+        data: {
+          status: "RENDERED",
+          renderZipUrl: result.zipUrl,
+          renderZipKey: result.zipKey,
+          pageCount: result.pageCount,
+        },
+      });
+
+      console.log(`[parse:${parse.id}] S3 render complete`);
+    } catch (error: any) {
+      console.error(`[parse:${parse.id}] Render failed`, error);
+      logProgress(parse.id, "Rendering failed — please try again");
+
+      await db.parse.update({
+        where: { id: parse.id },
+        data: {
+          status: "RENDER_FAILED",
+          errorMessage: error.message?.slice(0, 500) || "Unknown rendering error",
+        },
+      });
+    }
+  })();
 
   return Response.json({
     success: true,
     parseId: parse.id,
-    previewPages,
-    pageCount: previewPages.length < 9 ? "9+" : previewPages.length,
-    message: "Is this the correct document?",
-    nextStep: "confirm",
+    message: "Document received — rendering in background",
+    nextStep: "wait_for_render",
+    previewPages: [],
   });
 }

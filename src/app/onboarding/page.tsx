@@ -22,7 +22,7 @@ export default function OnboardingPage() {
 
   useEffect(() => {
     if (isLoaded && isSignedIn && (user?.publicMetadata?.onboarded as boolean)) {
-      router.replace('/dashboard');
+      router.replace('/upload');
     }
   }, [isLoaded, isSignedIn, user, router]);
 
@@ -47,7 +47,7 @@ export default function OnboardingPage() {
 
       if (res.ok) {
         await user?.reload();
-        router.push('/dashboard');
+        router.push('/upload');
       } else {
         alert('Failed to save. Please try again.');
       }

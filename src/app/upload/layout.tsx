@@ -1,10 +1,10 @@
-// src/app/(dashboard)/layout.tsx
+// src/app/(upload)/layout.tsx
 import { redirect } from "next/navigation";
 import { currentUser } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 import CreditsBadge from "@/components/ui/CreditsBadge";
 
-export default async function DashboardLayout({
+export default async function UploadLayout({
   children,
 }: {
   children: React.ReactNode;
