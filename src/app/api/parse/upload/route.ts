@@ -2,7 +2,7 @@
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
-import { renderPdfToS3Direct } from "@/lib/pdf/renderer-s3";
+import { renderPdfToS3Direct } from "@lib/pdf/renderer-s3";
 import { uploadProgress } from "@/lib/progress";
 
 export const runtime = "nodejs";
