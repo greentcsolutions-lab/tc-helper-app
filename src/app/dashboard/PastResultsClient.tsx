@@ -7,12 +7,13 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { AlertCircle, FileText, Home, Search, ChevronDown } from "lucide-react";
+import { AlertCircle, FileText, Home, Search, ChevronDown, LogOut } from "lucide-react";
 import Link from "next/link";
 import CategoryPurchaseTerms from "@/components/CategoryPurchaseTerms";
 import CategoryTimelineContingencies from "@/components/CategoryTimelineContingencies";
 import CategoryRepresentingParties from "@/components/CategoryRepresentingParties";
 import { useState } from "react";
+import { SignOutButton } from "@clerk/nextjs";
 
 function ResultCard({ parse, isLatest }: { parse: any; isLatest: boolean }) {
   const d = parse.formatted as any;
@@ -90,14 +91,26 @@ export default function PastResultsClient({ initialParses }: { initialParses: an
   return (
     <div className="container mx-auto p-6 max-w-7xl">
       <div className="mb-8 flex items-center justify-between gap-4">
-        <h1 className="text-4xl font-bold">Your RPA Results</h1>
-        <Button asChild variant="outline">
-          <Link href="/upload">
-            <Home className="h-4 w-4 mr-2" />
-            Upload New File
-          </Link>
-        </Button>
-      </div>
+  <h1 className="text-4xl font-bold">Current Files</h1>
+
+  <div className="flex items-center gap-3">
+    {/* Upload Button */}
+    <Button asChild variant="outline">
+      <Link href="/upload">
+        <Home className="h-4 w-4 mr-2" />
+        Upload New File
+      </Link>
+    </Button>
+
+    {/* Sign Out Button — clean, subtle, premium */}
+    <SignOutButton>
+      <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
+        <LogOut className="h-4 w-4 mr-2" />
+        Sign Out
+      </Button>
+    </SignOutButton>
+  </div>
+</div>
 
       <div className="relative mb-8">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground h-5 w-5" />
