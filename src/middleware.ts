@@ -1,31 +1,41 @@
 // src/middleware.ts
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
+import { db } from "@/lib/prisma";
 
 const isPublicRoute = createRouteMatcher([
-  "/",                     // ← these are the only routes that need to be public
   "/",
   "/sign-in(.*)",
   "/sign-up(.*)",
-  "/api(.*)",         
-  "/_next(.*)",
-  "/favicon.ico",
+  "/api(.*)",
   "/privacy",
+  "/onboarding(.*)",   // ← onboarding is public
 ]);
 
-export default clerkMiddleware((auth, req) => {
-  // ←←← ONLY CHANGE: redirect logged-in users from home page → dashboard
-  if (auth().userId && req.nextUrl.pathname === "/") {
-    const dashboardUrl = new URL("/dashboard", req.url);
-    return NextResponse.redirect(dashboardUrl);
+export default clerkMiddleware(async (auth, req) => {
+  const { userId } = auth();
+
+  // 1. Logged-in users visiting home → go to dashboard
+  if (userId && req.nextUrl.pathname === "/") {
+    return NextResponse.redirect(new URL("/dashboard", req.url));
   }
 
-  // Keep your existing protection logic exactly as-is
+  // 2. Protect all non-public routes
   if (!isPublicRoute(req)) {
-    auth().protect(); // will redirect to hosted portal if not signed in
+    auth().protect(); // throws if not signed in
+
+    // 3. If signed in BUT no record in your DB → force onboarding
+    const user = await db.user.findUnique({
+      where: { clerkId: userId! },
+      select: { id: true },
+    });
+
+    if (!user && req.nextUrl.pathname !== "/onboarding") {
+      return NextResponse.redirect(new URL("/onboarding", req.url));
+    }
   }
 });
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)", "/", "/(api|trpc)(.*)"],
 };

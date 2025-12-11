@@ -24,14 +24,12 @@ export default function UploadZone({ onComplete }: { onComplete?: (data: any) =>
   const [view, setView] = useState<UploadView>("idle");
   const [currentFile, setCurrentFile] = useState<File | null>(null);
   const [parseId, setParseId] = useState<string>("");
-  const [pageCount, setPageCount] = useState(0);
-  const [previewPages, setPreviewPages] = useState<{ pageNumber: number; base64: string }[]>([]);
-  const [isExtracting, setIsExtracting] = useState(false);
-
+  const [zipUrl, setZipUrl] = useState<string>("");           // ← Only this is needed
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [liveMessage, setLiveMessage] = useState("Hang tight — analyzing your packet...");
   const lastActivity = useRef(Date.now());
   const [jokeIndex, setJokeIndex] = useState(0);
+  const [isExtracting, setIsExtracting] = useState(false);
 
   const router = useRouter();
 
@@ -41,36 +39,13 @@ export default function UploadZone({ onComplete }: { onComplete?: (data: any) =>
 
     const interval = setInterval(() => {
       if (Date.now() - lastActivity.current > 3500) {
-        setJokeIndex(prev => (prev + 1) % JOKES.length);
+        setJokeIndex((prev) => (prev + 1) % JOKES.length);
         setLiveMessage(JOKES[jokeIndex]);
       }
     }, 4000);
 
     return () => clearInterval(interval);
   }, [isAnalyzing, jokeIndex]);
-
-  // Poll real server messages
-  useEffect(() => {
-    if (!isAnalyzing || !parseId) return;
-
-    const poll = async () => {
-      try {
-        const res = await fetch(`/api/parse/status/${parseId}`);
-        if (!res.ok) return;
-        const { messages } = await res.json();
-
-        if (messages.length > 0) {
-          const latest = messages[messages.length - 1];
-          setLiveMessage(latest);
-          lastActivity.current = Date.now();
-        }
-      } catch {}
-    };
-
-    poll();
-    const id = setInterval(poll, 1200);
-    return () => clearInterval(id);
-  }, [isAnalyzing, parseId]);
 
   const validatePdf = async (file: File): Promise<boolean> => {
     const header = await file.slice(0, 8).arrayBuffer();
@@ -112,23 +87,27 @@ export default function UploadZone({ onComplete }: { onComplete?: (data: any) =>
       formData.append("file", currentFile);
 
       try {
-        const res = await fetch("/api/parse/upload", { method: "POST", body: formData });
+        const res = await fetch("/api/parse/upload", {
+          method: "POST",
+          body: formData,
+        });
+
         const data = await res.json();
 
-        if (!res.ok) throw new Error(data.message || "Failed");
+        if (!res.ok) throw new Error(data.message || "Upload failed");
 
         setParseId(data.parseId);
+        setZipUrl(data.zipUrl || "");  // ← Only zipUrl is needed
+
         setLiveMessage("Critical pages identified — loading preview...");
         lastActivity.current = Date.now();
 
         setTimeout(() => {
-          setPreviewPages(data.previewPages);
-          setPageCount(data.pageCount);
           setView("preview");
           setIsAnalyzing(false);
         }, 800);
-      } catch {
-        toast.error("Upload failed — try again");
+      } catch (err: any) {
+        toast.error("Upload failed — try again", { description: err.message });
         setView("idle");
         setCurrentFile(null);
         setIsAnalyzing(false);
@@ -143,6 +122,7 @@ export default function UploadZone({ onComplete }: { onComplete?: (data: any) =>
     try {
       const res = await fetch(`/api/parse/extract/${parseId}`, { method: "POST" });
       const data = await res.json();
+
       if (!data.success) throw new Error();
 
       if (data.needsReview) {
@@ -158,7 +138,7 @@ export default function UploadZone({ onComplete }: { onComplete?: (data: any) =>
     }
   };
 
-    return (
+  return (
     <div className="relative">
       {view === "idle" && (
         <Dropzone
@@ -179,24 +159,26 @@ export default function UploadZone({ onComplete }: { onComplete?: (data: any) =>
         />
       )}
 
-      {view === "preview" && (
+      {view === "preview" && zipUrl && (
         <>
-          <PreviewGallery pages={previewPages} onLoaded={() => {}} />
+          <PreviewGallery
+            zipUrl={zipUrl}
+            maxPages={9}
+          />
           <ActionsBar
             onConfirm={handleConfirm}
             onCancel={() => setView("idle")}
-            pageCount={pageCount}
+            pageCount={9}
             isExtracting={isExtracting}
           />
         </>
       )}
 
-      {/* ← NEW PRIVACY NOTICE (appears on all three views) */}
       {(view === "idle" || view === "uploading") && (
         <div className="mt-8 text-center px-4">
           <p className="text-sm text-muted-foreground max-w-2xl mx-auto leading-relaxed">
             By uploading, you agree to secure processing of your document via trusted providers
-            (Nutrient API & xAI Grok). Your PDF and all images are{" "}
+            (Nutrient API & Vercel). Your PDF and all images are{" "}
             <span className="font-medium text-foreground">automatically deleted within minutes</span> after extraction.
             We never sell or share your data.
           </p>

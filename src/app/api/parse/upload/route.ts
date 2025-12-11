@@ -1,8 +1,10 @@
 // src/app/api/parse/upload/route.ts
+// Updated to use Vercel Blob offload — returns zipUrl + zipKey
+
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
-import { renderPdfToS3Direct } from "@lib/pdf/renderer-s3";
+import { renderPdfToPngZipUrl } from "@/lib/pdf/renderer";
 import { uploadProgress } from "@/lib/progress";
 
 export const runtime = "nodejs";
@@ -24,12 +26,12 @@ export async function POST(req: NextRequest) {
   });
 
   if (!user) {
-    return new Response("User not found — please complete onboarding", { status: 404 });
+    return new Response("User not found", { status: 404 });
   }
 
   const formData = await req.formData();
   const file = formData.get("file") as File;
-  if (!file) return new Response("No file uploaded", { status: 400 });
+  if (!file) return new Response("No file", { status: 400 });
 
   const buffer = Buffer.from(await file.arrayBuffer());
 
@@ -42,14 +44,6 @@ export async function POST(req: NextRequest) {
 
   console.log(`[upload] Processing ${file.name} (${(buffer.length / 1e6).toFixed(1)} MB)`);
 
-  const tempId = crypto.randomUUID();
-  uploadProgress.set(tempId, []);
-
-  logProgress(tempId, `Received: ${file.name}`);
-  logProgress(tempId, "Securing document — flattening form fields and signatures...");
-  logProgress(tempId, "Sending to secure rendering engine (Nutrient → S3 direct)...");
-
-  // Create parse record first
   const parse = await db.parse.create({
     data: {
       userId: user.id,
@@ -63,47 +57,29 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  // Migrate progress
-  uploadProgress.delete(tempId);
-  uploadProgress.set(parse.id, [
-    { message: `Received: ${file.name}`, timestamp: Date.now() - 30000 },
-    { message: "Securing document — flattening form fields and signatures...", timestamp: Date.now() - 25000 },
-    { message: "Sending to secure rendering engine (Nutrient → S3 direct)...", timestamp: Date.now() - 20000 },
-  ]);
-
-  // Background render
+  // Background render — offloads ZIP to Vercel Blob
   (async () => {
     try {
-      logProgress(parse.id, "Rendering pages to high-res PNGs (310 DPI)...");
-
-      const result = await renderPdfToS3Direct(buffer, {
-        parseId: parse.id,
-        dpi: 310,
-      });
-
-      logProgress(parse.id, `Render complete — ${result.pageCount} pages ready`);
-      logProgress(parse.id, "Ready for AI analysis — click Continue");
+      const { url, key } = await renderPdfToPngZipUrl(buffer, { maxPages: 9 });
 
       await db.parse.update({
         where: { id: parse.id },
         data: {
           status: "RENDERED",
-          renderZipUrl: result.zipUrl,
-          renderZipKey: result.zipKey,
-          pageCount: result.pageCount,
+          renderZipUrl: url,
+          renderZipKey: key,
+          pageCount: 9,
         },
       });
 
-      console.log(`[parse:${parse.id}] S3 render complete`);
+      console.log(`[parse:${parse.id}] Preview ZIP ready at ${url}`);
     } catch (error: any) {
       console.error(`[parse:${parse.id}] Render failed`, error);
-      logProgress(parse.id, "Rendering failed — please try again");
-
       await db.parse.update({
         where: { id: parse.id },
         data: {
           status: "RENDER_FAILED",
-          errorMessage: error.message?.slice(0, 500) || "Unknown rendering error",
+          errorMessage: error.message,
         },
       });
     }
@@ -112,8 +88,7 @@ export async function POST(req: NextRequest) {
   return Response.json({
     success: true,
     parseId: parse.id,
-    message: "Document received — rendering in background",
-    nextStep: "wait_for_render",
-    previewPages: [],
+    message: "Document uploaded — generating preview...",
+    nextStep: "wait_for_preview",
   });
 }
