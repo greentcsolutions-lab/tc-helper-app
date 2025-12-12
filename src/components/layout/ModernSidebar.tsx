@@ -77,7 +77,7 @@ export default function ModernSidebar({ defaultCollapsed = false }: ModernSideba
                 TC
               </div>
               <span className="font-bold text-lg bg-gradient-to-r from-cyan-600 to-blue-600 bg-clip-text text-transparent">
-                TC Pro
+                TC Helper App
               </span>
             </Link>
           )}

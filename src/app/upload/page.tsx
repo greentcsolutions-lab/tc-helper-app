@@ -30,7 +30,7 @@ export default async function UploadPage() {
     <div className="p-6 max-w-7xl mx-auto">
       {/* Page Header */}
       <div className="mb-8">
-        <h1 className="text-4xl font-bold mb-2">Upload Contract</h1>
+        <h1 className="text-4xl font-bold mb-2">Upload New File</h1>
         <p className="text-muted-foreground text-lg">
           Drop your California RPA packet and let AI extract everything in seconds
         </p>
