@@ -47,8 +47,8 @@ model Parse {
   fileName             String
   state                String    @default("Unknown")
   
-  rawJson              Json      @default({})              
-  formatted            Json      @default({})              
+  rawJson              Json      @default("{}")              
+  formatted            Json      @default("{}")              
   missingSCOs          Boolean   @default(false)           
   counterInfo          Json?                               
 
