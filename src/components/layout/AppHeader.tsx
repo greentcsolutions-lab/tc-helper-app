@@ -22,7 +22,7 @@ export default function AppHeader() {
             TC
           </div>
           <span className="text-2xl font-bold bg-gradient-to-r from-cyan-600 to-blue-600 bg-clip-text text-transparent hidden md:inline">
-            TC Pro
+            TC Helper App
           </span>
         </Link>
 

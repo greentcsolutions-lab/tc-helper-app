@@ -36,7 +36,7 @@ export default function AppSidebar() {
           </div>
           <div>
             <div className="text-2xl font-bold bg-gradient-to-r from-cyan-600 to-blue-600 bg-clip-text text-transparent">
-              TC Pro
+              TC Helper App
             </div>
             <div className="text-xs text-muted-foreground/70">Transaction Coordination</div>
           </div>
@@ -53,8 +53,8 @@ export default function AppSidebar() {
               href={item.href}
               className={`
                 flex items-center gap-4 px-5 py-4 rounded-2xl transition-all duration-300
-                ${isActive 
-                  ? "bg-gradient-to-r from-cyan-500/20 to-blue-600/20 text-cyan-700 font-medium shadow-md" 
+                ${isActive
+                  ? "bg-gradient-to-r from-cyan-500/20 to-blue-600/20 text-cyan-700 font-medium shadow-md"
                   : "text-foreground/70 hover:text-foreground hover:bg-white/50"
                 }
                 ${item.soon ? "opacity-50 pointer-events-none" : ""}
