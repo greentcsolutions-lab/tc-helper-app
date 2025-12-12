@@ -1,5 +1,5 @@
 // src/app/api/parse/upload/route.ts
-// Updated to use Vercel Blob offload — returns zipUrl + zipKey
+// Updated to use Vercel Blob offload – returns zipUrl + zipKey
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "invalid_pdf" }, { status: 400 });
   }
   if (buffer.length > 25_000_000) {
-    return Response.json({ error: "File too large — max 25 MB" }, { status: 400 });
+    return Response.json({ error: "File too large – max 25 MB" }, { status: 400 });
   }
 
   console.log(`[upload] Processing ${file.name} (${(buffer.length / 1e6).toFixed(1)} MB)`);
@@ -57,10 +57,10 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  // Background render — offloads ZIP to Vercel Blob
+  // Background render – offloads ZIP to Vercel Blob
   (async () => {
     try {
-      const { url, key } = await renderPdfToPngZipUrl(buffer, { maxPages: 9 });
+      const { url, key } = await renderPdfToPngZipUrl(buffer, { maxPages: 9, dpi: 290 });
 
       await db.parse.update({
         where: { id: parse.id },
@@ -88,7 +88,7 @@ export async function POST(req: NextRequest) {
   return Response.json({
     success: true,
     parseId: parse.id,
-    message: "Document uploaded — generating preview...",
+    message: "Document uploaded – generating preview...",
     nextStep: "wait_for_preview",
   });
 }

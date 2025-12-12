@@ -45,26 +45,37 @@ model Parse {
   userId               String
   user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  // Basic metadata
   fileName             String
-  state                String    @default("Unknown")
-  rawJson              Json
-  formatted            Json
-  missingSCOs          Boolean   @default(false)
+  state                String    @default("Unknown")        // California, Texas, etc.
+  
+  // Extraction results
+  rawJson              Json      @default({})              // Raw Grok response
+  formatted            Json      @default({})              // Cleaned/formatted data
+  missingSCOs          Boolean   @default(false)           // Legacy field
+  counterInfo          Json?                               // Counter/addendum info
 
-  counterInfo          Json?
-  pdfBuffer            Bytes?                               // temporarily stored, nuked after parsing
-  criticalPageNumbers  Int[]     @default([])               
-  status               String    @default("PENDING")        
-  finalizedAt          DateTime?
+  // Status tracking (updated throughout pipeline)
+  // PROCESSING → RENDERED → READY_FOR_EXTRACT → COMPLETED/NEEDS_REVIEW
+  // Error states: RENDER_FAILED, EXTRACTION_FAILED
+  status               String    @default("PROCESSING")
 
-  // ←←←←←←←←←←←←←← ADD THESE 4 NEW FIELDS ONLY ←←←←←←←←←←←←←←
-  renderZipUrl         String?   // pre-signed S3 URL (expires in 1 hour)
-  renderZipKey         String?   // permanent S3 object key for cleanup / re-use
-  pageCount            Int?      // total pages from Nutrient render
-  errorMessage         String?   // populated only on RENDER_FAILED
+  // Temporary storage (deleted after extraction completes)
+  pdfBuffer            Bytes?                              // Original uploaded PDF, cleared after extraction
+  renderZipUrl         String?                             // Preview ZIP URL (9 pages @ 290 DPI), cleared after extraction
+  renderZipKey         String?                             // Blob storage key for cleanup
 
+  // Classification results (saved after preview/classification pass)
+  criticalPageNumbers  Int[]     @default([])              // e.g., [3, 8, 15, 42] - pages containing final terms
+  pageCount            Int?                                // Total pages in document
+  
+  // Error tracking
+  errorMessage         String?                             // Populated on RENDER_FAILED or EXTRACTION_FAILED
+
+  // Timestamps
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
+  finalizedAt          DateTime?                           // When extraction completed
 
   @@index([userId, createdAt])
   @@map("parses")

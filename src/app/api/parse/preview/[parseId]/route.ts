@@ -1,12 +1,13 @@
 // src/app/api/parse/preview/[parseId]/route.ts
-// FINAL — Real-time professional status updates during full analysis
+// TWO-PASS OPTIMIZED: Preview at 290 DPI, classify at 120 DPI
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
-import { renderPdfToPngBase64Array } from "@/lib/pdf/renderer";
+import { renderPdfToPngZipUrl, downloadAndExtractZip } from "@/lib/pdf/renderer";
 import { classifyCriticalPages } from "@/lib/extractor/classifier";
 import { uploadProgress } from "@/lib/progress";
+import { del } from "@vercel/blob";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -39,22 +40,36 @@ export async function GET(
 
   const parseRecord = await db.parse.findUnique({
     where: { id: parseId, userId: user.id },
-    select: { pdfBuffer: true, status: true, fileName: true },
+    select: { 
+      pdfBuffer: true, 
+      status: true, 
+      fileName: true,
+      renderZipUrl: true,
+    },
   });
 
-  if (!parseRecord || parseRecord.status !== "AWAITING_CONFIRMATION" || !parseRecord.pdfBuffer) {
+  if (!parseRecord || parseRecord.status !== "RENDERED" || !parseRecord.pdfBuffer) {
     return new Response("Invalid or already processed document", { status: 400 });
   }
 
   const readable = new ReadableStream({
     async start(controller) {
       try {
-        logProgress(parseId, "Analyzing full document to identify key pages...");
-        controller.enqueue(streamJsonLine({ type: "progress", message: "Analyzing full document to identify key pages..." }));
+        // PHASE 1: Stream preview pages for confirmation
+        logProgress(parseId, "Loading preview pages for confirmation...");
+        controller.enqueue(streamJsonLine({ 
+          type: "progress", 
+          message: "Loading preview pages for confirmation..." 
+        }));
 
-        const first9 = await renderPdfToPngBase64Array(parseRecord.pdfBuffer!, { maxPages: 9 });
+        // Download the 9-page preview ZIP created during upload
+        if (!parseRecord.renderZipUrl) {
+          throw new Error("Preview ZIP not found");
+        }
 
-        for (const page of first9) {
+        const previewPages = await downloadAndExtractZip(parseRecord.renderZipUrl);
+
+        for (const page of previewPages) {
           controller.enqueue(streamJsonLine({
             type: "page",
             pageNumber: page.pageNumber,
@@ -64,13 +79,25 @@ export async function GET(
         }
 
         controller.enqueue(streamJsonLine({ type: "confirm_ready" }));
-        controller.enqueue(streamJsonLine({ type: "progress", message: "Ready — click Continue to extract data" }));
-
-        // PHASE 2: Full analysis begins
         controller.enqueue(streamJsonLine({ 
           type: "progress", 
-          message: "Scanning all pages (this may take 8–15 seconds)..." 
+          message: "Ready – click Continue to extract data" 
         }));
+
+        // PHASE 2: Full classification at LOW DPI (cost optimization)
+        controller.enqueue(streamJsonLine({ 
+          type: "progress", 
+          message: "Scanning all pages at low resolution (8–15 seconds)..." 
+        }));
+        logProgress(parseId, "Rendering all pages at 120 DPI for classification...");
+
+        // Render ALL pages at 120 DPI for classification
+        const { url: classifyZipUrl, key: classifyZipKey } = await renderPdfToPngZipUrl(
+          parseRecord.pdfBuffer!, 
+          { dpi: 120 }  // Low DPI for classification = cost savings
+        );
+
+        const allPagesLowDpi = await downloadAndExtractZip(classifyZipUrl);
 
         logProgress(parseId, "Running AI vision model to locate final contract terms...");
         controller.enqueue(streamJsonLine({ 
@@ -78,9 +105,15 @@ export async function GET(
           message: "Running AI vision model to locate final contract terms..." 
         }));
 
-        const allPages = await renderPdfToPngBase64Array(parseRecord.pdfBuffer!);
-        const { criticalImages, state, criticalPageNumbers } = await classifyCriticalPages(allPages);
+        // Run classifier to find critical pages
+        const { criticalImages, state, criticalPageNumbers } = await classifyCriticalPages(allPagesLowDpi);
 
+        // Cleanup low-DPI classification ZIP (we don't need it anymore)
+        await del(classifyZipKey).catch(err => 
+          console.warn(`[preview:${parseId}] Failed to delete classification ZIP:`, err)
+        );
+
+        // Save critical page numbers to DB
         await db.parse.update({
           where: { id: parseId },
           data: {
@@ -90,13 +123,15 @@ export async function GET(
           },
         });
 
-        logProgress(parseId, `Found ${criticalImages.length} critical pages — extracting final terms...`);
+        logProgress(parseId, `Found ${criticalImages.length} critical pages – preparing extraction...`);
         controller.enqueue(streamJsonLine({
           type: "critical_start",
           count: criticalImages.length,
           state,
+          criticalPageNumbers,
         }));
 
+        // Stream low-res critical pages for display (optional, user feedback)
         for (const page of criticalImages) {
           controller.enqueue(streamJsonLine({
             type: "critical_page",
@@ -107,11 +142,11 @@ export async function GET(
 
         controller.enqueue(streamJsonLine({ 
           type: "progress", 
-          message: "Extracting purchase price, buyer names, dates, and contingencies..." 
+          message: "Critical pages identified – triggering high-resolution extraction..." 
         }));
-        logProgress(parseId, "Extracting purchase price, buyer names, dates, and contingencies...");
+        logProgress(parseId, "Triggering high-resolution extraction...");
 
-        // Trigger extraction in background
+        // Trigger extraction in background (will re-render critical pages at 290 DPI)
         const baseUrl = process.env.NEXT_PUBLIC_URL || "http://localhost:3000";
         fetch(`${baseUrl}/api/parse/extract/${parseId}`, {
           method: "POST",
@@ -125,7 +160,7 @@ export async function GET(
         console.error("[preview] Stream error:", error);
         controller.enqueue(streamJsonLine({ 
           type: "error", 
-          message: error.message || "Analysis failed — please try again" 
+          message: error.message || "Analysis failed – please try again" 
         }));
         controller.close();
       }
