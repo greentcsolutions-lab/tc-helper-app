@@ -53,7 +53,7 @@ export default function AppHeader() {
                   <Link href="/upload" className="flex items-center gap-3 py-3 cursor-pointer hover:bg-cyan-50/50 rounded-lg mx-2">
                     <FileUp className="h-5 w-5 text-cyan-600" />
                     <div>
-                      <div className="font-medium">Upload New Packet</div>
+                      <div className="font-medium">Upload New Contract</div>
                       <div className="text-xs text-muted-foreground/60">Start a new extraction</div>
                     </div>
                   </Link>
