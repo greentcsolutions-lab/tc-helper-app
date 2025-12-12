@@ -1,4 +1,3 @@
-// prisma/schema.prisma
 generator client {
   provider = "prisma-client-js"
 }
@@ -45,15 +44,13 @@ model Parse {
   userId               String
   user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  // Basic metadata
   fileName             String
-  state                String    @default("Unknown")        // California, Texas, etc.
+  state                String    @default("Unknown")
   
-  // Extraction results
-  rawJson              Json      @default({})              // Raw Grok response
-  formatted            Json      @default({})              // Cleaned/formatted data
-  missingSCOs          Boolean   @default(false)           // Legacy field
-  counterInfo          Json?                               // Counter/addendum info
+  rawJson              Json      @default({})              
+  formatted            Json      @default({})              
+  missingSCOs          Boolean   @default(false)           
+  counterInfo          Json?                               
 
   // Status tracking (updated throughout pipeline)
   // PROCESSING → RENDERED → READY_FOR_EXTRACT → COMPLETED/NEEDS_REVIEW
@@ -61,21 +58,21 @@ model Parse {
   status               String    @default("PROCESSING")
 
   // Temporary storage (deleted after extraction completes)
-  pdfBuffer            Bytes?                              // Original uploaded PDF, cleared after extraction
-  renderZipUrl         String?                             // Preview ZIP URL (9 pages @ 290 DPI), cleared after extraction
-  renderZipKey         String?                             // Blob storage key for cleanup
+  pdfBuffer            Bytes?                              
+  renderZipUrl         String?                             
+  renderZipKey         String?                             
 
   // Classification results (saved after preview/classification pass)
-  criticalPageNumbers  Int[]     @default([])              // e.g., [3, 8, 15, 42] - pages containing final terms
-  pageCount            Int?                                // Total pages in document
+  criticalPageNumbers  Int[]     @default([])              
+  pageCount            Int?                                
   
   // Error tracking
-  errorMessage         String?                             // Populated on RENDER_FAILED or EXTRACTION_FAILED
+  errorMessage         String?                             
 
   // Timestamps
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
-  finalizedAt          DateTime?                           // When extraction completed
+  finalizedAt          DateTime?                           
 
   @@index([userId, createdAt])
   @@map("parses")
