@@ -3,6 +3,9 @@ import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/prisma";
 
+export const runtime = "nodejs";
+export const maxDuration = 60;
+
 const isPublicRoute = createRouteMatcher([
   "/",
   "/sign-in(.*)",
