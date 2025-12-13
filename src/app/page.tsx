@@ -118,7 +118,7 @@ export default function Home() {
       <footer className="py-12 border-t">
         <div className="max-w-6xl mx-auto px-4 text-center">
           <p className="text-sm text-muted-foreground mb-3">
-            © 2025 TC Helper App. Built with ❤️ in California.
+            © 2025 TC Helper App. Built with ❤️ in Missouri.
           </p>
           <Link
             href="/privacy"
