@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { FileUp, History, Sparkles, TrendingUp, Clock, CheckCircle } from "lucide-react";
+import NextDueCard from "@/components/dashboard/NextDueCard";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,18 @@ export default async function Dashboard() {
       fileName: true,
       createdAt: true,
       status: true,
+    },
+  });
+
+  // Fetch completed parses for timeline
+  const completedParses = await prisma.parse.findMany({
+    where: {
+      userId: dbUser.id,
+      status: { in: ["COMPLETED", "NEEDS_REVIEW"] },
+    },
+    select: {
+      id: true,
+      formatted: true,
     },
   });
 
@@ -101,6 +114,9 @@ export default async function Dashboard() {
         </Card>
       </div>
 
+      {/* Next Due Card - NEW */}
+      <NextDueCard parses={completedParses} />
+
       {/* Quick Actions */}
       <div className="grid gap-6 md:grid-cols-2">
         <Card className="border-2 border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
@@ -137,7 +153,7 @@ export default async function Dashboard() {
               Review and manage your extracted contract data
             </p>
             <Button asChild variant="outline" className="w-full">
-              <Link href="/dashboard">
+              <Link href="/transactions">
                 <History className="mr-2 h-4 w-4" />
                 View All Parses
               </Link>

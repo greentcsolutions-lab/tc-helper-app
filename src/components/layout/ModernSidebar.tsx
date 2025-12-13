@@ -16,6 +16,7 @@ import {
   FileUp,
   Menu,
   X,
+  Calendar,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -23,6 +24,7 @@ import { cn } from "@/lib/utils";
 const navItems = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Upload", href: "/upload", icon: FileUp },
+  { name: "Timeline", href: "/timeline", icon: Calendar },
   { name: "Transactions", href: "/transactions", icon: FileText },
   { name: "Listings", href: "#", icon: Building2, soon: true },
   { name: "Tasks", href: "/tasks", icon: CheckSquare },
@@ -77,7 +79,7 @@ export default function ModernSidebar({ defaultCollapsed = false }: ModernSideba
                 TC
               </div>
               <span className="font-bold text-lg bg-gradient-to-r from-cyan-600 to-blue-600 bg-clip-text text-transparent">
-                TC Helper App
+                TC Pro
               </span>
             </Link>
           )}

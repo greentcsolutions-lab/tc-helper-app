@@ -58,8 +58,9 @@ export async function GET(
           stage: "classify_render",
         });
 
+        // ✅ FIXED: Added non-null assertion (validated above on line 49)
         const { url: classifyZipUrl, key: classifyZipKey } = await renderPdfToPngZipUrl(
-          parse.pdfBuffer,
+          parse.pdfBuffer!,
           { dpi: 100 }
         );
 
@@ -82,8 +83,9 @@ export async function GET(
         });
 
         // PHASE 3: High-res extraction render (ONLY critical pages)
+        // ✅ FIXED: Added non-null assertion (validated above on line 49)
         const { url: extractZipUrl, key: extractZipKey } = await renderPdfToPngZipUrl(
-          parse.pdfBuffer,
+          parse.pdfBuffer!,
           { pages: criticalPageNumbers, dpi: 290 }
         );
 
