@@ -1,0 +1,189 @@
+// src/app/api/parse/process/[parseId]/route.ts
+// COMPLETE PIPELINE with SSE streaming for live updates
+// 1. Render all pages @ 100 DPI
+// 2. Classify critical pages with Grok
+// 3. Render critical pages @ 290 DPI
+// 4. Extract with Grok
+// 5. Stream results + critical page URLs
+
+import { NextRequest } from "next/server";
+import { auth } from "@clerk/nextjs/server";
+import { db } from "@/lib/prisma";
+import { renderPdfToPngZipUrl, downloadAndExtractZip } from "@/lib/pdf/renderer";
+import { classifyCriticalPages } from "@/lib/extractor/classifier";
+import { extractFromCriticalPages } from "@/lib/extractor/extractor";
+
+export const runtime = "nodejs";
+export const maxDuration = 60;
+
+function emit(controller: ReadableStreamDefaultController, data: any) {
+  controller.enqueue(`data: ${JSON.stringify(data)}\n\n`);
+}
+
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { parseId: string } }
+) {
+  const { userId: clerkUserId } = await auth();
+  if (!clerkUserId) return new Response("Unauthorized", { status: 401 });
+
+  const { parseId } = params;
+
+  const parse = await db.parse.findUnique({
+    where: { id: parseId },
+    select: {
+      id: true,
+      userId: true,
+      pdfBuffer: true,
+      status: true,
+      fileName: true,
+    },
+  });
+
+  if (!parse || parse.status !== "PENDING") {
+    return Response.json({ error: "Parse not ready" }, { status: 400 });
+  }
+
+  if (!parse.pdfBuffer) {
+    return Response.json({ error: "PDF not found" }, { status: 500 });
+  }
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      try {
+        // PHASE 1: Low-res classification render
+        emit(controller, {
+          type: "progress",
+          message: "Rendering all pages at low resolution...",
+          stage: "classify_render",
+        });
+
+        const { url: classifyZipUrl, key: classifyZipKey } = await renderPdfToPngZipUrl(
+          parse.pdfBuffer,
+          { dpi: 100 }
+        );
+
+        const allPagesLowRes = await downloadAndExtractZip(classifyZipUrl);
+
+        emit(controller, {
+          type: "progress",
+          message: `Analyzing ${allPagesLowRes.length} pages with AI vision model...`,
+          stage: "classify_ai",
+        });
+
+        // PHASE 2: Grok classification
+        const { criticalPageNumbers, state } = await classifyCriticalPages(allPagesLowRes);
+
+        emit(controller, {
+          type: "progress",
+          message: `Found ${criticalPageNumbers.length} critical pages - rendering at high quality...`,
+          stage: "extract_render",
+          criticalPageNumbers,
+        });
+
+        // PHASE 3: High-res extraction render (ONLY critical pages)
+        const { url: extractZipUrl, key: extractZipKey } = await renderPdfToPngZipUrl(
+          parse.pdfBuffer,
+          { pages: criticalPageNumbers, dpi: 290 }
+        );
+
+        const criticalPagesHighRes = await downloadAndExtractZip(extractZipUrl);
+
+        emit(controller, {
+          type: "progress",
+          message: "Extracting contract terms with Grok...",
+          stage: "extract_ai",
+        });
+
+        // PHASE 4: Grok extraction
+        const firstPass = await extractFromCriticalPages(criticalPagesHighRes);
+
+        // Optional second pass if confidence is low
+        let finalResult = firstPass;
+        const needsSecondPass =
+          firstPass.confidence.overall_confidence < 80 ||
+          firstPass.handwriting_detected;
+
+        if (needsSecondPass) {
+          emit(controller, {
+            type: "progress",
+            message: "Low confidence detected - running second extraction pass...",
+            stage: "extract_ai_boost",
+          });
+
+          const secondPass = await extractFromCriticalPages(
+            criticalPagesHighRes,
+            firstPass.raw
+          );
+          finalResult = secondPass;
+        }
+
+        const needsReview =
+          finalResult.confidence.overall_confidence < 80 ||
+          finalResult.handwriting_detected ||
+          (finalResult.confidence.purchase_price || 0) < 90 ||
+          (finalResult.confidence.buyer_names || 0) < 90;
+
+        // PHASE 5: Save results
+        await db.parse.update({
+          where: { id: parseId },
+          data: {
+            status: needsReview ? "NEEDS_REVIEW" : "COMPLETED",
+            state: state || "Unknown",
+            criticalPageNumbers,
+            rawJson: finalResult.raw,
+            formatted: finalResult.extracted,
+            renderZipUrl: extractZipUrl, // Keep high-res critical pages temporarily
+            renderZipKey: extractZipKey,
+            finalizedAt: new Date(),
+          },
+        });
+
+        // PHASE 6: Deduct credit
+        await db.user.update({
+          where: { id: parse.userId },
+          data: { credits: { decrement: 1 } },
+        });
+
+        console.log(`[process:${parseId}] ✓ Complete - confidence: ${finalResult.confidence.overall_confidence}%`);
+
+        // Stream final results
+        emit(controller, {
+          type: "complete",
+          extracted: finalResult.extracted,
+          confidence: finalResult.confidence,
+          criticalPageNumbers,
+          zipUrl: extractZipUrl, // Client will display these images
+          needsReview,
+        });
+
+        controller.close();
+      } catch (error: any) {
+        console.error(`[process:${parseId}] Failed:`, error);
+
+        await db.parse.update({
+          where: { id: parseId },
+          data: {
+            status: "EXTRACTION_FAILED",
+            errorMessage: error.message,
+          },
+        }).catch(() => {});
+
+        emit(controller, {
+          type: "error",
+          message: error.message || "Extraction failed - please try again",
+        });
+
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    },
+  });
+}
