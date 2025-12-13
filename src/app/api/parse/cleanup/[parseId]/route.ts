@@ -11,12 +11,12 @@ export const maxDuration = 60;
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { parseId: string } }
+  { params }: { params: Promise<{ parseId: string }> }
 ) {
   const { userId: clerkUserId } = await auth();
   if (!clerkUserId) return new Response("Unauthorized", { status: 401 });
 
-  const { parseId } = params;
+  const { parseId } = await params;
 
   const parse = await db.parse.findUnique({
     where: { id: parseId },

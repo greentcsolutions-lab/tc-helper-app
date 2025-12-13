@@ -32,11 +32,11 @@ export default function UploadZone() {
   const [zipUrl, setZipUrl] = useState<string>("");
   const [extractedData, setExtractedData] = useState<any>(null);
   const [criticalPageNumbers, setCriticalPageNumbers] = useState<number[]>([]);
-  
+
   const [liveMessage, setLiveMessage] = useState("Starting AI analysis...");
   const [jokeIndex, setJokeIndex] = useState(0);
   const lastActivity = useRef(Date.now());
-  
+
   const router = useRouter();
 
   // Joke rotation when no updates for 5+ seconds
@@ -92,9 +92,17 @@ export default function UploadZone() {
         body: formData,
       });
 
-      const data = await res.json();
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || `Upload failed: ${res.status}`);
+      }
 
-      if (!res.ok) throw new Error(data.error || "Upload failed");
+      const data = await res.json();
+      console.log("[Upload] Success:", data);
+
+      if (!data.parseId) {
+        throw new Error("No parseId returned from upload");
+      }
 
       setParseId(data.parseId);
       setView("processing");
@@ -102,16 +110,18 @@ export default function UploadZone() {
       lastActivity.current = Date.now();
 
       // Connect to SSE processing endpoint
+      console.log("[SSE] Connecting to:", `/api/parse/process/${data.parseId}`);
       const eventSource = new EventSource(`/api/parse/process/${data.parseId}`);
 
       eventSource.onmessage = (event) => {
+        console.log("[SSE] Message received:", event.data);
         const data = JSON.parse(event.data);
         lastActivity.current = Date.now();
 
         if (data.type === "progress") {
           setLiveMessage(data.message);
           console.log(`[SSE] ${data.stage}: ${data.message}`);
-          
+
           if (data.criticalPageNumbers) {
             setCriticalPageNumbers(data.criticalPageNumbers);
           }
@@ -123,6 +133,7 @@ export default function UploadZone() {
           setView("done");
           eventSource.close();
         } else if (data.type === "error") {
+          console.error("[SSE] Error received:", data);
           toast.error("Extraction failed", { description: data.message });
           setView("idle");
           setCurrentFile(null);
@@ -130,13 +141,16 @@ export default function UploadZone() {
         }
       };
 
-      eventSource.onerror = () => {
+      eventSource.onerror = (err) => {
+        console.error("[SSE] Connection error:", err);
+        console.error("[SSE] ReadyState:", eventSource.readyState);
         toast.error("Connection lost", { description: "Please try again" });
         setView("idle");
         setCurrentFile(null);
         eventSource.close();
       };
     } catch (err: any) {
+      console.error("[Upload] Failed:", err);
       toast.error("Upload failed", { description: err.message });
       setView("idle");
       setCurrentFile(null);

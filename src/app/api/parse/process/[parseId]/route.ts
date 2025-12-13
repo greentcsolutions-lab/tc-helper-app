@@ -1,6 +1,6 @@
 // src/app/api/parse/process/[parseId]/route.ts
 // COMPLETE PIPELINE with SSE streaming for live updates
-// 1. Render all pages @ 100 DPI
+// 1. Render all pages @ 100 DPI → DEDUCT CREDIT HERE
 // 2. Classify critical pages with Grok
 // 3. Render critical pages @ 290 DPI
 // 4. Extract with Grok
@@ -22,12 +22,12 @@ function emit(controller: ReadableStreamDefaultController, data: any) {
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { parseId: string } }
+  { params }: { params: Promise<{ parseId: string }> }
 ) {
   const { userId: clerkUserId } = await auth();
   if (!clerkUserId) return new Response("Unauthorized", { status: 401 });
 
-  const { parseId } = params;
+  const { parseId } = await params;
 
   const parse = await db.parse.findUnique({
     where: { id: parseId },
@@ -58,13 +58,21 @@ export async function GET(
           stage: "classify_render",
         });
 
-        // ✅ FIXED: Added non-null assertion (validated above on line 49)
         const { url: classifyZipUrl, key: classifyZipKey } = await renderPdfToPngZipUrl(
-          parse.pdfBuffer!,
+          parse.pdfBuffer,
           { dpi: 100 }
         );
 
         const allPagesLowRes = await downloadAndExtractZip(classifyZipUrl);
+
+        // ✅ DEDUCT CREDIT HERE - Nutrient render + download succeeded
+        // This prevents abuse of free retries if they cancel before extraction completes
+        // If Grok fails later, user still consumed Nutrient resources (fair charge)
+        await db.user.update({
+          where: { id: parse.userId },
+          data: { credits: { decrement: 1 } },
+        });
+        console.log(`[process:${parseId}] ✓ Credit deducted - user has ${allPagesLowRes.length} rendered pages`);
 
         emit(controller, {
           type: "progress",
@@ -83,9 +91,8 @@ export async function GET(
         });
 
         // PHASE 3: High-res extraction render (ONLY critical pages)
-        // ✅ FIXED: Added non-null assertion (validated above on line 49)
         const { url: extractZipUrl, key: extractZipKey } = await renderPdfToPngZipUrl(
-          parse.pdfBuffer!,
+          parse.pdfBuffer,
           { pages: criticalPageNumbers, dpi: 290 }
         );
 
@@ -139,12 +146,6 @@ export async function GET(
             renderZipKey: extractZipKey,
             finalizedAt: new Date(),
           },
-        });
-
-        // PHASE 6: Deduct credit
-        await db.user.update({
-          where: { id: parse.userId },
-          data: { credits: { decrement: 1 } },
         });
 
         console.log(`[process:${parseId}] ✓ Complete - confidence: ${finalResult.confidence.overall_confidence}%`);
