@@ -1,4 +1,4 @@
-// src/components/upload/upload-zone.tsx
+// src/components/ui/upload/upload-zone.tsx
 "use client";
 
 import { useState, useEffect, useRef } from "react";
@@ -6,8 +6,13 @@ import { toast } from "sonner";
 import { UploadView } from "./types";
 import { Dropzone } from "./dropzone";
 import { PreviewGallery } from "./preview-gallery";
-import { ActionsBar } from "./actions-bar";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { CheckCircle, ArrowRight } from "lucide-react";
 import { useRouter } from "next/navigation";
+import CategoryPurchaseTerms from "@/components/CategoryPurchaseTerms";
+import CategoryTimelineContingencies from "@/components/CategoryTimelineContingencies";
+import CategoryRepresentingParties from "@/components/CategoryRepresentingParties";
 
 const JOKES = [
   "Don't trust AI to identify mushrooms...",
@@ -20,32 +25,33 @@ const JOKES = [
   "Hang tight — we're teaching the AI to read realtor scribbles",
 ];
 
-export default function UploadZone({ onComplete }: { onComplete?: (data: any) => void }) {
+export default function UploadZone() {
   const [view, setView] = useState<UploadView>("idle");
   const [currentFile, setCurrentFile] = useState<File | null>(null);
   const [parseId, setParseId] = useState<string>("");
-  const [zipUrl, setZipUrl] = useState<string>("");           // ← Only this is needed
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [liveMessage, setLiveMessage] = useState("Hang tight — analyzing your packet...");
-  const lastActivity = useRef(Date.now());
+  const [zipUrl, setZipUrl] = useState<string>("");
+  const [extractedData, setExtractedData] = useState<any>(null);
+  const [criticalPageNumbers, setCriticalPageNumbers] = useState<number[]>([]);
+  
+  const [liveMessage, setLiveMessage] = useState("Starting AI analysis...");
   const [jokeIndex, setJokeIndex] = useState(0);
-  const [isExtracting, setIsExtracting] = useState(false);
-
+  const lastActivity = useRef(Date.now());
+  
   const router = useRouter();
 
-  // Joke rotation when silent
+  // Joke rotation when no updates for 5+ seconds
   useEffect(() => {
-    if (!isAnalyzing) return;
+    if (view !== "processing") return;
 
     const interval = setInterval(() => {
-      if (Date.now() - lastActivity.current > 3500) {
+      if (Date.now() - lastActivity.current > 5000) {
         setJokeIndex((prev) => (prev + 1) % JOKES.length);
         setLiveMessage(JOKES[jokeIndex]);
       }
-    }, 4000);
+    }, 5500);
 
     return () => clearInterval(interval);
-  }, [isAnalyzing, jokeIndex]);
+  }, [view, jokeIndex]);
 
   const validatePdf = async (file: File): Promise<boolean> => {
     const header = await file.slice(0, 8).arrayBuffer();
@@ -73,73 +79,86 @@ export default function UploadZone({ onComplete }: { onComplete?: (data: any) =>
 
     setCurrentFile(file);
     setView("uploading");
-    setIsAnalyzing(true);
-    setLiveMessage("Hold tight — analyzing your packet...");
+    setLiveMessage("Uploading your document...");
     lastActivity.current = Date.now();
-    setJokeIndex(0);
-  };
 
-  useEffect(() => {
-    if (!isAnalyzing || !currentFile) return;
+    // Upload file
+    const formData = new FormData();
+    formData.append("file", file);
 
-    const upload = async () => {
-      const formData = new FormData();
-      formData.append("file", currentFile);
-
-      try {
-        const res = await fetch("/api/parse/upload", {
-          method: "POST",
-          body: formData,
-        });
-
-        const data = await res.json();
-
-        if (!res.ok) throw new Error(data.message || "Upload failed");
-
-        setParseId(data.parseId);
-        setZipUrl(data.zipUrl || "");  // ← Only zipUrl is needed
-
-        setLiveMessage("Critical pages identified — loading preview...");
-        lastActivity.current = Date.now();
-
-        setTimeout(() => {
-          setView("preview");
-          setIsAnalyzing(false);
-        }, 800);
-      } catch (err: any) {
-        toast.error("Upload failed — try again", { description: err.message });
-        setView("idle");
-        setCurrentFile(null);
-        setIsAnalyzing(false);
-      }
-    };
-
-    upload();
-  }, [isAnalyzing, currentFile]);
-
-  const handleConfirm = async () => {
-    setIsExtracting(true);
     try {
-      const res = await fetch(`/api/parse/extract/${parseId}`, { method: "POST" });
+      const res = await fetch("/api/parse/upload", {
+        method: "POST",
+        body: formData,
+      });
+
       const data = await res.json();
 
-      if (!data.success) throw new Error();
+      if (!res.ok) throw new Error(data.error || "Upload failed");
 
-      if (data.needsReview) {
-        router.push(`/review/${parseId}`);
-      } else {
-        onComplete?.(data.extracted);
-        setView("done");
-      }
-    } catch {
-      toast.error("Extraction failed");
-    } finally {
-      setIsExtracting(false);
+      setParseId(data.parseId);
+      setView("processing");
+      setLiveMessage("Starting AI analysis...");
+      lastActivity.current = Date.now();
+
+      // Connect to SSE processing endpoint
+      const eventSource = new EventSource(`/api/parse/process/${data.parseId}`);
+
+      eventSource.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        lastActivity.current = Date.now();
+
+        if (data.type === "progress") {
+          setLiveMessage(data.message);
+          console.log(`[SSE] ${data.stage}: ${data.message}`);
+          
+          if (data.criticalPageNumbers) {
+            setCriticalPageNumbers(data.criticalPageNumbers);
+          }
+        } else if (data.type === "complete") {
+          console.log("[SSE] Extraction complete!", data);
+          setExtractedData(data.extracted);
+          setZipUrl(data.zipUrl);
+          setCriticalPageNumbers(data.criticalPageNumbers);
+          setView("done");
+          eventSource.close();
+        } else if (data.type === "error") {
+          toast.error("Extraction failed", { description: data.message });
+          setView("idle");
+          setCurrentFile(null);
+          eventSource.close();
+        }
+      };
+
+      eventSource.onerror = () => {
+        toast.error("Connection lost", { description: "Please try again" });
+        setView("idle");
+        setCurrentFile(null);
+        eventSource.close();
+      };
+    } catch (err: any) {
+      toast.error("Upload failed", { description: err.message });
+      setView("idle");
+      setCurrentFile(null);
     }
   };
 
+  const handleConfirmAndContinue = async () => {
+    // Delete critical page images
+    if (zipUrl) {
+      try {
+        await fetch(`/api/parse/cleanup/${parseId}`, { method: "POST" });
+      } catch (err) {
+        console.warn("Cleanup failed:", err);
+      }
+    }
+
+    // Redirect to dashboard
+    router.push("/dashboard");
+  };
+
   return (
-    <div className="relative">
+    <div className="relative space-y-8">
       {view === "idle" && (
         <Dropzone
           isUploading={false}
@@ -149,7 +168,7 @@ export default function UploadZone({ onComplete }: { onComplete?: (data: any) =>
         />
       )}
 
-      {view === "uploading" && (
+      {(view === "uploading" || view === "processing") && (
         <Dropzone
           isUploading={true}
           currentFile={currentFile}
@@ -159,27 +178,53 @@ export default function UploadZone({ onComplete }: { onComplete?: (data: any) =>
         />
       )}
 
-      {view === "preview" && zipUrl && (
+      {view === "done" && extractedData && (
         <>
-          <PreviewGallery
-            zipUrl={zipUrl}
-            maxPages={9}
-          />
-          <ActionsBar
-            onConfirm={handleConfirm}
-            onCancel={() => setView("idle")}
-            pageCount={9}
-            isExtracting={isExtracting}
-          />
+          <Card className="border-2 border-green-500/30 bg-green-50/50 dark:bg-green-950/20">
+            <CardContent className="p-8 text-center">
+              <CheckCircle className="h-16 w-16 text-green-600 mx-auto mb-4" />
+              <h2 className="text-3xl font-bold mb-2">Extraction Complete!</h2>
+              <p className="text-muted-foreground mb-6">
+                Found {criticalPageNumbers.length} critical pages • Extracted {Object.keys(extractedData).length} fields
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Display extracted data */}
+          <div className="space-y-6">
+            <CategoryPurchaseTerms data={extractedData} />
+            <CategoryTimelineContingencies data={extractedData} />
+            <CategoryRepresentingParties data={extractedData} />
+          </div>
+
+          {/* Show critical page thumbnails */}
+          {zipUrl && (
+            <div>
+              <h3 className="text-xl font-bold mb-4">Critical Pages Used for Extraction</h3>
+              <PreviewGallery zipUrl={zipUrl} maxPages={criticalPageNumbers.length} />
+            </div>
+          )}
+
+          {/* Confirm button */}
+          <div className="flex justify-center pt-8">
+            <Button
+              size="lg"
+              onClick={handleConfirmAndContinue}
+              className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
+            >
+              Looks Good — Continue to Dashboard
+              <ArrowRight className="ml-2 h-5 w-5" />
+            </Button>
+          </div>
         </>
       )}
 
+      {/* Privacy notice */}
       {(view === "idle" || view === "uploading") && (
-        <div className="mt-8 text-center px-4">
+        <div className="text-center px-4">
           <p className="text-sm text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-            By uploading, you agree to secure processing of your document via trusted providers
-            (Nutrient API & Vercel). Your PDF and all images are{" "}
-            <span className="font-medium text-foreground">automatically deleted within minutes</span> after extraction.
+            By uploading, you agree to secure processing via trusted providers.
+            All images are <span className="font-medium">automatically deleted after confirmation</span>.
             We never sell or share your data.
           </p>
           <p className="mt-3">
