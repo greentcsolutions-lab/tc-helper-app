@@ -1,4 +1,5 @@
 // src/components/dashboard/NextDueCard.tsx
+// Version: 1.0.0 - Dashboard widget showing next 5 upcoming deadlines
 "use client";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";

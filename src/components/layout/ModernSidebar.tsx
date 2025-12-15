@@ -1,4 +1,5 @@
 // src/components/layout/ModernSidebar.tsx
+// Version: 1.1.0 - Added Timeline navigation item
 "use client";
 
 import Link from "next/link";

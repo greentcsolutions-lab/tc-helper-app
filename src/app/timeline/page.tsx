@@ -1,4 +1,5 @@
 // src/app/timeline/page.tsx
+// Version: 1.0.0 - Timeline calendar page server component
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
 import { redirect } from "next/navigation";

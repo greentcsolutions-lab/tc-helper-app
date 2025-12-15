@@ -1,4 +1,5 @@
 // src/lib/dates/extract-timeline-events.ts
+// Version: 1.0.0 - Timeline event extraction from parsed contracts
 // Extracts all important dates from parsed contract data
 
 import { addDays, parseISO, isValid, isFuture, isPast } from "date-fns";

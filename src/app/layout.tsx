@@ -1,9 +1,11 @@
 // src/app/layout.tsx
+// Version: 2.0.0 - Added TopLoader for route transitions
 import "./globals.css";
 import { Inter } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "next-themes";
+import TopLoader from "@/components/ui/TopLoader";
 
 import ModernSidebar from "@/components/layout/ModernSidebar";
 import ModernHeader from "@/components/layout/ModernHeader";
@@ -34,14 +36,14 @@ export default async function RootLayout({
     credits = dbUser?.credits ?? 0;
   }
 
-  // Check if user is on auth pages
-  const isAuthPage = false; // We'll handle this with pathname in client component
-
   return (
     <ClerkProvider>
       <html lang="en" suppressHydrationWarning>
         <body className={`${inter.className} antialiased`}>
           <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
+            {/* Top loading bar for all route transitions */}
+            <TopLoader />
+
             {user ? (
               // Authenticated layout with sidebar
               <div className="relative min-h-screen">

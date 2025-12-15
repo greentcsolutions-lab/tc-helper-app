@@ -1,4 +1,5 @@
 // src/app/timeline/TimelineClient.tsx
+// Version: 1.0.0 - Interactive calendar view with react-big-calendar
 "use client";
 
 import { useMemo, useState } from "react";
