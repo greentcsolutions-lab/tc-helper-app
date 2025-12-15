@@ -25,13 +25,13 @@ export interface RenderOptions {
 /**
  * Renders PDF to PNG ZIP and uploads to Vercel Blob
  * Supports three modes for cost optimization:
- * 
+ *
  * 1. Preview (first N pages at high DPI):
  *    { maxPages: 9, dpi: 290 }
- * 
+ *
  * 2. Classification (all pages at low DPI):
  *    { dpi: 120 }
- * 
+ *
  * 3. Extraction (specific pages at high DPI):
  *    { pages: [3, 8, 15, 42], dpi: 290 }
  *    Creates document with ONLY these pages, then renders
@@ -59,55 +59,34 @@ export async function renderPdfToPngZipUrl(
   form.append("document", bufferToBlob(buffer, "application/pdf"), "document.pdf");
 
   // Build Nutrient instructions based on mode
-  let instructions: any;
+  let instructions: any = {
+    parts: [{ file: "document" }],
+    actions: [{ type: "flatten" }],
+    output: {
+      type: "image",
+      format: "png",
+      dpi,
+    },
+  };
 
   if (pages && pages.length > 0) {
-    // MODE 3: Specific pages only - create document with ONLY these pages
-    // Each page becomes a separate part, then we render the assembled document
-    instructions = {
-      parts: pages.map(pageNum => ({
-        file: "document",
-        pages: {
-          start: pageNum - 1,  // Convert 1-indexed to 0-indexed
-          end: pageNum - 1,
-        },
-      })),
-      actions: [{ type: "flatten" }],
-      output: {
-        type: "image",
-        format: "png",
-        dpi,
-        // Render ALL pages of the assembled document (which is only the critical pages)
+    // MODE 3: Specific pages only
+    instructions.parts = pages.map((pageNum) => ({
+      file: "document",
+      pages: {
+        start: pageNum - 1,  // 0-indexed
+        end: pageNum - 1,
       },
-    };
+    }));
+    // Render all pages of the assembled document (i.e., only the selected ones)
   } else if (maxPages) {
     // MODE 1: First N pages
-    instructions = {
-      parts: [{ file: "document" }],
-      actions: [{ type: "flatten" }],
-      output: {
-        type: "image",
-        format: "png",
-        dpi,
-        pages: {
-          start: 0,
-          end: maxPages - 1,
-        },
-      },
-    };
-  } else {
-    // MODE 2: All pages (for classification at low DPI)
-    instructions = {
-      parts: [{ file: "document" }],
-      actions: [{ type: "flatten" }],
-      output: {
-        type: "image",
-        format: "png",
-        dpi,
-        // No pages restriction = render all
-      },
+    instructions.output.pages = {
+      start: 0,
+      end: maxPages - 1,
     };
   }
+  // MODE 2: All pages → no pages restriction
 
   form.append("instructions", JSON.stringify(instructions));
 
@@ -131,14 +110,22 @@ export async function renderPdfToPngZipUrl(
       throw new Error(`Nutrient failed: ${res.status} ${text}`);
     }
 
-    console.log("[Nutrient] Success → uploading ZIP to Blob");
+    console.log("[Nutrient] Success → buffering full ZIP before Blob upload");
 
-    const { url } = await put(key, res.body!, {
+    // FIX: Fully consume the stream into a Buffer first → avoids corruption/truncation
+    const arrayBuffer = await res.arrayBuffer();
+    const zipBuffer = Buffer.from(arrayBuffer);
+
+    console.log("[Nutrient] ZIP buffered:", zipBuffer.length, "bytes → uploading to Blob");
+
+    const { url } = await put(key, zipBuffer, {
       access: "public",
+      multipart: true, // Enables progressive chunking + retries for larger ZIPs
+      addRandomSuffix: false,
     });
 
-    const pagesInfo = pages ? `pages [${pages.join(", ")}]` : 
-                     maxPages ? `first ${maxPages} pages` : 
+    const pagesInfo = pages ? `pages [${pages.join(", ")}]` :
+                     maxPages ? `first ${maxPages} pages` :
                      "all pages";
     console.log(`[Nutrient] Complete: ${pagesInfo} @ ${dpi} DPI → ${key}`);
     return { url, key };
@@ -157,7 +144,7 @@ export async function downloadAndExtractZip(
   zipUrl: string
 ): Promise<{ pageNumber: number; base64: string }[]> {
   const JSZip = (await import("jszip")).default;
-  
+
   const res = await fetch(zipUrl);
   if (!res.ok) throw new Error("Failed to download ZIP");
 
