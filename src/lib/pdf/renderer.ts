@@ -1,4 +1,5 @@
 // src/lib/pdf/renderer.ts
+// Version: 2.1.0 - Fixed ZIP corruption by buffering before Blob upload
 // OPTIMIZED: Supports low-DPI classification + high-DPI selective extraction
 // Uses correct Nutrient API format for page selection
 
