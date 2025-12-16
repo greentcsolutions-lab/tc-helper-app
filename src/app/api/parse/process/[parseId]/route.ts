@@ -1,5 +1,5 @@
 // src/app/api/parse/process/[parseId]/route.ts
-// Version 2.0.0 - Added pdf-lib page count for exact all-pages classification render
+// Version: 2.0.0 - Added pdf-lib page count for exact all-pages classification render
 // COMPLETE PIPELINE with SSE streaming for live updates
 // 1. Render all pages @ 100 DPI → DEDUCT CREDIT HERE
 // 2. Classify critical pages with Grok
@@ -73,6 +73,8 @@ export async function GET(
         const allPagesLowRes = await downloadAndExtractZip(classifyZipUrl);
 
         // ✅ DEDUCT CREDIT HERE - Nutrient render + download succeeded
+        // This prevents abuse of free retries if they cancel before extraction completes
+        // If Grok fails later, user still consumed Nutrient resources (fair charge)
         await db.user.update({
           where: { id: parse.userId },
           data: { credits: { decrement: 1 } },
@@ -97,7 +99,8 @@ export async function GET(
 
         // PHASE 3: High-res extraction render (ONLY critical pages)
         const { url: extractZipUrl, key: extractZipKey } = await renderPdfToPngZipUrl(
-          parse.pdfBuffer,
+        //@ts-ignore
+        parse.pdfBuffer,
           { pages: criticalPageNumbers, dpi: 290 }
         );
 
@@ -147,7 +150,7 @@ export async function GET(
             criticalPageNumbers,
             rawJson: finalResult.raw,
             formatted: finalResult.extracted,
-            renderZipUrl: extractZipUrl,
+            renderZipUrl: extractZipUrl, // Keep high-res critical pages temporarily
             renderZipKey: extractZipKey,
             finalizedAt: new Date(),
           },
@@ -161,7 +164,7 @@ export async function GET(
           extracted: finalResult.extracted,
           confidence: finalResult.confidence,
           criticalPageNumbers,
-          zipUrl: extractZipUrl,
+          zipUrl: extractZipUrl, // Client will display these images
           needsReview,
         });
 
