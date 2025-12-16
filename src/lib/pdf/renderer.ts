@@ -1,5 +1,5 @@
 // src/lib/pdf/renderer.ts
-// Version 2.2.0
+// Version 2.3.0 - Works with exact pageCount via maxPages from process route
 // OPTIMIZED: Supports low-DPI classification + high-DPI selective extraction
 // Uses correct Nutrient API format for page selection
 
@@ -18,9 +18,9 @@ export interface RenderResult {
 }
 
 export interface RenderOptions {
-  maxPages?: number;      // First N pages only
+  maxPages?: number;      // First N pages only → now used with exact pageCount for all-pages
   pages?: number[];       // Specific page numbers (1-indexed) - renders ONLY these pages
-  dpi?: number;          // Default 290 for high quality, use 120 for classification
+  dpi?: number;          // Default 290 for high quality, use 100 for classification
 }
 
 /**
@@ -31,11 +31,10 @@ export interface RenderOptions {
  *    { maxPages: 9, dpi: 290 }
  *
  * 2. Classification (all pages at low DPI):
- *    { dpi: 120 }
+ *    { dpi: 100, maxPages: exactPageCount }
  *
  * 3. Extraction (specific pages at high DPI):
  *    { pages: [3, 8, 15, 42], dpi: 290 }
- *    Creates document with ONLY these pages, then renders
  */
 export async function renderPdfToPngZipUrl(
   buffer: Buffer,
@@ -71,28 +70,22 @@ export async function renderPdfToPngZipUrl(
   };
 
   if (pages && pages.length > 0) {
-    // MODE 3: Specific pages only - create parts for each
+    // MODE 3: Specific pages only
     instructions.parts = pages.map((pageNum) => ({
       file: "document",
       pages: {
-        start: pageNum - 1,  // 0-indexed
+        start: pageNum - 1,
         end: pageNum - 1,
       },
     }));
-    // Render all pages of the assembled document (only the selected ones)
   } else if (maxPages) {
-    // MODE 1: First N pages
+    // MODE 1 & 2: Exact range (preview or all pages)
     instructions.output.pages = {
       start: 0,
       end: maxPages - 1,
     };
-  } else {
-    // MODE 2: All pages → explicitly force multi-page ZIP (fixes single-page default)
-    instructions.output.pages = {
-      start: 0,
-      end: 999,  // Safe overkill - Nutrient renders up to actual last page
-    };
   }
+  // No else needed - omitting output.pages entirely defaults to single page (we avoid this now)
 
   form.append("instructions", JSON.stringify(instructions));
 
@@ -123,8 +116,6 @@ export async function renderPdfToPngZipUrl(
 
     console.log("[Nutrient] Response buffered:", responseBuffer.length, "bytes");
 
-    // Your existing magic-bytes check can stay here if you added it - it will now pass for classification
-
     const { url } = await put(key, responseBuffer, {
       access: "public",
       multipart: true,
@@ -132,7 +123,7 @@ export async function renderPdfToPngZipUrl(
     });
 
     const pagesInfo = pages ? `pages [${pages.join(", ")}]` :
-                     maxPages ? `first ${maxPages} pages` :
+                     maxPages ? `first ${maxPages} pages (exact)` :
                      "all pages";
     console.log(`[Nutrient] Complete: ${pagesInfo} @ ${dpi} DPI → ${key}`);
     return { url, key };

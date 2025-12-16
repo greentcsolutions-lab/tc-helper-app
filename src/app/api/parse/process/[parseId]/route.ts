@@ -1,4 +1,5 @@
 // src/app/api/parse/process/[parseId]/route.ts
+// Version 2.0.0 - Added pdf-lib page count for exact all-pages classification render
 // COMPLETE PIPELINE with SSE streaming for live updates
 // 1. Render all pages @ 100 DPI → DEDUCT CREDIT HERE
 // 2. Classify critical pages with Grok
@@ -12,6 +13,7 @@ import { db } from "@/lib/prisma";
 import { renderPdfToPngZipUrl, downloadAndExtractZip } from "@/lib/pdf/renderer";
 import { classifyCriticalPages } from "@/lib/extractor/classifier";
 import { extractFromCriticalPages } from "@/lib/extractor/extractor";
+import { PDFDocument } from "pdf-lib"; // ← NEW: for exact page count
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -51,7 +53,12 @@ export async function GET(
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        // PHASE 1: Low-res classification render
+        // NEW: Get exact page count with pdf-lib (fast, in-memory)
+        const pdfDoc = await PDFDocument.load(parse.pdfBuffer);
+        const pageCount = pdfDoc.getPageCount();
+        console.log(`[process:${parseId}] PDF loaded - ${pageCount} pages detected`);
+
+        // PHASE 1: Low-res classification render (ALL pages exact)
         emit(controller, {
           type: "progress",
           message: "Rendering all pages at low resolution...",
@@ -60,14 +67,12 @@ export async function GET(
 
         const { url: classifyZipUrl, key: classifyZipKey } = await renderPdfToPngZipUrl(
           parse.pdfBuffer,
-          { dpi: 100 }
+          { dpi: 100, maxPages: pageCount } // ← uses exact count → perfect range
         );
 
         const allPagesLowRes = await downloadAndExtractZip(classifyZipUrl);
 
         // ✅ DEDUCT CREDIT HERE - Nutrient render + download succeeded
-        // This prevents abuse of free retries if they cancel before extraction completes
-        // If Grok fails later, user still consumed Nutrient resources (fair charge)
         await db.user.update({
           where: { id: parse.userId },
           data: { credits: { decrement: 1 } },
@@ -142,7 +147,7 @@ export async function GET(
             criticalPageNumbers,
             rawJson: finalResult.raw,
             formatted: finalResult.extracted,
-            renderZipUrl: extractZipUrl, // Keep high-res critical pages temporarily
+            renderZipUrl: extractZipUrl,
             renderZipKey: extractZipKey,
             finalizedAt: new Date(),
           },
@@ -156,7 +161,7 @@ export async function GET(
           extracted: finalResult.extracted,
           confidence: finalResult.confidence,
           criticalPageNumbers,
-          zipUrl: extractZipUrl, // Client will display these images
+          zipUrl: extractZipUrl,
           needsReview,
         });
 
