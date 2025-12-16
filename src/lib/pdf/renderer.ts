@@ -117,7 +117,39 @@ export async function renderPdfToPngZipUrl(
     const arrayBuffer = await res.arrayBuffer();
     const zipBuffer = Buffer.from(arrayBuffer);
 
-    console.log("[Nutrient] ZIP buffered:", zipBuffer.length, "bytes → uploading to Blob");
+    // VALIDATION: Check if this is actually a ZIP file (magic bytes: 50 4B 03 04)
+    const magicBytes = zipBuffer.subarray(0, 4);
+    const isZip =
+      magicBytes[0] === 0x50 &&
+      magicBytes[1] === 0x4B &&
+      (magicBytes[2] === 0x03 || magicBytes[2] === 0x05) &&
+      (magicBytes[3] === 0x04 || magicBytes[3] === 0x06);
+
+    console.log("[Nutrient] File validation:", {
+      size: zipBuffer.length,
+      magicBytes: Array.from(magicBytes).map(b => `0x${b.toString(16).padStart(2, '0')}`).join(' '),
+      isZip,
+      firstChars: zipBuffer.subarray(0, 20).toString('utf8', 0, 20).replace(/[^\x20-\x7E]/g, '.'),
+    });
+
+    if (!isZip) {
+      // Check if it's Base64
+      const asText = zipBuffer.toString('utf8').substring(0, 100);
+      const isBase64 = /^[A-Za-z0-9+/]+=*$/.test(asText.replace(/\s/g, ''));
+
+      console.error("[Nutrient] NOT A ZIP FILE!", {
+        possiblyBase64: isBase64,
+        contentStart: asText,
+      });
+
+      throw new Error(
+        `Nutrient returned invalid format (not a ZIP). ` +
+        `Got ${magicBytes.length} bytes starting with ${magicBytes[0].toString(16)}. ` +
+        `Possibly Base64: ${isBase64}`
+      );
+    }
+
+    console.log("[Nutrient] ✓ Valid ZIP file → uploading to Blob");
 
     const { url } = await put(key, zipBuffer, {
       access: "public",
@@ -146,10 +178,38 @@ export async function downloadAndExtractZip(
 ): Promise<{ pageNumber: number; base64: string }[]> {
   const JSZip = (await import("jszip")).default;
 
+  console.log("[ZIP Download] Fetching from Blob:", zipUrl);
   const res = await fetch(zipUrl);
-  if (!res.ok) throw new Error("Failed to download ZIP");
+  if (!res.ok) throw new Error(`Failed to download ZIP: ${res.status}`);
 
   const arrayBuffer = await res.arrayBuffer();
+  const downloadedBuffer = Buffer.from(arrayBuffer);
+
+  // VALIDATION: Check if download is actually a ZIP file
+  const magicBytes = downloadedBuffer.subarray(0, 4);
+  const isZip =
+    magicBytes[0] === 0x50 &&
+    magicBytes[1] === 0x4B &&
+    (magicBytes[2] === 0x03 || magicBytes[2] === 0x05) &&
+    (magicBytes[3] === 0x04 || magicBytes[3] === 0x06);
+
+  console.log("[ZIP Download] File validation:", {
+    size: downloadedBuffer.length,
+    magicBytes: Array.from(magicBytes).map(b => `0x${b.toString(16).padStart(2, '0')}`).join(' '),
+    isZip,
+    firstChars: downloadedBuffer.subarray(0, 20).toString('utf8', 0, 20).replace(/[^\x20-\x7E]/g, '.'),
+  });
+
+  if (!isZip) {
+    console.error("[ZIP Download] Downloaded file is NOT a ZIP!");
+    throw new Error(
+      `Downloaded file is not a ZIP. Got ${downloadedBuffer.length} bytes ` +
+      `starting with [${Array.from(magicBytes).map(b => `0x${b.toString(16)}`).join(', ')}]`
+    );
+  }
+
+  console.log("[ZIP Download] ✓ Valid ZIP file → parsing with JSZip");
+
   const zip = await JSZip.loadAsync(arrayBuffer);
 
   const pngFiles = Object.keys(zip.files)
