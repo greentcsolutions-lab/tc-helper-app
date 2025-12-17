@@ -1,32 +1,102 @@
 // src/lib/extractor/prompts.ts
+// Version: 2.0.0 - Dynamic prompt generation from form definitions
 /**
  * All static prompts are now pure TS exports.
  * Zero fs calls → cold-start safe, tree-shakable, and type-checkable.
- * We keep them as template literals so we can still do .replace() for batch numbers.
  */
 
-export const CLASSIFIER_PROMPT = `You are an expert U.S. real estate document classifier.
+import { RPA_FORM, COUNTER_OFFERS, KEY_ADDENDA } from "./form-definitions";
 
-You are looking at batch {{BATCH}} of {{TOTAL}} (pages {{START}}–{{END}}) from a complete real estate transaction packet.
+/**
+ * Builds the classifier prompt dynamically based on total pages
+ * Grok receives tagged PNGs with "Image X/Y:" prefix
+ */
+export function buildClassifierPrompt(totalPages: number): string {
+  return `You are analyzing a ${totalPages}-page California real estate transaction packet converted to PNGs.
 
-Identify the U.S. state and the FINAL accepted version of every key section.
-Counters, addenda, and handwritten changes, and latest signatures override everything earlier.
+Each image is tagged as "Image X/${totalPages}:" where X is the PDF page number (1-${totalPages}).
 
-Return ONLY this exact JSON format. No extra text, no markdown.
+YOUR TASK: Find these EXACT forms by examining the LOWER RIGHT CORNER footer of each page.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. RPA (MAIN CONTRACT)
+   Footer Pattern: "(RPA PAGE X OF 17)" (case-insensitive)
+
+   Find these SPECIFIC internal RPA pages:
+   • RPA Page 1 (Purchase price, property address, buyer names)
+   • RPA Page 2 (Financing terms, contingencies)
+   • RPA Page 3 (Timeline, close of escrow)
+   • RPA Page 16 (Seller signatures)
+   • RPA Page 17 (Agent contact information)
+
+   Report the PDF page number where each appears.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+2. COUNTER OFFERS (CAPTURE ALL PAGES OF ALL COUNTERS)
+
+   Footer Patterns:
+   • "(SCO PAGE X OF 2)" - Seller Counter Offer
+   • "(BCO PAGE X OF 1)" - Buyer Counter Offer
+   • "(SMCO PAGE X OF 2)" - Seller Multiple Counter Offer
+
+   IMPORTANT: There may be MULTIPLE counter offers (SCO #1, SCO #2, BCO #1, etc.)
+   Find EVERY page of EVERY counter offer in the packet.
+
+   Example: If you see "(SCO PAGE 1 OF 2)" on page 38 and "(SCO PAGE 2 OF 2)" on page 39,
+   report BOTH pages [38, 39].
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+3. KEY ADDENDA (SINGLE-PAGE FORMS)
+
+   Footer Patterns:
+   • "(ADM PAGE 1 OF 1)" - Addendum
+   • "(TOA PAGE 1 OF 1)" - Text Overflow Addendum
+   • "(AEA PAGE 1 OF 1)" - Amendment of Existing Agreement Terms
+
+   Report the PDF page number of each addendum found.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+STRICT MATCHING RULES:
+✓ Footer text must be EXACT (footers are always lowercase in parentheses)
+✓ Only report pages where you can CLEARLY read the footer
+✓ Page numbers must be between 1 and ${totalPages}
+✓ If unsure about a footer, DO NOT include it
+✓ No guessing or approximations
+
+RESPONSE FORMAT:
+Return ONLY this JSON structure (no markdown, no extra text):
 
 {
-  "state": "California",
-  "critical_pages": [
-    { "type": "main_contract", "page": 8 },
-    { "type": "purchase_price", "page": 38 },
-    { "type": "buyer_names", "page": 3 },
-    { "type": "seller_names", "page": 3 },
-    { "type": "property_address", "page": 3 },
-    { "type": "counter_or_addendum", "page": 38 },
-    { "type": "disclosures", "page": 45 },
-    { "type": "contingency_dates", "page": 38 }
-  ]
+  "total_pages_analyzed": ${totalPages},
+  "rpa_pages": {
+    "page_1_at_pdf_page": null,
+    "page_2_at_pdf_page": null,
+    "page_3_at_pdf_page": null,
+    "page_16_at_pdf_page": null,
+    "page_17_at_pdf_page": null
+  },
+  "counter_offer_pages": [],
+  "addendum_pages": []
+}
+
+EXAMPLE RESPONSE:
+{
+  "total_pages_analyzed": 42,
+  "rpa_pages": {
+    "page_1_at_pdf_page": 7,
+    "page_2_at_pdf_page": 8,
+    "page_3_at_pdf_page": 9,
+    "page_16_at_pdf_page": 22,
+    "page_17_at_pdf_page": 23
+  },
+  "counter_offer_pages": [1, 38, 39],
+  "addendum_pages": [40]
 }`.trim();
+}
 
 export const EXTRACTOR_PROMPT = `Extract EXACTLY these fields from the FINAL ACCEPTED version of the contract.
 

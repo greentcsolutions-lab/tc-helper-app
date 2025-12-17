@@ -87,8 +87,11 @@ export async function GET(
           stage: "classify_ai",
         });
 
-        // PHASE 2: Grok classification
-        const { criticalPageNumbers, state } = await classifyCriticalPages(allPagesLowRes);
+        // PHASE 2: Grok classification with page count
+        const { criticalPageNumbers, state } = await classifyCriticalPages(
+          allPagesLowRes,
+          pageCount // ← Pass total page count for validation
+        );
 
         emit(controller, {
           type: "progress",
@@ -99,8 +102,7 @@ export async function GET(
 
         // PHASE 3: High-res extraction render (ONLY critical pages)
         const { url: extractZipUrl, key: extractZipKey } = await renderPdfToPngZipUrl(
-        //@ts-ignore
-        parse.pdfBuffer,
+          parse.pdfBuffer,
           { pages: criticalPageNumbers, dpi: 290 }
         );
 
