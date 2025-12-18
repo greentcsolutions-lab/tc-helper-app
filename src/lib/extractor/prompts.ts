@@ -108,22 +108,29 @@ EXAMPLE RESPONSE:
 export const EXTRACTOR_PROMPT = `Extract EXACTLY these fields from the FINAL ACCEPTED version of the contract.
 
 Counters and addenda override the original.
-Handwriting overrides typed text.
 Use the latest dated/signed version.
 
 Return ONLY valid JSON matching this schema exactly. Include confidence 0–100 for every field.
 
 {
   "extracted": {
-    "state": "California",
-    "purchase_price": 1250000,
-    "buyer_names": ["John Doe", "Jane Doe"],
-    "seller_names": ["Robert Smith"],
-    "property_address": "123 Main St, Los Angeles, CA 90210",
-    "closing_date": "2025-12-15",
-    "contingency_removal_date": "2025-11-20",
-    "loan_amount": 1000000,
-    "down_payment": 250000
+    "state": "California",
+    "purchase_price": 1250000,
+    "buyer_names": ["John Doe", "Jane Doe"],
+    "seller_names": ["Robert Smith"],
+    "property_address": "123 Main St, Los Angeles, CA 90210",
+    "closing_date": "2025-12-15" OR "30",
+    "initial_deposit_amount": "10000",
+    "initial_deposit_due": "3" OR "2025-12-15",
+    "loan_amount": 1000000,
+    "down_payment": 250000,
+    "loan_contingency": "17" OR "waived",
+    "appraisal_contingency": "17" OR "waived",
+    "investigation_contingency": "17" OR "waived",
+    "sale_of_buyers_property": "YES" OR "NO",
+    "seller_delivery_of_documents": "7",
+    "subject_to_counter": "YES" OR "NO",
+    "acceptance_date": "2025-12-15"
   },
   "confidence": {
     "purchase_price": 100,
@@ -139,7 +146,6 @@ Return ONLY valid JSON matching this schema exactly. Include confidence 0–100 
 export const SECOND_TURN_PROMPT = `The previous extraction had low confidence or detected handwriting.
 
 Re-examine ONLY the pages shown below with extreme care.
-Handwriting overrides everything.
 Return the exact same JSON schema as before, but with updated values and new confidence scores.
 
 Previous result (for context only, do NOT copy blindly):
