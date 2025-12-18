@@ -1,5 +1,5 @@
 // src/app/api/parse/process/[parseId]/route.ts
-// Version: 2.0.0 - Added pdf-lib page count for exact all-pages classification render
+// Version: 2.2.0 - Added pdf-lib page count for exact all-pages classification render
 // COMPLETE PIPELINE with SSE streaming for live updates
 // 1. Render all pages @ 100 DPI → DEDUCT CREDIT HERE
 // 2. Classify critical pages with Grok
@@ -67,7 +67,7 @@ export async function GET(
 
         const { url: classifyZipUrl, key: classifyZipKey } = await renderPdfToPngZipUrl(
           parse.pdfBuffer,
-          { dpi: 100, maxPages: pageCount } // ← uses exact count → perfect range
+          { dpi: 160, maxPages: pageCount } // ← 160 DPI for readable footers
         );
 
         const allPagesLowRes = await downloadAndExtractZip(classifyZipUrl);
@@ -100,10 +100,26 @@ export async function GET(
           criticalPageNumbers,
         });
 
-        // PHASE 3: High-res extraction render (ONLY critical pages)
+        // PHASE 3: Extract critical pages into new PDF, then render
+        console.log(`[process:${parseId}] Creating new PDF with pages: [${criticalPageNumbers.join(", ")}]`);
+
+        // Create a new PDF with ONLY the critical pages
+        const newPdf = await PDFDocument.create();
+        const sourcePdf = await PDFDocument.load(parse.pdfBuffer);
+
+        // Copy each critical page to the new PDF (maintains original order)
+        for (const pageNum of criticalPageNumbers) {
+          const [copiedPage] = await newPdf.copyPages(sourcePdf, [pageNum - 1]);
+          newPdf.addPage(copiedPage);
+        }
+
+        const criticalPagesPdfBuffer = Buffer.from(await newPdf.save());
+        console.log(`[process:${parseId}] ✓ Extracted ${criticalPageNumbers.length} pages into new PDF (${(criticalPagesPdfBuffer.length / 1024).toFixed(0)} KB)`);
+
+        // Render the new PDF at high quality
         const { url: extractZipUrl, key: extractZipKey } = await renderPdfToPngZipUrl(
-          parse.pdfBuffer,
-          { pages: criticalPageNumbers, dpi: 290 }
+          criticalPagesPdfBuffer,
+          { dpi: 290, maxPages: criticalPageNumbers.length } // Render all pages of this new PDF
         );
 
         const criticalPagesHighRes = await downloadAndExtractZip(extractZipUrl);

@@ -1,5 +1,5 @@
 // src/lib/extractor/prompts.ts
-// Version: 2.0.0 - Dynamic prompt generation from form definitions
+// Version: 3.0.0 - Dynamic prompt generation from form definitions
 /**
  * All static prompts are now pure TS exports.
  * Zero fs calls → cold-start safe, tree-shakable, and type-checkable.
@@ -51,10 +51,13 @@ YOUR TASK: Find these EXACT forms by examining the LOWER RIGHT CORNER footer of 
 
 3. KEY ADDENDA (SINGLE-PAGE FORMS)
 
-   Footer Patterns:
-   • "(ADM PAGE 1 OF 1)" - Addendum
-   • "(TOA PAGE 1 OF 1)" - Text Overflow Addendum
-   • "(AEA PAGE 1 OF 1)" - Amendment of Existing Agreement Terms
+   **CRITICAL: ONLY match these EXACT footer patterns:**
+   • "(ADM PAGE 1 OF 1)" - Addendum (with abbreviation ADM)
+   • "(TOA PAGE 1 OF 1)" - Text Overflow Addendum (with abbreviation TOA)
+   • "(AEA PAGE 1 OF 1)" - Amendment of Existing Agreement Terms (with abbreviation AEA)
+
+   **IGNORE any other forms with "Addendum" in the title** unless they have one of these exact footers.
+   The footer MUST include the specific abbreviation (ADM, TOA, or AEA).
 
    Report the PDF page number of each addendum found.
 
@@ -62,9 +65,13 @@ YOUR TASK: Find these EXACT forms by examining the LOWER RIGHT CORNER footer of 
 
 STRICT MATCHING RULES:
 ✓ Footer text must be EXACT (footers are always lowercase in parentheses)
-✓ Only report pages where you can CLEARLY read the footer
+✓ RPA footers must show "(rpa page X of 17)" - check the page number carefully
+✓ Counter footers must show exact abbreviation: "(sco page X of Y)", "(bco page X of Y)", or "(smco page X of Y)"
+✓ Addendum footers MUST include the abbreviation: "(adm page 1 of 1)", "(toa page 1 of 1)", or "(aea page 1 of 1)"
+✓ Only report pages where you can CLEARLY read the footer text
 ✓ Page numbers must be between 1 and ${totalPages}
-✓ If unsure about a footer, DO NOT include it
+✓ If the footer is blurry or unclear, DO NOT include it
+✓ If a page has "Addendum" in the title but NO matching footer abbreviation, IGNORE it
 ✓ No guessing or approximations
 
 RESPONSE FORMAT:

@@ -1,5 +1,5 @@
 // src/lib/pdf/renderer.ts
-// Version 2.3.0 - Works with exact pageCount via maxPages from process route
+// Version: 3.0.0 - Fixed ZIP corruption by buffering before Blob upload
 // OPTIMIZED: Supports low-DPI classification + high-DPI selective extraction
 // Uses correct Nutrient API format for page selection
 
@@ -18,9 +18,9 @@ export interface RenderResult {
 }
 
 export interface RenderOptions {
-  maxPages?: number;      // First N pages only → now used with exact pageCount for all-pages
+  maxPages?: number;      // First N pages only
   pages?: number[];       // Specific page numbers (1-indexed) - renders ONLY these pages
-  dpi?: number;          // Default 290 for high quality, use 100 for classification
+  dpi?: number;          // Default 290 for high quality, use 120 for classification
 }
 
 /**
@@ -31,10 +31,11 @@ export interface RenderOptions {
  *    { maxPages: 9, dpi: 290 }
  *
  * 2. Classification (all pages at low DPI):
- *    { dpi: 100, maxPages: exactPageCount }
+ *    { dpi: 120 }
  *
  * 3. Extraction (specific pages at high DPI):
  *    { pages: [3, 8, 15, 42], dpi: 290 }
+ *    Creates document with ONLY these pages, then renders
  */
 export async function renderPdfToPngZipUrl(
   buffer: Buffer,
@@ -47,7 +48,7 @@ export async function renderPdfToPngZipUrl(
     fileSizeBytes: buffer.length,
     dpi,
     maxPages,
-    specificPages: pages?.length || "all",
+    pages: pages || "all", // Show actual pages array instead of count
     blobKey: key,
   });
 
@@ -74,18 +75,19 @@ export async function renderPdfToPngZipUrl(
     instructions.parts = pages.map((pageNum) => ({
       file: "document",
       pages: {
-        start: pageNum - 1,
+        start: pageNum - 1,  // 0-indexed
         end: pageNum - 1,
       },
     }));
+    // Render all pages of the assembled document (i.e., only the selected ones)
   } else if (maxPages) {
-    // MODE 1 & 2: Exact range (preview or all pages)
+    // MODE 1: First N pages
     instructions.output.pages = {
       start: 0,
       end: maxPages - 1,
     };
   }
-  // No else needed - omitting output.pages entirely defaults to single page (we avoid this now)
+  // MODE 2: All pages → no pages restriction
 
   form.append("instructions", JSON.stringify(instructions));
 
@@ -109,16 +111,49 @@ export async function renderPdfToPngZipUrl(
       throw new Error(`Nutrient failed: ${res.status} ${text}`);
     }
 
-    console.log("[Nutrient] Success → buffering full response before Blob upload");
+    console.log("[Nutrient] Success → buffering full ZIP before Blob upload");
 
+    // FIX: Fully consume the stream into a Buffer first → avoids corruption/truncation
     const arrayBuffer = await res.arrayBuffer();
-    const responseBuffer = Buffer.from(arrayBuffer);
+    const zipBuffer = Buffer.from(arrayBuffer);
 
-    console.log("[Nutrient] Response buffered:", responseBuffer.length, "bytes");
+    // VALIDATION: Check if this is actually a ZIP file (magic bytes: 50 4B 03 04)
+    const magicBytes = zipBuffer.subarray(0, 4);
+    const isZip =
+      magicBytes[0] === 0x50 &&
+      magicBytes[1] === 0x4B &&
+      (magicBytes[2] === 0x03 || magicBytes[2] === 0x05) &&
+      (magicBytes[3] === 0x04 || magicBytes[3] === 0x06);
 
-    const { url } = await put(key, responseBuffer, {
+    console.log("[Nutrient] File validation:", {
+      size: zipBuffer.length,
+      magicBytes: Array.from(magicBytes).map(b => `0x${b.toString(16).padStart(2, '0')}`).join(' '),
+      isZip,
+      firstChars: zipBuffer.subarray(0, 20).toString('utf8', 0, 20).replace(/[^\x20-\x7E]/g, '.'),
+    });
+
+    if (!isZip) {
+      // Check if it's Base64
+      const asText = zipBuffer.toString('utf8').substring(0, 100);
+      const isBase64 = /^[A-Za-z0-9+/]+=*$/.test(asText.replace(/\s/g, ''));
+
+      console.error("[Nutrient] NOT A ZIP FILE!", {
+        possiblyBase64: isBase64,
+        contentStart: asText,
+      });
+
+      throw new Error(
+        `Nutrient returned invalid format (not a ZIP). ` +
+        `Got ${magicBytes.length} bytes starting with ${magicBytes[0].toString(16)}. ` +
+        `Possibly Base64: ${isBase64}`
+      );
+    }
+
+    console.log("[Nutrient] ✓ Valid ZIP file → uploading to Blob");
+
+    const { url } = await put(key, zipBuffer, {
       access: "public",
-      multipart: true,
+      multipart: true, // Enables progressive chunking + retries for larger ZIPs
       addRandomSuffix: false,
     });
 
@@ -143,10 +178,38 @@ export async function downloadAndExtractZip(
 ): Promise<{ pageNumber: number; base64: string }[]> {
   const JSZip = (await import("jszip")).default;
 
+  console.log("[ZIP Download] Fetching from Blob:", zipUrl);
   const res = await fetch(zipUrl);
-  if (!res.ok) throw new Error("Failed to download ZIP");
+  if (!res.ok) throw new Error(`Failed to download ZIP: ${res.status}`);
 
   const arrayBuffer = await res.arrayBuffer();
+  const downloadedBuffer = Buffer.from(arrayBuffer);
+
+  // VALIDATION: Check if download is actually a ZIP file
+  const magicBytes = downloadedBuffer.subarray(0, 4);
+  const isZip =
+    magicBytes[0] === 0x50 &&
+    magicBytes[1] === 0x4B &&
+    (magicBytes[2] === 0x03 || magicBytes[2] === 0x05) &&
+    (magicBytes[3] === 0x04 || magicBytes[3] === 0x06);
+
+  console.log("[ZIP Download] File validation:", {
+    size: downloadedBuffer.length,
+    magicBytes: Array.from(magicBytes).map(b => `0x${b.toString(16).padStart(2, '0')}`).join(' '),
+    isZip,
+    firstChars: downloadedBuffer.subarray(0, 20).toString('utf8', 0, 20).replace(/[^\x20-\x7E]/g, '.'),
+  });
+
+  if (!isZip) {
+    console.error("[ZIP Download] Downloaded file is NOT a ZIP!");
+    throw new Error(
+      `Downloaded file is not a ZIP. Got ${downloadedBuffer.length} bytes ` +
+      `starting with [${Array.from(magicBytes).map(b => `0x${b.toString(16)}`).join(', ')}]`
+    );
+  }
+
+  console.log("[ZIP Download] ✓ Valid ZIP file → parsing with JSZip");
+
   const zip = await JSZip.loadAsync(arrayBuffer);
 
   const pngFiles = Object.keys(zip.files)
