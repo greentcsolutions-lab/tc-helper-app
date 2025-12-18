@@ -20,7 +20,7 @@ export interface RenderResult {
 export interface RenderOptions {
   maxPages?: number;      // First N pages only
   pages?: number[];       // Specific page numbers (1-indexed) - renders ONLY these pages
-  dpi?: number;          // Default 290 for high quality, use 120 for classification
+  dpi?: number;          // Default 290 for high quality, use 180 for classification
 }
 
 /**
@@ -31,7 +31,7 @@ export interface RenderOptions {
  *    { maxPages: 9, dpi: 290 }
  *
  * 2. Classification (all pages at low DPI):
- *    { dpi: 120 }
+ *    { dpi: 180 }
  *
  * 3. Extraction (specific pages at high DPI):
  *    { pages: [3, 8, 15, 42], dpi: 290 }

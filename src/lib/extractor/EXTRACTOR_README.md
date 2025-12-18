@@ -10,7 +10,7 @@
              │
              ├─► 1. pdf-lib → Get exact pageCount
              │
-             ├─► 2. Nutrient → Render ALL pages @ 120 DPI
+             ├─► 2. Nutrient → Render ALL pages @ 180 DPI
              │   └─► CREDIT DEDUCTED HERE ✅
              │
              ├─► 3. classifier.ts (PARALLEL, 6 pages/batch)
@@ -310,7 +310,7 @@ If COP checkbox is checked (Section L9):
 - **Total: ~35-45s** (well under 60s Hobby limit)
 
 **Cost per Document:**
-- Nutrient (120 DPI + 290 DPI): ~$0.03
+- Nutrient (180 DPI + 290 DPI): ~$0.03
 - Grok Classification: ~$0.01
 - Grok Extraction: ~$0.02
 - **Total: ~$0.06 per parse**
@@ -336,7 +336,7 @@ npm run test:counters -- path/to/multi-counter.pdf
 
 ### Issue: "Missing RPA Page 2"
 **Cause:** Footer not detected or blurry
-**Solution:** Check DPI setting (should be 120+), verify footer is readable
+**Solution:** Check DPI setting (should be 180+), verify footer is readable
 
 ### Issue: "Non-sequential RPA pages"
 **Cause:** Document has counters spliced between RPA pages

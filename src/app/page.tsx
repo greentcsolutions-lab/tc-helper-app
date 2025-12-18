@@ -61,7 +61,7 @@ export default function Home() {
               },
               {
                 icon: CheckCircle2,
-                title: "99.9% Accuracy",
+                title: "95% Accuracy",
                 description: "Handles handwriting, counters, and complex addenda",
               },
               {
