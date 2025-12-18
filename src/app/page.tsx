@@ -52,7 +52,7 @@ export default function Home() {
               {
                 icon: Zap,
                 title: "Lightning Fast",
-                description: "Extract complete RPA data in under 15 seconds",
+                description: "Extract complete RPA data in under 90 seconds",
               },
               {
                 icon: Shield,

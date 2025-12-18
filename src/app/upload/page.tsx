@@ -83,7 +83,7 @@ export default async function UploadPage() {
                 </div>
                 <div>
                   <p className="font-medium text-sm">Lightning Fast</p>
-                  <p className="text-xs text-muted-foreground">Extracts in ~15 seconds</p>
+                  <p className="text-xs text-muted-foreground">Extracts in ~90 seconds</p>
                 </div>
               </div>
 
@@ -92,7 +92,7 @@ export default async function UploadPage() {
                   <CheckCircle className="h-4 w-4 text-blue-600" />
                 </div>
                 <div>
-                  <p className="font-medium text-sm">99.9% Accurate</p>
+                  <p className="font-medium text-sm">95% Accurate</p>
                   <p className="text-xs text-muted-foreground">Handles handwriting</p>
                 </div>
               </div>
