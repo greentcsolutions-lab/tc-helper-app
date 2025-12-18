@@ -67,7 +67,7 @@ export async function GET(
 
         const { url: classifyZipUrl, key: classifyZipKey } = await renderPdfToPngZipUrl(
           parse.pdfBuffer,
-          { dpi: 160, maxPages: pageCount } // ← 160 DPI for readable footers
+          { dpi: 120, maxPages: pageCount } // ← 120 DPI for readable footers | maximize speed/cost
         );
 
         const allPagesLowRes = await downloadAndExtractZip(classifyZipUrl);
