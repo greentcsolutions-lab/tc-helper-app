@@ -1,6 +1,6 @@
 // src/lib/extractor/form-definitions.ts
-// Version: 1.0.0 - California real estate form specifications
-// Defines exact footer patterns and required pages for classification
+// Version: 1.0.0 - 2025-12-18
+// California real estate form specifications
 
 export interface FormDefinition {
   name: string;
@@ -9,25 +9,20 @@ export interface FormDefinition {
 }
 
 export interface RPADefinition extends FormDefinition {
-  requiredInternalPages: number[]; // Which internal RPA pages we need (1, 2, 3, 16, 17)
-  totalPages: 17; // RPA is always 17 pages
+  requiredInternalPages: number[];
+  totalPages: 17;
 }
 
 export interface CounterOfferDefinition extends FormDefinition {
-  abbreviation: string; // SCO, BCO, SMCO
-  captureAllPages: true; // Always capture every page of every counter
+  abbreviation: string;
+  captureAllPages: true;
 }
 
 export interface AddendumDefinition extends FormDefinition {
-  abbreviation: string; // ADM, TOA, AEA
-  singlePage: true; // These are always 1-page forms
+  abbreviation: string;
+  singlePage: true;
 }
 
-/**
- * Main RPA form - we need specific internal pages
- * Internal pages 1-3: Purchase terms, property info, financial details
- * Internal pages 16-17: Signatures, agent contact info
- */
 export const RPA_FORM: RPADefinition = {
   name: "CALIFORNIA RESIDENTIAL PURCHASE AGREEMENT AND JOINT ESCROW INSTRUCTIONS",
   footerPattern: /\(RPA PAGE (\d+) OF 17\)/i,
@@ -36,11 +31,6 @@ export const RPA_FORM: RPADefinition = {
   description: "Main purchase agreement - need pages 1-3 (terms) and 16-17 (signatures/agents)",
 };
 
-/**
- * Counter Offers - capture EVERY page of EVERY counter found
- * Multiple counters are common (SCO #1, SCO #2, BCO #1, etc.)
- * Final terms may be spread across multiple counters
- */
 export const COUNTER_OFFERS: CounterOfferDefinition[] = [
   {
     name: "SELLER COUNTER OFFER",
@@ -65,12 +55,6 @@ export const COUNTER_OFFERS: CounterOfferDefinition[] = [
   },
 ];
 
-/**
- * Key Addenda - single-page forms with important modifications
- * ADM: General addendum with additional terms
- * TOA: Text overflow when standard fields run out of space
- * AEA: Amendments to existing agreement
- */
 export const KEY_ADDENDA: AddendumDefinition[] = [
   {
     name: "ADDENDUM",
@@ -95,9 +79,6 @@ export const KEY_ADDENDA: AddendumDefinition[] = [
   },
 ];
 
-/**
- * Helper: Generate footer examples for prompt
- */
 export function getFooterExamples(): string {
   const rpaExamples = RPA_FORM.requiredInternalPages
     .map(p => `"(RPA PAGE ${p} OF 17)"`)

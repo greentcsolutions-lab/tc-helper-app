@@ -1,4 +1,7 @@
 // src/lib/extractor/extractor.ts
+// Version: 2.0.0 - 2025-12-18
+// Context-aware extraction with counter merger and handwriting rejection
+
 import { EXTRACTOR_PROMPT, SECOND_TURN_PROMPT } from "./prompts";
 
 export async function extractFromCriticalPages(
@@ -41,6 +44,13 @@ export async function extractFromCriticalPages(
 
   try {
     const json = JSON.parse(text.match(/{[\s\S]*}/)?.[0] || "{}");
+    
+    // CRITICAL: Check for handwriting rejection
+    if (json.handwriting_detected && json.rejection_reason) {
+      console.error('[extractor] ✗ DOCUMENT REJECTED:', json.rejection_reason);
+      throw new Error(json.rejection_reason);
+    }
+    
     return {
       extracted: json.extracted || {},
       confidence: json.confidence || { overall_confidence: 0 },

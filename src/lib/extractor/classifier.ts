@@ -1,5 +1,6 @@
 // src/lib/extractor/classifier.ts
-// Version: 3.0.0 - Form-specific footer matching with PNG tagging
+// Version: 3.0.0 - 2025-12-18
+// Form-specific footer matching with PNG tagging + sequential validation
 // Optimized for Vercel Hobby 60s timeout with parallel batches
 
 import { buildClassifierPrompt } from "./prompts";
@@ -48,12 +49,11 @@ async function classifyBatch(
       body: JSON.stringify({
         model: "grok-2-vision-1212",
         temperature: 0,
-        max_tokens: 1024, // Increased for structured response
+        max_tokens: 1024,
         messages: [{
           role: "user",
           content: [
             { type: "text", text: fullPrompt },
-            // Tag each image with its PDF page number, then show the image
             ...batch.flatMap(p => [
               {
                 type: "text",
@@ -72,7 +72,7 @@ async function classifyBatch(
     if (!res.ok) {
       const text = await res.text();
       console.error(`[classifier:batch${batchIndex + 1}] Grok error:`, res.status, text);
-      return {}; // Skip failed batch
+      return {};
     }
 
     const text = (await res.json()).choices[0].message.content;
@@ -106,7 +106,7 @@ export async function classifyCriticalPages(
     throw new Error("classifyCriticalPages received invalid pages array");
   }
 
-  const BATCH_SIZE = 6; // 5-7 page sweet spot
+  const BATCH_SIZE = 6;
   const batches = chunk(pages, BATCH_SIZE);
   const fullPrompt = buildClassifierPrompt(totalPages);
 
@@ -120,6 +120,9 @@ export async function classifyCriticalPages(
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
   console.log(`[classifier] ✓ All batches complete in ${elapsed}s`);
+  
+  // Import sequential validator
+  const { validateRPABlock } = await import('./sequential-validator');
 
   // Aggregate results from all successful batches
   const aggregated: ClassificationResult = {
@@ -179,6 +182,31 @@ export async function classifyCriticalPages(
     .filter(page => page >= 1 && page <= totalPages) // Remove hallucinations
     .sort((a, b) => a - b);
 
+  // Validate RPA block structure
+  const rpaBlock = validateRPABlock(aggregated.rpa_pages);
+  
+  if (!rpaBlock.isValid) {
+    console.error('[classifier] ✗ CRITICAL: RPA block validation failed');
+    throw new Error(`Missing required RPA pages: ${rpaBlock.gaps.join(', ')}`);
+  }
+
+  if (!rpaBlock.isSequential) {
+    console.warn('[classifier] ⚠ RPA pages not sequential - extraction may be less accurate');
+  }
+
+  // Visual debugging in development
+  if (process.env.NODE_ENV === 'development') {
+    const { visualizeClassification, diagnoseClassificationIssues } = await import('./debug-classifier');
+    visualizeClassification(totalPages, aggregated.rpa_pages, aggregated.counter_offer_pages, aggregated.addendum_pages);
+    
+    const issues = diagnoseClassificationIssues(totalPages, aggregated.rpa_pages, aggregated.counter_offer_pages, aggregated.addendum_pages);
+    if (issues.length > 0) {
+      console.log('[classifier] 🔍 DIAGNOSIS:');
+      issues.forEach(issue => console.log(`  ${issue}`));
+      console.log();
+    }
+  }
+
   // Detailed logging with context
   console.log("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
   console.log("[classifier] 📋 CLASSIFICATION RESULTS");
@@ -217,7 +245,7 @@ export async function classifyCriticalPages(
   const criticalImages = pages.filter(p => criticalPageNumbers.includes(p.pageNumber));
 
   return {
-    state: "California", // We know it's CA from form definitions
+    state: "California",
     criticalPageNumbers,
     criticalImages,
   };
