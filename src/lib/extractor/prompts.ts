@@ -10,121 +10,64 @@ import { RPA_FORM, COUNTER_OFFERS, KEY_ADDENDA } from "./form-definitions";
  * Grok receives footer-only PNGs tagged with "Image X/Y:" prefix
  */
 export function buildClassifierPrompt(totalPages: number): string {
-  return `You are analyzing FOOTER IMAGES from a ${totalPages}-page California real estate transaction packet.
+  return `You are analyzing ONLY the bottom ~15% footer strip of each page from a ${totalPages}-page California real estate transaction packet.
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-⚠️ CRITICAL: YOU ARE ONLY SEEING THE BOTTOM 15% OF EACH PAGE ⚠️
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Each image is labeled "━━━ Image X/${totalPages} ━━━" where X is the PDF page number (1-based).
 
-Each image shows ONLY the footer region (bottom 15% of the page).
-You will NOT see headers, main content, or signatures - ONLY footer text.
+CRITICAL: Look EXCLUSIVELY at the BOTTOM-LEFT footer text. This is the ONLY reliable identifier in the crop.
 
-Each image is tagged as "━━━ Image X/${totalPages} ━━━" where X is the PDF page number (1-${totalPages}).
+The format is always:
+[FORM_CODE] REVISED mm/yy (PAGE N OF M)
 
-YOUR TASK: Find these EXACT forms by examining the footer text in each image.
+Examples (case of "Revised"/"REVISED" may vary):
+- "RPA REVISED 6/25 (PAGE 1 OF 17)"
+- "SCO REVISED 12/24 (PAGE 1 OF 2)"
+- "ADM REVISED 6/25 (PAGE 1 OF 1)"
+- "TOA REVISED 6/25 (PAGE 1 OF 1)"
+- "AEA REVISED 6/25 (PAGE 1 OF 1)"
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+The FORM_CODE is always uppercase (RPA, SCO, BCO, SMCO, ADM, TOA, AEA).
 
-⚠️ FOOTER LOCATION: CHECK BOTH CENTER AND LEFT FOOTERS ⚠️
+YOUR TASK: Identify pages by matching this exact bottom-left pattern only.
 
-California forms place critical identifiers in TWO possible locations:
+1. RPA PAGES (main contract – total 17 pages)
+   Match:
+   - "RPA ... (PAGE 1 OF 17)"  → RPA Page 1
+   - "RPA ... (PAGE 2 OF 17)"  → RPA Page 2
+   - "RPA ... (PAGE 3 OF 17)"  → RPA Page 3
+   - "RPA ... (PAGE 16 OF 17)" → RPA Page 16
+   - "RPA ... (PAGE 17 OF 17)" → RPA Page 17
 
-1. **Bottom LEFT footer** (most common):
-   Example: "RPA REVISED 6/25 (PAGE 1 OF 17)"
-   Example: "SCO Revised 12/24 (PAGE 1 OF 2)"
+2. COUNTER OFFERS – capture EVERY page of EVERY counter
+   Match:
+   - "SCO ... (PAGE X OF 2)"   → Seller Counter (include both pages)
+   - "BCO ... (PAGE X OF 1)"   → Buyer Counter
+   - "SMCO ... (PAGE X OF 2)"  → Seller Multiple Counter (include both pages)
 
-2. **Bottom CENTER footer** (some forms like ADM):
-   Example: "ADM REVISED 6/25 (PAGE 1 OF 1)"
-   
-**Match on EITHER location - check BOTH left and center footers for the pattern: "(PAGE X OF Y)"**
+3. KEY SINGLE-PAGE ADDENDA
+   Match ONLY:
+   - "ADM ... (PAGE 1 OF 1)"
+   - "TOA ... (PAGE 1 OF 1)"
+   - "AEA ... (PAGE 1 OF 1)"
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Ignore any centered text, headers, or other footer lines. Do NOT match disclosures or other forms.
 
-1. RPA (MAIN CONTRACT)
-   Footer Pattern: "RPA REVISED X/XX (PAGE X OF 17)" - BOTTOM LEFT corner
-
-   Find these SPECIFIC internal RPA pages:
-   • **RPA Page 1**: Footer shows "(PAGE 1 OF 17)"
-   • **RPA Page 2**: Footer shows "(PAGE 2 OF 17)"
-   • **RPA Page 3**: Footer shows "(PAGE 3 OF 17)"
-   • **RPA Page 16**: Footer shows "(PAGE 16 OF 17)"
-   • **RPA Page 17**: Footer shows "(PAGE 17 OF 17)"
-
-   **SEQUENTIAL VALIDATION**: 
-   - Pages 1-3 are USUALLY consecutive PDF pages (e.g., PDF 11, 12, 13)
-   - Pages 16-17 are USUALLY consecutive and near the END of the RPA block (e.g., PDF 27, 28)
-   - If you find Page 1 at PDF page 11, check PDF pages 12-13 for Pages 2-3
-   - If you find Page 16 at PDF page 27, check PDF page 28 for Page 17
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-2. COUNTER OFFERS (CAPTURE ALL PAGES OF ALL COUNTERS)
-
-   Footer Patterns (BOTTOM LEFT):
-   • "(SCO PAGE X OF 2)" - Seller Counter Offer
-   • "(BCO PAGE X OF 1)" - Buyer Counter Offer  
-   • "(SMCO PAGE X OF 2)" - Seller Multiple Counter Offer
-
-   **IMPORTANT**: There may be MULTIPLE counter offers (SCO #1, SCO #2, BCO #1, etc.)
-   Find EVERY page of EVERY counter in the packet.
-
-   Example: If you see "(SCO PAGE 1 OF 2)" on page 38 and "(SCO PAGE 2 OF 2)" on page 39,
-   report BOTH pages [38, 39].
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-3. KEY ADDENDA (SINGLE-PAGE FORMS)
-
-   **CRITICAL: ONLY match these EXACT footer patterns (BOTTOM LEFT):**
-   • "(ADM PAGE 1 OF 1)" - Addendum (with abbreviation ADM)
-   • "(TOA PAGE 1 OF 1)" - Text Overflow Addendum (with abbreviation TOA)
-   • "(AEA PAGE 1 OF 1)" - Amendment of Existing Agreement Terms (with abbreviation AEA)
-
-   **IGNORE any other forms** unless they have one of these exact footers.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-STRICT MATCHING RULES:
-✓ Check BOTH bottom left AND bottom center footers
-✓ Footer must show exact pattern: "(PAGE X OF Y)" or "(SCO PAGE X OF Y)"
-✓ RPA footers: "(PAGE X OF 17)" in left OR center
-✓ Counter footers: "(SCO PAGE X OF Y)", "(BCO PAGE X OF Y)", or "(SMCO PAGE X OF Y)" in left OR center
-✓ Addendum footers: "(ADM PAGE 1 OF 1)", "(TOA PAGE 1 OF 1)", or "(AEA PAGE 1 OF 1)" in left OR center
-✓ Only report pages where you can CLEARLY read the footer text in the image
-✓ Page numbers must be between 1 and ${totalPages}
-✓ If the footer is blurry or unclear, DO NOT include it
-✓ Use sequential logic: if you find RPA Page 1 at PDF page 11, check pages 12-13 next
-✓ Remember: You're only seeing the bottom 15% of each page (the footer strip)
-
-RESPONSE FORMAT:
-Return ONLY this JSON structure (no markdown, no extra text):
+Return ONLY this exact JSON (no extra text or markdown):
 
 {
   "total_pages_analyzed": ${totalPages},
   "rpa_pages": {
-    "page_1_at_pdf_page": null,
-    "page_2_at_pdf_page": null,
-    "page_3_at_pdf_page": null,
-    "page_16_at_pdf_page": null,
-    "page_17_at_pdf_page": null
+    "page_1_at_pdf_page": number | null,
+    "page_2_at_pdf_page": number | null,
+    "page_3_at_pdf_page": number | null,
+    "page_16_at_pdf_page": number | null,
+    "page_17_at_pdf_page": number | null
   },
-  "counter_offer_pages": [],
-  "addendum_pages": []
+  "counter_offer_pages": [/* ALL PDF page numbers belonging to any SCO/BCO/SMCO */],
+  "addendum_pages": [/* PDF page numbers for ADM/TOA/AEA only */]
 }
 
-EXAMPLE RESPONSE:
-{
-  "total_pages_analyzed": 42,
-  "rpa_pages": {
-    "page_1_at_pdf_page": 7,
-    "page_2_at_pdf_page": 8,
-    "page_3_at_pdf_page": 9,
-    "page_16_at_pdf_page": 22,
-    "page_17_at_pdf_page": 23
-  },
-  "counter_offer_pages": [1, 38, 39],
-  "addendum_pages": [40]
-}`.trim();
+If no match on a page, omit it / use null. Do not guess.`.trim();
 }
 
 export const EXTRACTOR_PROMPT = `You are extracting California RPA contract data. These pages have been pre-filtered to show ONLY the critical pages.

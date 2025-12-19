@@ -66,7 +66,7 @@ export async function GET(
           //@ts-ignore
           parse.pdfBuffer,
           { 
-            dpi: 160,           // Low DPI to keep token usage down
+            dpi: 120,           // Low DPI to keep token usage down (test 120-150 for accuracyy)
             footerOnly: true,   // Sharp will crop to bottom ~15% after download
             totalPages: pageCount  // ← Forces Nutrient to return per-page PNGs in ZIP
           }
