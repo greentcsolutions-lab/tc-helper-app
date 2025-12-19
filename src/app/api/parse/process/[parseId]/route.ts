@@ -1,7 +1,7 @@
 // src/app/api/parse/process/[parseId]/route.ts
 // Version: 2.3.0 - 2025-12-19
-// Added footer-only rendering for classification (85% cost reduction)
 // COMPLETE PIPELINE with SSE streaming for live updates
+// UPDATED: Classification render now uses footerOnly=true → sharp crops bottom 15% after Nutrient render
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
@@ -58,7 +58,7 @@ export async function GET(
         // PHASE 1: Low-res footer-only classification render (ALL pages exact)
         emit(controller, {
           type: "progress",
-          message: "Rendering page footers for AI classification...",
+          message: "Finding the right pages to look at...",
           stage: "classify_render",
         });
 
@@ -66,24 +66,24 @@ export async function GET(
           //@ts-ignore
           parse.pdfBuffer,
           { 
-            dpi: 160,           // Lower DPI is fine for footer text
-            maxPages: pageCount,
-            footerOnly: true    // ← NEW: Only render bottom 15% of each page
+            dpi: 160,           // Low DPI to keep token usage down
+            footerOnly: true    // Nutrient renders full pages → sharp crops to bottom ~15% after download
           }
         );
 
-        const footerImages = await downloadAndExtractZip(classifyZipUrl);
+        // Pass the same options so downloadAndExtractZip knows to apply sharp cropping
+        const footerImages = await downloadAndExtractZip(classifyZipUrl, { footerOnly: true });
 
         // ✅ DEDUCT CREDIT HERE - Nutrient render + download succeeded
         await db.user.update({
           where: { id: parse.userId },
           data: { credits: { decrement: 1 } },
         });
-        console.log(`[process:${parseId}] ✓ Credit deducted - rendered ${footerImages.length} footer strips`);
+        console.log(`[process:${parseId}] ✓ Credit deducted - rendered + cropped ${footerImages.length} footer strips`);
 
         emit(controller, {
           type: "progress",
-          message: `Analyzing ${footerImages.length} page footers with AI vision model...`,
+          message: `Checking ${footerImages.length} pages...`,
           stage: "classify_ai",
         });
 
@@ -95,7 +95,7 @@ export async function GET(
 
         emit(controller, {
           type: "progress",
-          message: `Found ${criticalPageNumbers.length} critical pages - rendering at high quality...`,
+          message: `Found ${criticalPageNumbers.length} critical pages...`,
           stage: "extract_render",
           criticalPageNumbers,
         });
@@ -115,7 +115,7 @@ export async function GET(
         const criticalPagesPdfBuffer = Buffer.from(await newPdf.save());
         console.log(`[process:${parseId}] ✓ Extracted ${criticalPageNumbers.length} pages into new PDF (${(criticalPagesPdfBuffer.length / 1024).toFixed(0)} KB)`);
 
-        // Render the new PDF at high quality (FULL pages this time, not footer-only)
+        // Render the new PDF at high quality (FULL pages this time, no footerOnly)
         const { url: extractZipUrl, key: extractZipKey } = await renderPdfToPngZipUrl(
           criticalPagesPdfBuffer,
           { dpi: 290, maxPages: criticalPageNumbers.length }

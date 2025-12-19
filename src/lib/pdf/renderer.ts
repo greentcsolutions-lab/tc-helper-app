@@ -1,13 +1,13 @@
 // src/lib/pdf/renderer.ts
-// Version: 3.2.0 - 2025-12-19
-// CORRECTED: Flatten → crop bottom 15% → render (for footer-only mode)
-// Uses correct Nutrient cropPages action with PDF-standard cropBox (left/bottom/right/top)
-// Dynamic page size detection via pdf-lib
-// Crop applied AFTER flatten to ensure annotations/signatures are embedded first
+// Version: 3.3.0 - 2025-12-19
+// REMOVED: server-side cropPages attempt (not supported by Nutrient /build API)
+// ADDED: client-side (server-side) cropping with sharp when footerOnly=true
+// sharp cropping applied inline in downloadAndExtractZip
 
 import { bufferToBlob } from "@/lib/utils";
 import { put } from "@vercel/blob";
 import { PDFDocument } from "pdf-lib";
+import sharp from "sharp";  // ← added
 
 if (!process.env.NUTRIENT_API_KEY?.trim()) {
   throw new Error("NUTRIENT_API_KEY missing in .env.local");
@@ -21,16 +21,14 @@ export interface RenderResult {
 }
 
 export interface RenderOptions {
-  maxPages?: number;      // First N pages only
-  pages?: number[];       // Specific page numbers (1-indexed) - renders ONLY these pages
-  dpi?: number;           // Default 290 for high quality, use 160 for classification
-  footerOnly?: boolean;   // NEW: Crop to bottom 15% (footer region only)
+  maxPages?: number;
+  pages?: number[];
+  dpi?: number;
+  footerOnly?: boolean;   // Now: render full pages → crop bottom 15% with sharp
 }
 
 /**
- * Detect page dimensions for proper footer cropping
- * Returns { width, height } in points (72 points = 1 inch)
- * Uses first page — assumes uniform size (standard for CAR forms)
+ * Detect page dimensions (only used for logging now)
  */
 async function detectPageSize(buffer: Buffer): Promise<{ width: number; height: number }> {
   try {
@@ -43,26 +41,12 @@ async function detectPageSize(buffer: Buffer): Promise<{ width: number; height: 
     return { width, height };
   } catch (error) {
     console.warn("[Nutrient] Failed to detect page size, using US Letter default:", error);
-    // Default to US Letter (8.5" × 11" = 612pt × 792pt)
     return { width: 612, height: 792 };
   }
 }
 
 /**
  * Renders PDF to PNG ZIP and uploads to Vercel Blob
- * Supports four modes for cost optimization:
- *
- * 1. Preview (first N pages at high DPI):
- *    { maxPages: 9, dpi: 290 }
- *
- * 2. Classification (all pages, footer-only at low DPI):
- *    { dpi: 160, footerOnly: true }
- *
- * 3. Extraction (specific pages at high DPI):
- *    { pages: [3, 8, 15, 42], dpi: 290 }
- *
- * 4. Full render (all pages at specified DPI):
- *    { dpi: 290 }
  */
 export async function renderPdfToPngZipUrl(
   buffer: Buffer,
@@ -87,7 +71,7 @@ export async function renderPdfToPngZipUrl(
   const form = new FormData();
   form.append("document", bufferToBlob(buffer, "application/pdf"), "document.pdf");
 
-  // Build Nutrient instructions — base: flatten + image output
+  // Only flatten → no crop action (cropPages not supported)
   let instructions: any = {
     parts: [{ file: "document" }],
     actions: [{ type: "flatten" }],
@@ -98,47 +82,28 @@ export async function renderPdfToPngZipUrl(
     },
   };
 
-  // Footer-only mode: add cropPages AFTER flatten
+  // Log intended footer mode for debugging
   if (footerOnly) {
-    const { width, height } = await detectPageSize(buffer);
-    
-    const FOOTER_PERCENTAGE = 0.15;
-    const footerHeight = Math.round(height * FOOTER_PERCENTAGE);
-    
-    // PDF coordinate system: bottom-left origin
-    // We keep bottom 15%: bottom=0, top=footerHeight
-    instructions.actions.push({
-      type: "cropPages",
-      cropBox: {
-        left: 0,
-        bottom: 0,
-        right: Math.round(width),
-        top: footerHeight,
-      },
-      // pageIndexes omitted → applies to all pages
-    });
-
-    console.log(`[Nutrient] Footer-only mode: cropping to bottom ${footerHeight}pt (15% of ${height}pt) — cropBox L0 B0 R${Math.round(width)} T${footerHeight}`);
+    const { height } = await detectPageSize(buffer);
+    const footerHeightPt = Math.round(height * 0.15);
+    console.log(`[Nutrient] footerOnly=true → will crop to bottom ~${footerHeightPt}pt with sharp after render`);
   }
 
-  // Page selection logic
+  // Page selection
   if (pages && pages.length > 0) {
-    // MODE 3: Specific pages only
     instructions.parts = pages.map((pageNum) => ({
       file: "document",
       pages: {
-        start: pageNum - 1,  // 0-indexed
+        start: pageNum - 1,
         end: pageNum - 1,
       },
     }));
   } else if (maxPages) {
-    // MODE 1: First N pages
     instructions.output.pages = {
       start: 0,
       end: maxPages - 1,
     };
   }
-  // MODE 2 & 4: All pages → no restriction
 
   form.append("instructions", JSON.stringify(instructions));
 
@@ -167,7 +132,6 @@ export async function renderPdfToPngZipUrl(
     const arrayBuffer = await res.arrayBuffer();
     const zipBuffer = Buffer.from(arrayBuffer);
 
-    // VALIDATION: Confirm it's a real ZIP (magic bytes PK\x03\x04 or PK\x05\x06)
     const magicBytes = zipBuffer.subarray(0, 4);
     const isZip =
       magicBytes[0] === 0x50 &&
@@ -193,7 +157,7 @@ export async function renderPdfToPngZipUrl(
       addRandomSuffix: false,
     });
 
-    const modeDesc = footerOnly ? "footer strips (bottom 15%)" :
+    const modeDesc = footerOnly ? "full pages (footer crop via sharp)" :
                      pages ? `pages [${pages.join(", ")}]` :
                      maxPages ? `first ${maxPages} pages` :
                      "all pages";
@@ -209,10 +173,11 @@ export async function renderPdfToPngZipUrl(
 
 /**
  * Helper: Download ZIP from Blob and extract PNG array
- * Returns array of { pageNumber, base64 } for immediate use
+ * When footerOnly was requested in the original render, crops each PNG to bottom 15% using sharp
  */
 export async function downloadAndExtractZip(
-  zipUrl: string
+  zipUrl: string,
+  options: RenderOptions = {}  // pass same options used for render
 ): Promise<{ pageNumber: number; base64: string }[]> {
   const JSZip = (await import("jszip")).default;
 
@@ -223,7 +188,6 @@ export async function downloadAndExtractZip(
   const arrayBuffer = await res.arrayBuffer();
   const downloadedBuffer = Buffer.from(arrayBuffer);
 
-  // VALIDATION on download
   const magicBytes = downloadedBuffer.subarray(0, 4);
   const isZip =
     magicBytes[0] === 0x50 &&
@@ -250,7 +214,28 @@ export async function downloadAndExtractZip(
   const pages = await Promise.all(
     pngFiles.map(async (name, i) => {
       const file = zip.file(name)!;
-      const buffer = await file.async("nodebuffer");
+      let buffer = await file.async("nodebuffer");
+
+      // ← NEW: sharp crop to bottom 15% when footerOnly requested
+      if (options.footerOnly) {
+        const image = sharp(buffer);
+        const metadata = await image.metadata();
+        const footerHeight = Math.round(metadata.height! * 0.15);
+
+        if (footerHeight > 0 && metadata.width && metadata.height) {
+          buffer = await image
+            .extract({
+              left: 0,
+              top: metadata.height - footerHeight,
+              width: metadata.width,
+              height: footerHeight,
+            })
+            .toBuffer();
+
+          console.log(`[sharp] Cropped page ${i + 1} to bottom ${footerHeight}px (${(footerHeight / metadata.height * 100).toFixed(1)}%)`);
+        }
+      }
+
       return {
         pageNumber: i + 1,
         base64: `data:image/png;base64,${buffer.toString("base64")}`,
@@ -258,6 +243,6 @@ export async function downloadAndExtractZip(
     })
   );
 
-  console.log(`[ZIP Extract] Loaded ${pages.length} pages from ${zipUrl}`);
+  console.log(`[ZIP Extract] Loaded ${pages.length} pages from ${zipUrl}${options.footerOnly ? " (footer strips applied)" : ""}`);
   return pages;
 }
