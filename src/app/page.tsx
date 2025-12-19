@@ -21,7 +21,7 @@ export default function Home() {
               Real Estate Contracts,
             </span>
             <br />
-            <span className="text-foreground">Parsed in Seconds</span>
+            <span className="text-foreground">Extracted in Seconds</span>
           </h1>
 
           <p className="text-xl md:text-2xl text-muted-foreground mb-10 max-w-3xl mx-auto leading-relaxed">
