@@ -25,14 +25,14 @@ export default function Home() {
           </h1>
 
           <p className="text-xl md:text-2xl text-muted-foreground mb-10 max-w-3xl mx-auto leading-relaxed">
-            California RPA extraction powered by next-gen AI vision. 99.9% accuracy, zero manual typing.
+            California RPA extraction powered by next-gen AI vision. 95% accuracy, <u>zero</u> manual typing.
           </p>
 
           <SignedOut>
             <SignUpButton mode="modal">
               <Button size="lg" className="h-14 px-10 text-lg font-semibold shadow-xl hover:shadow-2xl transition-all">
                 <Sparkles className="mr-2 h-5 w-5" />
-                Start Free — 1 Parse Included
+                Start Free — 1 Credit Included
               </Button>
             </SignUpButton>
             <p className="text-sm text-muted-foreground mt-4">No credit card required</p>
@@ -77,7 +77,7 @@ export default function Home() {
               {
                 icon: Award,
                 title: "California Certified",
-                description: "Optimized for CAR forms and CA real estate law",
+                description: "Optimized for CAR forms and CA real estate",
               },
             ].map((feature, i) => (
               <Card
