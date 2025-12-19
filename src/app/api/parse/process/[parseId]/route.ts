@@ -1,16 +1,15 @@
 // src/app/api/parse/process/[parseId]/route.ts
-// Version: 2.6.0 - 2025-12-19
-// CREDIT-SAVER MODE: After cropping footer strips, immediately throw error to exit early
-// Saves ~50-70% of Grok vision credits during prompt/debug phase
-// Remove this block when ready for full classification
+// Version: 2.7.0 - 2025-12-19
+// FULL PRODUCTION MODE: Complete pipeline runs end-to-end
+// No debug ZIP upload, no early exit, no extra logs for cropped images
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
 import { renderPdfToPngZipUrl, downloadAndExtractZip } from "@/lib/pdf/renderer";
+import { classifyCriticalPages } from "@/lib/extractor/classifier";
+import { extractFromCriticalPages } from "@/lib/extractor/extractor";
 import { PDFDocument } from "pdf-lib";
-import { put } from "@vercel/blob";
-import JSZip from "jszip";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -54,6 +53,7 @@ export async function GET(
         const pageCount = pdfDoc.getPageCount();
         console.log(`[process:${parseId}] PDF loaded - ${pageCount} pages detected`);
 
+        // PHASE 1: Footer-only classification render
         emit(controller, {
           type: "progress",
           message: "Rendering page footers for AI classification...",
@@ -71,62 +71,122 @@ export async function GET(
 
         const footerImages = await downloadAndExtractZip(classifyZipUrl, { footerOnly: true });
 
-        // CREDIT DEDUCTION (still charge for Nutrient render)
         await db.user.update({
           where: { id: parse.userId },
           data: { credits: { decrement: 1 } },
         });
         console.log(`[process:${parseId}] ✓ Credit deducted - rendered + cropped ${footerImages.length} footer strips`);
 
-        // === CREDIT-SAVER EARLY EXIT ===
-        // Upload debug ZIP and throw to stop classification/extraction
-        console.log("[CREDIT-SAVER] Early exit after cropping — uploading debug ZIP");
-
-        const zip = new JSZip();
-        footerImages.forEach((img) => {
-          const buffer = Buffer.from(img.base64.split(",")[1], "base64");
-          const filename = `page-${img.pageNumber.toString().padStart(3, "0")}.png`;
-          zip.file(filename, buffer);
-        });
-
-        const zipBuffer = await zip.generateAsync({ type: "nodebuffer" });
-        const debugKey = `debug/footer-strips/${parseId}.zip`;
-        const { url: debugZipUrl } = await put(debugKey, zipBuffer, {
-          access: "public",
-          addRandomSuffix: false,
-        });
-
-        console.log(`[CREDIT-SAVER] Cropped footer strips ZIP ready: ${debugZipUrl}`);
-
-        emit(controller, {
-          type: "debug_footer_zip",
-          message: "Credit-saver mode: Early exit after cropping. Debug ZIP uploaded.",
-          debugZipUrl,
-        });
-
-        // Throw to exit route immediately — no classification or extraction
-        throw new Error("CREDIT-SAVER EARLY EXIT: Footer strips cropped and uploaded. Classification skipped to save Grok credits.");
-
-        // === END OF EARLY EXIT BLOCK ===
-        // When ready for full run, comment out or remove the block above
-
-        // Normal flow continues below (will be skipped while early exit active)
         emit(controller, {
           type: "progress",
           message: `Analyzing ${footerImages.length} page footers with AI vision model...`,
           stage: "classify_ai",
         });
 
-        // ... rest of classification, extraction, etc. unchanged ...
+        // PHASE 2: Classification
+        const { criticalPageNumbers, state } = await classifyCriticalPages(
+          footerImages,
+          pageCount
+        );
 
+        emit(controller, {
+          type: "progress",
+          message: `Found ${criticalPageNumbers.length} critical pages - rendering at high quality...`,
+          stage: "extract_render",
+          criticalPageNumbers,
+        });
+
+        // PHASE 3: High-res extraction render
+        console.log(`[process:${parseId}] Creating new PDF with pages: [${criticalPageNumbers.join(", ")}]`);
+
+        const newPdf = await PDFDocument.create();
+        //@ts-ignore
+        const sourcePdf = await PDFDocument.load(parse.pdfBuffer);
+
+        for (const pageNum of criticalPageNumbers) {
+          const [copiedPage] = await newPdf.copyPages(sourcePdf, [pageNum - 1]);
+          newPdf.addPage(copiedPage);
+        }
+
+        const criticalPagesPdfBuffer = Buffer.from(await newPdf.save());
+        console.log(`[process:${parseId}] ✓ Extracted ${criticalPageNumbers.length} pages into new PDF (${(criticalPagesPdfBuffer.length / 1024).toFixed(0)} KB)`);
+
+        const { url: extractZipUrl, key: extractZipKey } = await renderPdfToPngZipUrl(
+          criticalPagesPdfBuffer,
+          { dpi: 200, maxPages: criticalPageNumbers.length } // 200 DPI plenty for most digital extractions
+        );
+
+        const criticalPagesHighRes = await downloadAndExtractZip(extractZipUrl);
+
+        emit(controller, {
+          type: "progress",
+          message: "Extracting contract terms with Grok...",
+          stage: "extract_ai",
+        });
+
+        // PHASE 4: Extraction
+        const firstPass = await extractFromCriticalPages(criticalPagesHighRes);
+
+        let finalResult = firstPass;
+        const needsSecondPass =
+          firstPass.confidence.overall_confidence < 80 ||
+          firstPass.handwriting_detected;
+
+        if (needsSecondPass) {
+          emit(controller, {
+            type: "progress",
+            message: "Low confidence detected - running second extraction pass...",
+            stage: "extract_ai_boost",
+          });
+
+          const secondPass = await extractFromCriticalPages(
+            criticalPagesHighRes,
+            firstPass.raw
+          );
+          finalResult = secondPass;
+        }
+
+        const needsReview =
+          finalResult.confidence.overall_confidence < 80 ||
+          finalResult.handwriting_detected ||
+          (finalResult.confidence.purchase_price || 0) < 90 ||
+          (finalResult.confidence.buyer_names || 0) < 90;
+
+        // PHASE 5: Save results
+        await db.parse.update({
+          where: { id: parseId },
+          data: {
+            status: needsReview ? "NEEDS_REVIEW" : "COMPLETED",
+            state: state || "Unknown",
+            criticalPageNumbers,
+            rawJson: finalResult.raw,
+            formatted: finalResult.extracted,
+            renderZipUrl: extractZipUrl,
+            renderZipKey: extractZipKey,
+            finalizedAt: new Date(),
+          },
+        });
+
+        console.log(`[process:${parseId}] ✓ Complete - confidence: ${finalResult.confidence.overall_confidence}%`);
+
+        emit(controller, {
+          type: "complete",
+          extracted: finalResult.extracted,
+          confidence: finalResult.confidence,
+          criticalPageNumbers,
+          zipUrl: extractZipUrl,
+          needsReview,
+        });
+
+        controller.close();
       } catch (error: any) {
-        console.error(`[process:${parseId}] Failed:`, error.message || error);
+        console.error(`[process:${parseId}] Failed:`, error);
 
         await db.parse.update({
           where: { id: parseId },
           data: {
             status: "EXTRACTION_FAILED",
-            errorMessage: error.message || "Unknown error",
+            errorMessage: error.message,
           },
         }).catch(() => {});
 

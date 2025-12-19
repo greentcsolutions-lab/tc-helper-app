@@ -21,7 +21,7 @@
              │
              ├─► 4. pdf-lib → Extract critical pages to new PDF
              │
-             ├─► 5. Nutrient → Render critical pages @ 290 DPI
+             ├─► 5. Nutrient → Render critical pages @ 200 DPI
              │
              ├─► 6. extractor.ts → Grok extraction
              │   ├─► Use field-locator.ts (5-column table coordinates)
@@ -305,12 +305,12 @@ If COP checkbox is checked (Section L9):
 
 **40-Page Document:**
 - Classification: ~3-4s (7 parallel batches)
-- High-res render: ~5-6s (8 critical pages @ 290 DPI)
+- High-res render: ~5-6s (8 critical pages @ 200 DPI)
 - Extraction: ~4-5s (Grok 4.1 reasoning)
 - **Total: ~35-45s** (well under 60s Hobby limit)
 
 **Cost per Document:**
-- Nutrient (180 DPI + 290 DPI): ~$0.03
+- Nutrient (180 DPI + 200 DPI): ~$0.03
 - Grok Classification: ~$0.01
 - Grok Extraction: ~$0.02
 - **Total: ~$0.06 per parse**

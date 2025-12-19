@@ -54,7 +54,7 @@ export async function renderPdfToPngZipUrl(
   buffer: Buffer,
   options: RenderOptions = {}
 ): Promise<RenderResult> {
-  const { maxPages, pages, dpi = 290, footerOnly = false, totalPages } = options;
+  const { maxPages, pages, dpi = 200, footerOnly = false, totalPages } = options; // 200 DPI is PLENTY for Grok 4.1 fast reasoning 
   const key = `renders/${Date.now()}-${crypto.randomUUID()}.zip`;
 
   console.log("[Nutrient] Render config:", {

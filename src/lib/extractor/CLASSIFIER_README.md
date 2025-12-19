@@ -37,7 +37,7 @@
              │       ├─► Filter (page > pageCount)
              │       └─► Sort: [1, 7, 8, 9, 22, 23, 38, 39, 40]
              │
-             ├─► 6. Nutrient → Render ONLY critical pages @ 290 DPI
+             ├─► 6. Nutrient → Render ONLY critical pages @ 200 DPI
              │
              └─► 7. Grok Extraction → Final JSON
 ```
@@ -117,7 +117,7 @@ Addenda (1 pages):
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-[Nutrient] Render config: pages [1, 7, 8, 9, 22, 23, 38, 40] @ 290 DPI
+[Nutrient] Render config: pages [1, 7, 8, 9, 22, 23, 38, 40] @ 200 DPI
 ```
 
 ---
