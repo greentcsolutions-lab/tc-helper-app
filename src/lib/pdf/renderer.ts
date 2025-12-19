@@ -1,7 +1,9 @@
 // src/lib/pdf/renderer.ts
-// Version: 3.1.0 - 2025-12-19
-// Added footer-only rendering mode with dynamic page size detection
-// OPTIMIZED: Supports low-DPI classification + high-DPI selective extraction
+// Version: 3.2.0 - 2025-12-19
+// CORRECTED: Flatten → crop bottom 15% → render (for footer-only mode)
+// Uses correct Nutrient cropPages action with PDF-standard cropBox (left/bottom/right/top)
+// Dynamic page size detection via pdf-lib
+// Crop applied AFTER flatten to ensure annotations/signatures are embedded first
 
 import { bufferToBlob } from "@/lib/utils";
 import { put } from "@vercel/blob";
@@ -28,6 +30,7 @@ export interface RenderOptions {
 /**
  * Detect page dimensions for proper footer cropping
  * Returns { width, height } in points (72 points = 1 inch)
+ * Uses first page — assumes uniform size (standard for CAR forms)
  */
 async function detectPageSize(buffer: Buffer): Promise<{ width: number; height: number }> {
   try {
@@ -43,24 +46,6 @@ async function detectPageSize(buffer: Buffer): Promise<{ width: number; height: 
     // Default to US Letter (8.5" × 11" = 612pt × 792pt)
     return { width: 612, height: 792 };
   }
-}
-
-/**
- * Calculate footer crop region (bottom 15% of page)
- * Returns Nutrient crop action with dynamic coordinates
- */
-function calculateFooterCrop(pageWidth: number, pageHeight: number) {
-  const FOOTER_PERCENTAGE = 0.15;
-  const footerHeight = Math.round(pageHeight * FOOTER_PERCENTAGE);
-  const cropTop = Math.round(pageHeight - footerHeight);
-  
-  return {
-    type: "crop",
-    left: 0,
-    top: cropTop,
-    width: Math.round(pageWidth),
-    height: footerHeight,
-  };
 }
 
 /**
@@ -102,7 +87,7 @@ export async function renderPdfToPngZipUrl(
   const form = new FormData();
   form.append("document", bufferToBlob(buffer, "application/pdf"), "document.pdf");
 
-  // Build Nutrient instructions based on mode
+  // Build Nutrient instructions — base: flatten + image output
   let instructions: any = {
     parts: [{ file: "document" }],
     actions: [{ type: "flatten" }],
@@ -113,17 +98,30 @@ export async function renderPdfToPngZipUrl(
     },
   };
 
-  // NEW: Add footer crop action BEFORE flatten
+  // Footer-only mode: add cropPages AFTER flatten
   if (footerOnly) {
     const { width, height } = await detectPageSize(buffer);
-    const cropAction = calculateFooterCrop(width, height);
     
-    // Insert crop action BEFORE flatten
-    instructions.actions.unshift(cropAction);
+    const FOOTER_PERCENTAGE = 0.15;
+    const footerHeight = Math.round(height * FOOTER_PERCENTAGE);
     
-    console.log(`[Nutrient] Footer-only mode: cropping to bottom ${Math.round(cropAction.height)}pt (15% of ${height}pt page)`);
+    // PDF coordinate system: bottom-left origin
+    // We keep bottom 15%: bottom=0, top=footerHeight
+    instructions.actions.push({
+      type: "cropPages",
+      cropBox: {
+        left: 0,
+        bottom: 0,
+        right: Math.round(width),
+        top: footerHeight,
+      },
+      // pageIndexes omitted → applies to all pages
+    });
+
+    console.log(`[Nutrient] Footer-only mode: cropping to bottom ${footerHeight}pt (15% of ${height}pt) — cropBox L0 B0 R${Math.round(width)} T${footerHeight}`);
   }
 
+  // Page selection logic
   if (pages && pages.length > 0) {
     // MODE 3: Specific pages only
     instructions.parts = pages.map((pageNum) => ({
@@ -140,7 +138,7 @@ export async function renderPdfToPngZipUrl(
       end: maxPages - 1,
     };
   }
-  // MODE 2 & 4: All pages → no pages restriction
+  // MODE 2 & 4: All pages → no restriction
 
   form.append("instructions", JSON.stringify(instructions));
 
@@ -166,11 +164,10 @@ export async function renderPdfToPngZipUrl(
 
     console.log("[Nutrient] Success → buffering full ZIP before Blob upload");
 
-    // Fully consume the stream into a Buffer first → avoids corruption/truncation
     const arrayBuffer = await res.arrayBuffer();
     const zipBuffer = Buffer.from(arrayBuffer);
 
-    // VALIDATION: Check if this is actually a ZIP file (magic bytes: 50 4B 03 04)
+    // VALIDATION: Confirm it's a real ZIP (magic bytes PK\x03\x04 or PK\x05\x06)
     const magicBytes = zipBuffer.subarray(0, 4);
     const isZip =
       magicBytes[0] === 0x50 &&
@@ -182,27 +179,13 @@ export async function renderPdfToPngZipUrl(
       size: zipBuffer.length,
       magicBytes: Array.from(magicBytes).map(b => `0x${b.toString(16).padStart(2, '0')}`).join(' '),
       isZip,
-      firstChars: zipBuffer.subarray(0, 20).toString('utf8', 0, 20).replace(/[^\x20-\x7E]/g, '.'),
     });
 
     if (!isZip) {
-      // Check if it's Base64
-      const asText = zipBuffer.toString('utf8').substring(0, 100);
-      const isBase64 = /^[A-Za-z0-9+/]+=*$/.test(asText.replace(/\s/g, ''));
-
-      console.error("[Nutrient] NOT A ZIP FILE!", {
-        possiblyBase64: isBase64,
-        contentStart: asText,
-      });
-
-      throw new Error(
-        `Nutrient returned invalid format (not a ZIP). ` +
-        `Got ${magicBytes.length} bytes starting with ${magicBytes[0].toString(16)}. ` +
-        `Possibly Base64: ${isBase64}`
-      );
+      throw new Error("Nutrient returned invalid format (not a ZIP)");
     }
 
-    console.log("[Nutrient] ✓ Valid ZIP file → uploading to Blob");
+    console.log("[Nutrient] ✓ Valid ZIP → uploading to Blob");
 
     const { url } = await put(key, zipBuffer, {
       access: "public",
@@ -210,9 +193,9 @@ export async function renderPdfToPngZipUrl(
       addRandomSuffix: false,
     });
 
-    const modeDesc = footerOnly ? "footer strips" :
+    const modeDesc = footerOnly ? "footer strips (bottom 15%)" :
                      pages ? `pages [${pages.join(", ")}]` :
-                     maxPages ? `first ${maxPages} pages (exact)` :
+                     maxPages ? `first ${maxPages} pages` :
                      "all pages";
     
     console.log(`[Nutrient] Complete: ${modeDesc} @ ${dpi} DPI → ${key}`);
@@ -240,7 +223,7 @@ export async function downloadAndExtractZip(
   const arrayBuffer = await res.arrayBuffer();
   const downloadedBuffer = Buffer.from(arrayBuffer);
 
-  // VALIDATION: Check if download is actually a ZIP file
+  // VALIDATION on download
   const magicBytes = downloadedBuffer.subarray(0, 4);
   const isZip =
     magicBytes[0] === 0x50 &&
@@ -248,22 +231,9 @@ export async function downloadAndExtractZip(
     (magicBytes[2] === 0x03 || magicBytes[2] === 0x05) &&
     (magicBytes[3] === 0x04 || magicBytes[3] === 0x06);
 
-  console.log("[ZIP Download] File validation:", {
-    size: downloadedBuffer.length,
-    magicBytes: Array.from(magicBytes).map(b => `0x${b.toString(16).padStart(2, '0')}`).join(' '),
-    isZip,
-    firstChars: downloadedBuffer.subarray(0, 20).toString('utf8', 0, 20).replace(/[^\x20-\x7E]/g, '.'),
-  });
-
   if (!isZip) {
-    console.error("[ZIP Download] Downloaded file is NOT a ZIP!");
-    throw new Error(
-      `Downloaded file is not a ZIP. Got ${downloadedBuffer.length} bytes ` +
-      `starting with [${Array.from(magicBytes).map(b => `0x${b.toString(16)}`).join(', ')}]`
-    );
+    throw new Error("Downloaded file from Blob is not a valid ZIP");
   }
-
-  console.log("[ZIP Download] ✓ Valid ZIP file → parsing with JSZip");
 
   const zip = await JSZip.loadAsync(arrayBuffer);
 
