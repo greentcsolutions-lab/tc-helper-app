@@ -1,23 +1,31 @@
 // src/lib/extractor/prompts.ts
-// Version: 2.0.0 - 2025-12-18
+// Version: 2.1.0 - 2025-01-09
+// Updated for footer-only image classification
 // Dynamic prompt generation with field coordinates and handwriting rejection
 
 import { RPA_FORM, COUNTER_OFFERS, KEY_ADDENDA } from "./form-definitions";
 
 /**
  * Builds the classifier prompt dynamically based on total pages
- * Grok receives tagged PNGs with "Image X/Y:" prefix
+ * Grok receives footer-only PNGs tagged with "Image X/Y:" prefix
  */
 export function buildClassifierPrompt(totalPages: number): string {
-  return `You are analyzing a ${totalPages}-page California real estate transaction packet converted to PNGs.
+  return `You are analyzing FOOTER IMAGES from a ${totalPages}-page California real estate transaction packet.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️ CRITICAL: YOU ARE ONLY SEEING THE BOTTOM 15% OF EACH PAGE ⚠️
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Each image shows ONLY the footer region (bottom 15% of the page).
+You will NOT see headers, main content, or signatures - ONLY footer text.
 
 Each image is tagged as "━━━ Image X/${totalPages} ━━━" where X is the PDF page number (1-${totalPages}).
 
-YOUR TASK: Find these EXACT forms by examining the LOWER RIGHT CORNER footer of each page.
+YOUR TASK: Find these EXACT forms by examining the footer text in each image.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-⚠️ IMPORTANT: THERE ARE TWO FOOTERS ON EACH RPA PAGE ⚠️
+⚠️ FOOTER LOCATION: TWO FOOTERS EXIST ON EACH RPA PAGE ⚠️
 
 1. **Bottom center footer**: Full document title + page number
    Example: "CALIFORNIA RESIDENTIAL PURCHASE AGREEMENT (PAGE 1 OF 17)"
@@ -34,20 +42,11 @@ The center footer is NOT reliable for classification.
    Footer Pattern: "RPA REVISED X/XX (PAGE X OF 17)" - BOTTOM LEFT corner
 
    Find these SPECIFIC internal RPA pages:
-   • **RPA Page 1**: Top section has "THIS IS AN OFFER FROM [buyer names]"
-     Footer: "(PAGE 1 OF 17)"
-   
-   • **RPA Page 2**: Starts with "G. SELLER PAYMENT TO COVER BUYER EXPENSES" in the table
-     Footer: "(PAGE 2 OF 17)"
-   
-   • **RPA Page 3**: Contains "P. Items Included and Excluded" section
-     Footer: "(PAGE 3 OF 17)"
-   
-   • **RPA Page 16**: Contains seller signature blocks and dates
-     Footer: "(PAGE 16 OF 17)"
-   
-   • **RPA Page 17**: Contains "REAL ESTATE BROKERS" section with agent contact info
-     Footer: "(PAGE 17 OF 17)"
+   • **RPA Page 1**: Footer shows "(PAGE 1 OF 17)"
+   • **RPA Page 2**: Footer shows "(PAGE 2 OF 17)"
+   • **RPA Page 3**: Footer shows "(PAGE 3 OF 17)"
+   • **RPA Page 16**: Footer shows "(PAGE 16 OF 17)"
+   • **RPA Page 17**: Footer shows "(PAGE 17 OF 17)"
 
    **SEQUENTIAL VALIDATION**: 
    - Pages 1-3 are USUALLY consecutive PDF pages (e.g., PDF 11, 12, 13)
@@ -67,10 +66,6 @@ The center footer is NOT reliable for classification.
    **IMPORTANT**: There may be MULTIPLE counter offers (SCO #1, SCO #2, BCO #1, etc.)
    Find EVERY page of EVERY counter in the packet.
 
-   **SIGNATURE LOCATIONS**:
-   - SCO/SMCO: Seller signs on page 1, Buyer signs on page 2
-   - BCO: Both sign on page 1 (it's a 1-page form)
-
    Example: If you see "(SCO PAGE 1 OF 2)" on page 38 and "(SCO PAGE 2 OF 2)" on page 39,
    report BOTH pages [38, 39].
 
@@ -83,8 +78,7 @@ The center footer is NOT reliable for classification.
    • "(TOA PAGE 1 OF 1)" - Text Overflow Addendum (with abbreviation TOA)
    • "(AEA PAGE 1 OF 1)" - Amendment of Existing Agreement Terms (with abbreviation AEA)
 
-   **IGNORE any other forms with "Addendum" in the title** unless they have one of these exact footers.
-   The footer MUST include the specific abbreviation (ADM, TOA, or AEA).
+   **IGNORE any other forms** unless they have one of these exact footers.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -94,10 +88,11 @@ STRICT MATCHING RULES:
 ✓ RPA footers must show "(PAGE X OF 17)" - check the page number carefully
 ✓ Counter footers must show exact abbreviation: "(SCO PAGE X OF Y)", "(BCO PAGE X OF Y)", or "(SMCO PAGE X OF Y)"
 ✓ Addendum footers MUST include the abbreviation: "(ADM PAGE 1 OF 1)", "(TOA PAGE 1 OF 1)", or "(AEA PAGE 1 OF 1)"
-✓ Only report pages where you can CLEARLY read the bottom LEFT footer text
+✓ Only report pages where you can CLEARLY read the footer text in the image
 ✓ Page numbers must be between 1 and ${totalPages}
 ✓ If the footer is blurry or unclear, DO NOT include it
 ✓ Use sequential logic: if you find RPA Page 1 at PDF page 11, check pages 12-13 next
+✓ Remember: You're only seeing the bottom 15% of each page (the footer strip)
 
 RESPONSE FORMAT:
 Return ONLY this JSON structure (no markdown, no extra text):

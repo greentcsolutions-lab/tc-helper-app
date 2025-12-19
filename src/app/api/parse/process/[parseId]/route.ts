@@ -1,11 +1,7 @@
 // src/app/api/parse/process/[parseId]/route.ts
-// Version: 2.2.0 - Added pdf-lib page count for exact all-pages classification render
+// Version: 2.3.0 - 2025-12-19
+// Added footer-only rendering for classification (85% cost reduction)
 // COMPLETE PIPELINE with SSE streaming for live updates
-// 1. Render all pages @ 100 DPI → DEDUCT CREDIT HERE
-// 2. Classify critical pages with Grok
-// 3. Render critical pages @ 290 DPI
-// 4. Extract with Grok
-// 5. Stream results + critical page URLs
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
@@ -13,7 +9,7 @@ import { db } from "@/lib/prisma";
 import { renderPdfToPngZipUrl, downloadAndExtractZip } from "@/lib/pdf/renderer";
 import { classifyCriticalPages } from "@/lib/extractor/classifier";
 import { extractFromCriticalPages } from "@/lib/extractor/extractor";
-import { PDFDocument } from "pdf-lib"; // ← NEW: for exact page count
+import { PDFDocument } from "pdf-lib";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -53,44 +49,48 @@ export async function GET(
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        // NEW: Get exact page count with pdf-lib (fast, in-memory)
+        // Get exact page count with pdf-lib (fast, in-memory)
+        //@ts-ignore
         const pdfDoc = await PDFDocument.load(parse.pdfBuffer);
         const pageCount = pdfDoc.getPageCount();
         console.log(`[process:${parseId}] PDF loaded - ${pageCount} pages detected`);
 
-        // PHASE 1: Low-res classification render (ALL pages exact)
+        // PHASE 1: Low-res footer-only classification render (ALL pages exact)
         emit(controller, {
           type: "progress",
-          message: "Rendering all pages at low resolution...",
+          message: "Rendering page footers for AI classification...",
           stage: "classify_render",
         });
 
         const { url: classifyZipUrl, key: classifyZipKey } = await renderPdfToPngZipUrl(
+          //@ts-ignore
           parse.pdfBuffer,
-          { dpi: 180, maxPages: pageCount } // ← 180 DPI for readable footers 
+          { 
+            dpi: 160,           // Lower DPI is fine for footer text
+            maxPages: pageCount,
+            footerOnly: true    // ← NEW: Only render bottom 15% of each page
+          }
         );
 
-        const allPagesLowRes = await downloadAndExtractZip(classifyZipUrl);
+        const footerImages = await downloadAndExtractZip(classifyZipUrl);
 
         // ✅ DEDUCT CREDIT HERE - Nutrient render + download succeeded
-        // This prevents abuse of free retries if they cancel before extraction completes
-        // If Grok fails later, user still consumed Nutrient resources (fair charge)
         await db.user.update({
           where: { id: parse.userId },
           data: { credits: { decrement: 1 } },
         });
-        console.log(`[process:${parseId}] ✓ Credit deducted - user has ${allPagesLowRes.length} rendered pages`);
+        console.log(`[process:${parseId}] ✓ Credit deducted - rendered ${footerImages.length} footer strips`);
 
         emit(controller, {
           type: "progress",
-          message: `Analyzing ${allPagesLowRes.length} pages with AI vision model...`,
+          message: `Analyzing ${footerImages.length} page footers with AI vision model...`,
           stage: "classify_ai",
         });
 
         // PHASE 2: Grok classification with page count
         const { criticalPageNumbers, state } = await classifyCriticalPages(
-          allPagesLowRes,
-          pageCount // ← Pass total page count for validation
+          footerImages,
+          pageCount
         );
 
         emit(controller, {
@@ -100,14 +100,13 @@ export async function GET(
           criticalPageNumbers,
         });
 
-        // PHASE 3: Extract critical pages into new PDF, then render
+        // PHASE 3: Extract critical pages into new PDF, then render at high DPI
         console.log(`[process:${parseId}] Creating new PDF with pages: [${criticalPageNumbers.join(", ")}]`);
 
-        // Create a new PDF with ONLY the critical pages
         const newPdf = await PDFDocument.create();
+        //@ts-ignore
         const sourcePdf = await PDFDocument.load(parse.pdfBuffer);
 
-        // Copy each critical page to the new PDF (maintains original order)
         for (const pageNum of criticalPageNumbers) {
           const [copiedPage] = await newPdf.copyPages(sourcePdf, [pageNum - 1]);
           newPdf.addPage(copiedPage);
@@ -116,10 +115,10 @@ export async function GET(
         const criticalPagesPdfBuffer = Buffer.from(await newPdf.save());
         console.log(`[process:${parseId}] ✓ Extracted ${criticalPageNumbers.length} pages into new PDF (${(criticalPagesPdfBuffer.length / 1024).toFixed(0)} KB)`);
 
-        // Render the new PDF at high quality
+        // Render the new PDF at high quality (FULL pages this time, not footer-only)
         const { url: extractZipUrl, key: extractZipKey } = await renderPdfToPngZipUrl(
           criticalPagesPdfBuffer,
-          { dpi: 290, maxPages: criticalPageNumbers.length } // Render all pages of this new PDF
+          { dpi: 290, maxPages: criticalPageNumbers.length }
         );
 
         const criticalPagesHighRes = await downloadAndExtractZip(extractZipUrl);
@@ -168,7 +167,7 @@ export async function GET(
             criticalPageNumbers,
             rawJson: finalResult.raw,
             formatted: finalResult.extracted,
-            renderZipUrl: extractZipUrl, // Keep high-res critical pages temporarily
+            renderZipUrl: extractZipUrl,
             renderZipKey: extractZipKey,
             finalizedAt: new Date(),
           },
@@ -182,7 +181,7 @@ export async function GET(
           extracted: finalResult.extracted,
           confidence: finalResult.confidence,
           criticalPageNumbers,
-          zipUrl: extractZipUrl, // Client will display these images
+          zipUrl: extractZipUrl,
           needsReview,
         });
 
