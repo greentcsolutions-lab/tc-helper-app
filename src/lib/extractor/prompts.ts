@@ -1,8 +1,6 @@
 // src/lib/extractor/prompts.ts
-// Version: 2.2.0 - 2025-12-19
-// Updated for checkbox-aware loan type (VA override + multiple checkbox detection)
-// Added home_warranty.provider
-// Added loan_type_note for conflict reporting
+// Version: 2.3.0 - 2025-12-19
+// FIXED: Added explicit JSON response schema for classification
 
 import { RPA_FORM, COUNTER_OFFERS, KEY_ADDENDA } from "./form-definitions";
 
@@ -44,20 +42,75 @@ Ignore all other lines, titles, broker information, logos, or any other content.
 
 Match ONLY when you can clearly read the complete revision line.
 If the text is blurry or incomplete, do NOT match it.
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 1. RPA (MAIN CONTRACT)
 If the revision line contains "RPA" + any case "Revised" + date + "(PAGE N OF 17)" and N is:
-• 1 → RPA Page 1
-• 2 → RPA Page 2
-• 3 → RPA Page 3
-• 16 → RPA Page 16
-• 17 → RPA Page 17
+- 1 → RPA Page 1
+- 2 → RPA Page 2
+- 3 → RPA Page 3
+- 16 → RPA Page 16
+- 17 → RPA Page 17
 
 **SEQUENTIAL HINT** (use to increase confidence):
 - Pages 1–3 are usually consecutive PDF pages
 - Pages 16–17 are usually consecutive and near the end of the RPA block
 
-Return ONLY valid JSON. No markdown, no explanation.`.trim();
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2. COUNTER OFFERS (SCO, BCO, SMCO)
+If footer contains "SCO Revised" + date + "(PAGE N OF 2)" → Seller Counter Offer
+If footer contains "BCO Revised" + date + "(PAGE N OF 1)" → Buyer Counter Offer
+If footer contains "SMCO Revised" + date + "(PAGE N OF 2)" → Seller Multiple Counter
+
+For counters, capture ALL pages (both page 1 AND page 2 for SCO/SMCO).
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+3. KEY ADDENDA (ADM, TOA, AEA)
+If footer contains "ADM Revised" + date + "(PAGE 1 OF 1)" → General Addendum
+If footer contains "TOA Revised" + date + "(PAGE 1 OF 1)" → Text Overflow Addendum
+If footer contains "AEA Revised" + date + "(PAGE 1 OF 1)" → Amendment
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Return ONLY this exact JSON structure (no markdown, no explanation):
+
+{
+  "total_pages_analyzed": ${totalPages},
+  "rpa_pages": {
+    "page_1_at_pdf_page": null,
+    "page_2_at_pdf_page": null,
+    "page_3_at_pdf_page": null,
+    "page_16_at_pdf_page": null,
+    "page_17_at_pdf_page": null
+  },
+  "counter_offer_pages": [],
+  "addendum_pages": []
+}
+
+EXAMPLE RESPONSE for a 40-page packet where:
+- RPA pages 1-3 are at PDF pages 7-9
+- RPA pages 16-17 are at PDF pages 22-23
+- SCO found at PDF pages 1-2
+- ADM found at PDF page 40
+
+{
+  "total_pages_analyzed": 40,
+  "rpa_pages": {
+    "page_1_at_pdf_page": 7,
+    "page_2_at_pdf_page": 8,
+    "page_3_at_pdf_page": 9,
+    "page_16_at_pdf_page": 22,
+    "page_17_at_pdf_page": 23
+  },
+  "counter_offer_pages": [1, 2],
+  "addendum_pages": [40]
+}
+
+RULES:
+- Set page numbers to null if not found
+- Do NOT hallucinate page numbers beyond ${totalPages}
+- Use the PDF page number from the "━━━ Image X/${totalPages} ━━━" tag
+- Double-check all page numbers are ≤ ${totalPages}`.trim();
 }
 
 export const EXTRACTOR_PROMPT = `

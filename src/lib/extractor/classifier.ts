@@ -1,5 +1,6 @@
 // src/lib/extractor/classifier.ts
-// Version: 3.0.0 - 2025-12-18
+// Version: 3.1.0 - 2025-12-19
+// FIXED: Added better error logging and response validation
 // Form-specific footer matching with PNG tagging + sequential validation
 // Optimized for Vercel Hobby 60s timeout with parallel batches
 
@@ -75,13 +76,27 @@ async function classifyBatch(
       return {};
     }
 
-    const text = (await res.json()).choices[0].message.content;
+    const data = await res.json();
+    const text = data.choices[0].message.content;
+    
+    console.log(`[classifier:batch${batchIndex + 1}] Raw response (first 200 chars):`, text.substring(0, 200));
 
     let json: Partial<ClassificationResult>;
     try {
-      json = JSON.parse(text.match(/{[\s\S]*}/)?.[0] || "{}");
+      const jsonMatch = text.match(/{[\s\S]*}/)?.[0];
+      if (!jsonMatch) {
+        console.error(`[classifier:batch${batchIndex + 1}] No JSON found in response. Full text:`, text);
+        return {};
+      }
+      json = JSON.parse(jsonMatch);
     } catch (err) {
-      console.error(`[classifier:batch${batchIndex + 1}] JSON parse failed:`, text);
+      console.error(`[classifier:batch${batchIndex + 1}] JSON parse failed. Full text:`, text);
+      return {};
+    }
+
+    // Validate response structure
+    if (!json || typeof json !== 'object') {
+      console.error(`[classifier:batch${batchIndex + 1}] Invalid response structure:`, json);
       return {};
     }
 
@@ -138,13 +153,25 @@ export async function classifyCriticalPages(
     addendum_pages: [],
   };
 
+  let successfulBatches = 0;
+  let failedBatches = 0;
+
   for (const result of results) {
     if (result.status === "rejected") {
       console.warn("[classifier] Batch failed:", result.reason);
+      failedBatches++;
       continue;
     }
 
     const data = result.value;
+
+    if (!data || Object.keys(data).length === 0) {
+      console.warn("[classifier] Batch returned empty result");
+      failedBatches++;
+      continue;
+    }
+
+    successfulBatches++;
 
     // Merge RPA pages (first non-null value wins)
     if (data.rpa_pages) {
@@ -164,6 +191,8 @@ export async function classifyCriticalPages(
       aggregated.addendum_pages.push(...data.addendum_pages);
     }
   }
+
+  console.log(`[classifier] Batch results: ${successfulBatches} successful, ${failedBatches} failed`);
 
   // Flatten all critical pages to single array
   const criticalPagesSet = new Set<number>();
@@ -187,6 +216,11 @@ export async function classifyCriticalPages(
   
   if (!rpaBlock.isValid) {
     console.error('[classifier] ✗ CRITICAL: RPA block validation failed');
+    console.error('[classifier] Missing pages:', rpaBlock.gaps);
+    console.error('[classifier] This might be due to:');
+    console.error('  1. Footer images too small/blurry (current DPI: 160)');
+    console.error('  2. Grok not finding footer text in cropped images');
+    console.error('  3. Footer text in unexpected location (not bottom 15%)');
     throw new Error(`Missing required RPA pages: ${rpaBlock.gaps.join(', ')}`);
   }
 
