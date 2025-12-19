@@ -50,7 +50,6 @@ export async function GET(
     async start(controller) {
       try {
         // Get exact page count with pdf-lib (fast, in-memory)
-        //@ts-ignore
         const pdfDoc = await PDFDocument.load(parse.pdfBuffer);
         const pageCount = pdfDoc.getPageCount();
         console.log(`[process:${parseId}] PDF loaded - ${pageCount} pages detected`);
@@ -63,7 +62,6 @@ export async function GET(
         });
 
         const { url: classifyZipUrl, key: classifyZipKey } = await renderPdfToPngZipUrl(
-          //@ts-ignore
           parse.pdfBuffer,
           { 
             dpi: 160,           // Lower DPI is fine for footer text
@@ -104,7 +102,6 @@ export async function GET(
         console.log(`[process:${parseId}] Creating new PDF with pages: [${criticalPageNumbers.join(", ")}]`);
 
         const newPdf = await PDFDocument.create();
-        //@ts-ignore
         const sourcePdf = await PDFDocument.load(parse.pdfBuffer);
 
         for (const pageNum of criticalPageNumbers) {

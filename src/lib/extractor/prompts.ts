@@ -1,5 +1,5 @@
 // src/lib/extractor/prompts.ts
-// Version: 2.1.0 - 2025-01-09
+// Version: 2.1.0 - 2025-12-19
 // Updated for footer-only image classification
 // Dynamic prompt generation with field coordinates and handwriting rejection
 
@@ -25,16 +25,18 @@ YOUR TASK: Find these EXACT forms by examining the footer text in each image.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-⚠️ FOOTER LOCATION: TWO FOOTERS EXIST ON EACH RPA PAGE ⚠️
+⚠️ FOOTER LOCATION: CHECK BOTH CENTER AND LEFT FOOTERS ⚠️
 
-1. **Bottom center footer**: Full document title + page number
-   Example: "CALIFORNIA RESIDENTIAL PURCHASE AGREEMENT (PAGE 1 OF 17)"
+California forms place critical identifiers in TWO possible locations:
 
-2. **Bottom left footer** (THIS IS WHAT YOU MUST MATCH):
+1. **Bottom LEFT footer** (most common):
    Example: "RPA REVISED 6/25 (PAGE 1 OF 17)"
+   Example: "SCO Revised 12/24 (PAGE 1 OF 2)"
+
+2. **Bottom CENTER footer** (some forms like ADM):
+   Example: "ADM REVISED 6/25 (PAGE 1 OF 1)"
    
-**ONLY match on the bottom LEFT footer with format: "(PAGE X OF 17)"**
-The center footer is NOT reliable for classification.
+**Match on EITHER location - check BOTH left and center footers for the pattern: "(PAGE X OF Y)"**
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -83,11 +85,11 @@ The center footer is NOT reliable for classification.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 STRICT MATCHING RULES:
-✓ Look at BOTTOM LEFT footer only (ignore center footer)
+✓ Check BOTH bottom left AND bottom center footers
 ✓ Footer must show exact pattern: "(PAGE X OF Y)" or "(SCO PAGE X OF Y)"
-✓ RPA footers must show "(PAGE X OF 17)" - check the page number carefully
-✓ Counter footers must show exact abbreviation: "(SCO PAGE X OF Y)", "(BCO PAGE X OF Y)", or "(SMCO PAGE X OF Y)"
-✓ Addendum footers MUST include the abbreviation: "(ADM PAGE 1 OF 1)", "(TOA PAGE 1 OF 1)", or "(AEA PAGE 1 OF 1)"
+✓ RPA footers: "(PAGE X OF 17)" in left OR center
+✓ Counter footers: "(SCO PAGE X OF Y)", "(BCO PAGE X OF Y)", or "(SMCO PAGE X OF Y)" in left OR center
+✓ Addendum footers: "(ADM PAGE 1 OF 1)", "(TOA PAGE 1 OF 1)", or "(AEA PAGE 1 OF 1)" in left OR center
 ✓ Only report pages where you can CLEARLY read the footer text in the image
 ✓ Page numbers must be between 1 and ${totalPages}
 ✓ If the footer is blurry or unclear, DO NOT include it
