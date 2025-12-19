@@ -38,6 +38,7 @@ Exact examples of real footer text:
 
 FORM_CODE is always uppercase: RPA, SCO, BCO, SMCO, ADM, TOA, AEA.
 
+Ignore all other form codes. 
 Ignore alignment — the line may be left-aligned or centered.
 Ignore all other lines, titles, broker information, logos, or any other content.
 
