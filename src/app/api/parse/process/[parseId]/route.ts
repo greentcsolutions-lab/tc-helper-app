@@ -1,7 +1,8 @@
 // src/app/api/parse/process/[parseId]/route.ts
-// Version: 2.3.0 - 2025-12-19
+// Version: 2.4.0 - 2025-12-19
 // COMPLETE PIPELINE with SSE streaming for live updates
-// UPDATED: Classification render now forces per-page PNGs via totalPages + sharp crops footer strips
+// Classification: footerOnly=true + totalPages forces per-page PNGs → sharp crops bottom 15%
+// Extraction: full high-res critical pages (untouched)
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
@@ -66,16 +67,16 @@ export async function GET(
           //@ts-ignore
           parse.pdfBuffer,
           { 
-            dpi: 120,           // Low DPI to keep token usage down (test 120-150 for accuracyy)
+            dpi: 160,           // Low DPI keeps token usage minimal
             footerOnly: true,   // Sharp will crop to bottom ~15% after download
-            totalPages: pageCount  // ← Forces Nutrient to return per-page PNGs in ZIP
+            totalPages: pageCount  // Forces Nutrient to return per-page PNGs in ZIP
           }
         );
 
-        // Pass the same options so downloadAndExtractZip knows to apply sharp cropping
+        // Pass the same options so downloadAndExtractZip applies sharp cropping
         const footerImages = await downloadAndExtractZip(classifyZipUrl, { footerOnly: true });
 
-        // ✅ DEDUCT CREDIT HERE - Nutrient render + download succeeded
+        // DEDUCT CREDIT HERE - Nutrient render + download succeeded
         await db.user.update({
           where: { id: parse.userId },
           data: { credits: { decrement: 1 } },
@@ -116,7 +117,7 @@ export async function GET(
         const criticalPagesPdfBuffer = Buffer.from(await newPdf.save());
         console.log(`[process:${parseId}] ✓ Extracted ${criticalPageNumbers.length} pages into new PDF (${(criticalPagesPdfBuffer.length / 1024).toFixed(0)} KB)`);
 
-        // Render the new PDF at high quality (FULL pages this time, no footerOnly)
+        // Render the new PDF at high quality (FULL pages, no footerOnly)
         const { url: extractZipUrl, key: extractZipKey } = await renderPdfToPngZipUrl(
           criticalPagesPdfBuffer,
           { dpi: 290, maxPages: criticalPageNumbers.length }
