@@ -48,7 +48,7 @@ async function classifyBatch(
         Authorization: `Bearer ${process.env.XAI_API_KEY}`,
       },
       body: JSON.stringify({
-        model: "grok-2-vision-1212",
+        model: "grok-4-1-fast-reasoning",
         temperature: 0,
         max_tokens: 1024,
         messages: [{

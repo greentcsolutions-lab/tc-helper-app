@@ -69,7 +69,10 @@ export async function GET(
           }
         );
 
-        const footerImages = await downloadAndExtractZip(classifyZipUrl, { footerOnly: true });
+        const footerImages = await downloadAndExtractZip(classifyZipUrl, { 
+            footerOnly: true,
+            dpi: 160  // ← Pass the DPI we rendered at
+        });
 
         await db.user.update({
           where: { id: parse.userId },

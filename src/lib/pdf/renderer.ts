@@ -1,9 +1,8 @@
 // src/lib/pdf/renderer.ts
-// Version: 3.4.0 - 2025-12-19
-// FIXED: Always force per-page PNGs in ZIP by setting output.pages for multi-page renders
-// ADDED: New optional totalPages param to renderPdfToPngZipUrl
-// When footerOnly=true and totalPages provided → sharp crops bottom 15% per page
-// Single-page renders (rare) still work as direct PNG (but we never hit that)
+// Version: 3.5.0 - 2025-12-19
+// FIXED: Preserve original DPI metadata when cropping footer strips with Sharp
+// ADDED: dpi option passed through to downloadAndExtractZip for metadata preservation
+// IMPROVED: Better logging for DPI handling
 
 import { bufferToBlob } from "@/lib/utils";
 import { put } from "@vercel/blob";
@@ -26,11 +25,11 @@ export interface RenderOptions {
   pages?: number[];
   dpi?: number;
   footerOnly?: boolean;
-  totalPages?: number;  // ← NEW: Pass total page count for classification (all pages)
+  totalPages?: number; // Pass total page count for classification (all pages)
 }
 
 /**
- * Detect page dimensions (only used for logging now)
+ * Detect page dimensions (used for logging and footer crop calculation)
  */
 async function detectPageSize(buffer: Buffer): Promise<{ width: number; height: number }> {
   try {
@@ -54,7 +53,7 @@ export async function renderPdfToPngZipUrl(
   buffer: Buffer,
   options: RenderOptions = {}
 ): Promise<RenderResult> {
-  const { maxPages, pages, dpi = 200, footerOnly = false, totalPages } = options; // 200 DPI is PLENTY for Grok 4.1 fast reasoning 
+  const { maxPages, pages, dpi = 290, footerOnly = false, totalPages } = options;
   const key = `renders/${Date.now()}-${crypto.randomUUID()}.zip`;
 
   console.log("[Nutrient] Render config:", {
@@ -84,9 +83,7 @@ export async function renderPdfToPngZipUrl(
     },
   };
 
-  // CRITICAL FIX: Force per-page PNGs in ZIP for multi-page docs
-  // Nutrient returns single concatenated PNG if no page range specified
-  // We always render >1 page → always set output.pages to cover the range
+  // Force per-page PNGs in ZIP for multi-page docs
   const renderPageCount = pages?.length || maxPages || totalPages;
   if (renderPageCount && renderPageCount > 1) {
     instructions.output.pages = {
@@ -96,14 +93,14 @@ export async function renderPdfToPngZipUrl(
     console.log(`[Nutrient] Forcing per-page PNGs: output.pages { start: 0, end: ${renderPageCount - 1} }`);
   }
 
-  // Log footer mode (crop happens client-side now)
+  // Log footer mode
   if (footerOnly) {
     const { height } = await detectPageSize(buffer);
     const footerHeightPt = Math.round(height * 0.15);
     console.log(`[Nutrient] footerOnly=true → will crop to bottom ~${footerHeightPt}pt with sharp after render`);
   }
 
-  // Specific pages mode overrides everything
+  // Specific pages mode
   if (pages && pages.length > 0) {
     instructions.parts = pages.map((pageNum) => ({
       file: "document",
@@ -112,7 +109,6 @@ export async function renderPdfToPngZipUrl(
         end: pageNum - 1,
       },
     }));
-    // Remove output.pages if specific parts are used (Nutrient handles it)
     delete instructions.output.pages;
   }
 
@@ -150,12 +146,6 @@ export async function renderPdfToPngZipUrl(
       (magicBytes[2] === 0x03 || magicBytes[2] === 0x05) &&
       (magicBytes[3] === 0x04 || magicBytes[3] === 0x06);
 
-    console.log("[Nutrient] File validation:", {
-      size: zipBuffer.length,
-      magicBytes: Array.from(magicBytes).map(b => `0x${b.toString(16).padStart(2, '0')}`).join(' '),
-      isZip,
-    });
-
     if (!isZip) {
       throw new Error("Nutrient returned invalid format (not a ZIP)");
     }
@@ -183,8 +173,8 @@ export async function renderPdfToPngZipUrl(
 }
 
 /**
- * Helper: Download ZIP from Blob and extract PNG array
- * When footerOnly was requested, crops each PNG to bottom 15% using sharp
+ * Download ZIP from Blob and extract PNG array
+ * When footerOnly=true, crops each PNG to bottom 15% and preserves original DPI metadata
  */
 export async function downloadAndExtractZip(
   zipUrl: string,
@@ -230,6 +220,11 @@ export async function downloadAndExtractZip(
       if (options.footerOnly) {
         const image = sharp(buffer);
         const metadata = await image.metadata();
+
+        // Preserve original density from Nutrient render
+        // Fallback chain: input metadata → options.dpi → 160
+        const targetDpi = metadata.density ?? options.dpi ?? 160;
+
         const footerHeight = Math.round(metadata.height! * 0.15);
 
         if (footerHeight > 0 && metadata.width && metadata.height) {
@@ -240,11 +235,10 @@ export async function downloadAndExtractZip(
               width: metadata.width,
               height: footerHeight,
             })
-            .withMetadata({ density: metadata.density || 160 }) // ← PRESERVE DPI
-            .png({ compressionLevel: 6 }) // ← Re-encode as PNG with DPI metadata
+            .withMetadata({ density: targetDpi }) // ← Preserves DPI in output PNG metadata
             .toBuffer();
 
-          console.log(`[sharp] Cropped page ${i + 1} to bottom ${footerHeight}px (${(footerHeight / metadata.height * 100).toFixed(1)}%) @ ${metadata.density || 160} DPI`);
+          console.log(`[sharp] Cropped page ${i + 1} to bottom ${footerHeight}px @ ${targetDpi} DPI preserved`);
         }
       }
 
@@ -255,6 +249,6 @@ export async function downloadAndExtractZip(
     })
   );
 
-  console.log(`[ZIP Extract] Loaded ${pages.length} pages from ${zipUrl}${options.footerOnly ? " (footer strips applied)" : ""}`);
+  console.log(`[ZIP Extract] Loaded ${pages.length} pages from ${zipUrl}${options.footerOnly ? " (footer strips with DPI preserved)" : ""}`);
   return pages;
 }
