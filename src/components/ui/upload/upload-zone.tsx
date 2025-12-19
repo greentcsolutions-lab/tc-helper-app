@@ -44,7 +44,7 @@ export default function UploadZone() {
     if (view !== "processing") return;
 
     const interval = setInterval(() => {
-      if (Date.now() - lastActivity.current > 5000) {
+      if (Date.now() - lastActivity.current > 10000) {
         setJokeIndex((prev) => (prev + 1) % JOKES.length);
         setLiveMessage(JOKES[jokeIndex]);
       }
