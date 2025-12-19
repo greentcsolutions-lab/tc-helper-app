@@ -77,3 +77,4 @@ model Parse {
   @@index([userId, createdAt])
   @@map("parses")
 }
+
