@@ -1,13 +1,14 @@
 // src/lib/pdf/renderer.ts
-// Version: 3.3.0 - 2025-12-19
-// REMOVED: server-side cropPages attempt (not supported by Nutrient /build API)
-// ADDED: client-side (server-side) cropping with sharp when footerOnly=true
-// sharp cropping applied inline in downloadAndExtractZip
+// Version: 3.4.0 - 2025-12-19
+// FIXED: Always force per-page PNGs in ZIP by setting output.pages for multi-page renders
+// ADDED: New optional totalPages param to renderPdfToPngZipUrl
+// When footerOnly=true and totalPages provided → sharp crops bottom 15% per page
+// Single-page renders (rare) still work as direct PNG (but we never hit that)
 
 import { bufferToBlob } from "@/lib/utils";
 import { put } from "@vercel/blob";
 import { PDFDocument } from "pdf-lib";
-import sharp from "sharp";  // ← added
+import sharp from "sharp";
 
 if (!process.env.NUTRIENT_API_KEY?.trim()) {
   throw new Error("NUTRIENT_API_KEY missing in .env.local");
@@ -24,7 +25,8 @@ export interface RenderOptions {
   maxPages?: number;
   pages?: number[];
   dpi?: number;
-  footerOnly?: boolean;   // Now: render full pages → crop bottom 15% with sharp
+  footerOnly?: boolean;
+  totalPages?: number;  // ← NEW: Pass total page count for classification (all pages)
 }
 
 /**
@@ -52,7 +54,7 @@ export async function renderPdfToPngZipUrl(
   buffer: Buffer,
   options: RenderOptions = {}
 ): Promise<RenderResult> {
-  const { maxPages, pages, dpi = 290, footerOnly = false } = options;
+  const { maxPages, pages, dpi = 290, footerOnly = false, totalPages } = options;
   const key = `renders/${Date.now()}-${crypto.randomUUID()}.zip`;
 
   console.log("[Nutrient] Render config:", {
@@ -61,6 +63,7 @@ export async function renderPdfToPngZipUrl(
     maxPages,
     pages: pages || "all",
     footerOnly,
+    totalPages,
     blobKey: key,
   });
 
@@ -71,7 +74,6 @@ export async function renderPdfToPngZipUrl(
   const form = new FormData();
   form.append("document", bufferToBlob(buffer, "application/pdf"), "document.pdf");
 
-  // Only flatten → no crop action (cropPages not supported)
   let instructions: any = {
     parts: [{ file: "document" }],
     actions: [{ type: "flatten" }],
@@ -82,14 +84,26 @@ export async function renderPdfToPngZipUrl(
     },
   };
 
-  // Log intended footer mode for debugging
+  // CRITICAL FIX: Force per-page PNGs in ZIP for multi-page docs
+  // Nutrient returns single concatenated PNG if no page range specified
+  // We always render >1 page → always set output.pages to cover the range
+  const renderPageCount = pages?.length || maxPages || totalPages;
+  if (renderPageCount && renderPageCount > 1) {
+    instructions.output.pages = {
+      start: 0,
+      end: renderPageCount - 1,
+    };
+    console.log(`[Nutrient] Forcing per-page PNGs: output.pages { start: 0, end: ${renderPageCount - 1} }`);
+  }
+
+  // Log footer mode (crop happens client-side now)
   if (footerOnly) {
     const { height } = await detectPageSize(buffer);
     const footerHeightPt = Math.round(height * 0.15);
     console.log(`[Nutrient] footerOnly=true → will crop to bottom ~${footerHeightPt}pt with sharp after render`);
   }
 
-  // Page selection
+  // Specific pages mode overrides everything
   if (pages && pages.length > 0) {
     instructions.parts = pages.map((pageNum) => ({
       file: "document",
@@ -98,11 +112,8 @@ export async function renderPdfToPngZipUrl(
         end: pageNum - 1,
       },
     }));
-  } else if (maxPages) {
-    instructions.output.pages = {
-      start: 0,
-      end: maxPages - 1,
-    };
+    // Remove output.pages if specific parts are used (Nutrient handles it)
+    delete instructions.output.pages;
   }
 
   form.append("instructions", JSON.stringify(instructions));
@@ -173,11 +184,11 @@ export async function renderPdfToPngZipUrl(
 
 /**
  * Helper: Download ZIP from Blob and extract PNG array
- * When footerOnly was requested in the original render, crops each PNG to bottom 15% using sharp
+ * When footerOnly was requested, crops each PNG to bottom 15% using sharp
  */
 export async function downloadAndExtractZip(
   zipUrl: string,
-  options: RenderOptions = {}  // pass same options used for render
+  options: RenderOptions = {}
 ): Promise<{ pageNumber: number; base64: string }[]> {
   const JSZip = (await import("jszip")).default;
 
@@ -216,7 +227,6 @@ export async function downloadAndExtractZip(
       const file = zip.file(name)!;
       let buffer = await file.async("nodebuffer");
 
-      // ← NEW: sharp crop to bottom 15% when footerOnly requested
       if (options.footerOnly) {
         const image = sharp(buffer);
         const metadata = await image.metadata();

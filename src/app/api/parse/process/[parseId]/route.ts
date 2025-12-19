@@ -1,7 +1,7 @@
 // src/app/api/parse/process/[parseId]/route.ts
 // Version: 2.3.0 - 2025-12-19
 // COMPLETE PIPELINE with SSE streaming for live updates
-// UPDATED: Classification render now uses footerOnly=true → sharp crops bottom 15% after Nutrient render
+// UPDATED: Classification render now forces per-page PNGs via totalPages + sharp crops footer strips
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
@@ -58,7 +58,7 @@ export async function GET(
         // PHASE 1: Low-res footer-only classification render (ALL pages exact)
         emit(controller, {
           type: "progress",
-          message: "Finding the right pages to look at...",
+          message: "Rendering page footers for AI classification...",
           stage: "classify_render",
         });
 
@@ -67,7 +67,8 @@ export async function GET(
           parse.pdfBuffer,
           { 
             dpi: 160,           // Low DPI to keep token usage down
-            footerOnly: true    // Nutrient renders full pages → sharp crops to bottom ~15% after download
+            footerOnly: true,   // Sharp will crop to bottom ~15% after download
+            totalPages: pageCount  // ← Forces Nutrient to return per-page PNGs in ZIP
           }
         );
 
@@ -83,7 +84,7 @@ export async function GET(
 
         emit(controller, {
           type: "progress",
-          message: `Checking ${footerImages.length} pages...`,
+          message: `Analyzing ${footerImages.length} page footers with AI vision model...`,
           stage: "classify_ai",
         });
 
@@ -95,7 +96,7 @@ export async function GET(
 
         emit(controller, {
           type: "progress",
-          message: `Found ${criticalPageNumbers.length} critical pages...`,
+          message: `Found ${criticalPageNumbers.length} critical pages - rendering at high quality...`,
           stage: "extract_render",
           criticalPageNumbers,
         });
