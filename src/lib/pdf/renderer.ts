@@ -240,9 +240,11 @@ export async function downloadAndExtractZip(
               width: metadata.width,
               height: footerHeight,
             })
+            .withMetadata({ density: metadata.density || 160 }) // ← PRESERVE DPI
+            .png({ compressionLevel: 6 }) // ← Re-encode as PNG with DPI metadata
             .toBuffer();
 
-          console.log(`[sharp] Cropped page ${i + 1} to bottom ${footerHeight}px (${(footerHeight / metadata.height * 100).toFixed(1)}%)`);
+          console.log(`[sharp] Cropped page ${i + 1} to bottom ${footerHeight}px (${(footerHeight / metadata.height * 100).toFixed(1)}%) @ ${metadata.density || 160} DPI`);
         }
       }
 
