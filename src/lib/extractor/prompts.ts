@@ -150,7 +150,7 @@ RULES:
 - If a footer is unclear or ambiguous, mark that page as null rather than guessing`.trim();
 }
 
-// IMPROVED: Zero-example, step-by-step reasoning, strict override rules, anti-hallucination guards
+// FIXES: handwriting false-positive on digital sigs, checkbox detection (CRB, home warranty), all-cash loan_type
 export const EXTRACTOR_PROMPT = `
 You are an expert California real estate transaction analyst examining 5-10 high-resolution PNG images from a single transaction packet.
 
@@ -160,34 +160,64 @@ Each image is labeled with its exact role, e.g.:
 - "RPA PAGE 3 OF 17 (ITEMS INCLUDED & HOME WARRANTY)"
 - "RPA PAGE 16 OF 17 (SIGNATURES)"
 - "RPA PAGE 17 OF 17 (BROKER INFO)"
-- "SELLER COUNTER OFFER #1" (or #2, etc.)
-- "BUYER COUNTER OFFER #1"
-- "ADDENDUM" or similar
+- "SELLER COUNTER OFFER #1"
+- "ADDENDUM" etc.
 
-CRITICAL INSTRUCTIONS (follow exactly):
-1. First, extract all values from the RPA pages ONLY — these are the baseline terms.
-2. Then, scan ALL counter offer and addendum pages in order of appearance (highest number = latest).
-3. A counter/addendum OVERRIDES a baseline value ONLY if it explicitly changes that field (e.g., new price, modified contingencies, different deposit, seller credit added).
-4. Do NOT assume a counter changes something unless it is clearly written on that page.
-5. The FINAL ACCEPTANCE DATE is determined by the latest fully-signed document:
-   - Find the highest-numbered counter with BOTH buyer and seller signatures/dates.
-   - If latest is buyer-originated (RPA or BCO) → use seller's signature date.
-   - If latest is seller-originated (SCO or SMCO) → use buyer's signature date.
-   - If no valid counters → use RPA seller signature date.
-6. Detect handwriting anywhere → set handwriting_detected: true and lower relevant confidence scores.
-7. For every field, assign a confidence 0-100 based on clarity/readability (lower for handwriting, faint text, ambiguity).
-8. NEVER invent data. If a field is blank/not visible/not mentioned → use null or schema default where applicable.
-9. You MUST think step-by-step internally, but return ONLY the final JSON.
+CRITICAL INSTRUCTIONS — FOLLOW EXACTLY:
 
-Return EXACTLY one valid JSON object matching this structure. Start with { and end with }. No explanations, no markdown, no extra text.
+1. Extract baseline terms from RPA pages first.
+2. Then apply overrides ONLY from counter/addendum pages where a field is explicitly changed.
+3. Do NOT assume a counter changes a field unless it is clearly written on that page.
+
+HANDWRITING DETECTION:
+- Digital signatures, typed text, printed form text, or DocuSign/HelloSign-style e-signatures are NOT handwriting.
+- Set handwriting_detected: true ONLY if you see actual handwritten script (pen/ink marks, cursive, etc.).
+
+CHECKBOX RULES (very important):
+- A checkbox is TRUE only if it is clearly filled: checked ✓, X, shaded, darkened, or has text inside.
+- Empty, blank, or unchecked box = FALSE.
+- If you are unsure, default to FALSE.
+
+ALL CASH → LOAN TYPE:
+- If "All Cash" is selected (checkbox in 3.A column 5 checked) → set loan_type: null and loan_type_note: "All Cash".
+- Otherwise follow standard loan checkbox rules on Page 1.
+
+SPECIFIC FIELD RULES:
+
+CRB ATTACHED AND SIGNED (RPA Page 2, Section L(8)):
+- Checkbox in Column 5 for "CR-B attached and signed".
+- Empty/unchecked → crb_attached_and_signed: false
+
+COP CONTINGENCY (RPA Page 2, Section L(9)):
+- Checkbox in Column 5 for "C.A.R. Form COP".
+- Empty/unchecked → cop_contingency: false
+
+HOME WARRANTY (RPA Page 3, Section Q(18)):
+- Look for checkboxes: "Buyer", "Seller", "Both", or "Buyer waives home warranty plan".
+- Return the SINGLE checked option as ordered_by.
+- If "Buyer waives home warranty plan" checked → ordered_by: "Waived"
+- If no checkbox checked or field blank → ordered_by: null
+- Seller max cost: extract "$___" amount only if warranty is ordered (not waived).
+- Provider: extract "Issued by:" line exactly as written (or null if missing).
+
+FINAL ACCEPTANCE DATE:
+- Latest fully-signed document (highest counter # with both signatures).
+- Buyer-originated doc (RPA/BCO) → seller signature date = acceptance.
+- Seller-originated doc (SCO/SMCO) → buyer signature date = acceptance.
+
+CONFIDENCE:
+- Assign 0–100 per field based on clarity.
+- Lower for any ambiguity, faint text, or actual handwriting.
+
+Return ONLY one valid JSON object — start with { and end with }. No extra text, no explanations.
 
 {
   "extracted": {
     "buyer_names": string[],
     "property_address": { "full": string },
-    "purchase_price": string,  // e.g. "$1,250,000.00"
+    "purchase_price": string,
     "all_cash": boolean,
-    "close_of_escrow": string,  // days or date
+    "close_of_escrow": string,
     "initial_deposit": { "amount": string, "due": string },
     "loan_type": string | null,
     "loan_type_note": string | null,
@@ -205,10 +235,10 @@ Return EXACTLY one valid JSON object matching this structure. Start with { and e
       "seller_max_cost": string | null,
       "provider": string | null
     },
-    "final_acceptance_date": string,  // "MM/DD/YYYY"
+    "final_acceptance_date": string,
     "counters": {
       "has_counter_or_addendum": boolean,
-      "counter_chain": string[],  // e.g. ["RPA", "SCO #1", "BCO #2"]
+      "counter_chain": string[],
       "final_version_page": number | null,
       "summary": string
     },
