@@ -1,8 +1,6 @@
 // src/app/api/parse/process/[parseId]/route.ts
-// Version: 2.8.0 - 2025-12-20
-// ROLLBACK: Classification now uses full pages at 120 DPI (no footer cropping)
-// KEPT: Parallel processing, sequential validation, high-res extraction at 200 DPI
-// IMPROVED: Clearer phase separation and logging
+// Version: 3.0.0 - 2025-12-20
+// UPDATED: Handles multiple RPA blocks from classifier, stores metadata
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
@@ -85,17 +83,30 @@ export async function GET(
           stage: "classify_ai",
         });
 
-        // PHASE 2: Classification (Grok looks at bottom 15% of full pages)
-        const { criticalPageNumbers, state } = await classifyCriticalPages(
+        // PHASE 2: Classification (Multi-RPA aware)
+        const { criticalPageNumbers, state, rpaBlocksDetected } = await classifyCriticalPages(
           fullPageImages,
           pageCount
         );
+
+        // Log multi-RPA detection for user visibility
+        if (rpaBlocksDetected.length > 1) {
+          emit(controller, {
+            type: "progress",
+            message: `⚠️ Multiple RPA blocks detected (${rpaBlocksDetected.length}) - likely COP scenario`,
+            stage: "classify_multi_rpa",
+          });
+        }
 
         emit(controller, {
           type: "progress",
           message: `Found ${criticalPageNumbers.length} critical pages - rendering at high quality...`,
           stage: "extract_render",
           criticalPageNumbers,
+          rpaBlocksDetected: rpaBlocksDetected.map(b => ({
+            startPage: b.startPage,
+            confidence: b.confidence,
+          })),
         });
 
         // PHASE 3: High-res extraction render
@@ -154,14 +165,25 @@ export async function GET(
           (finalResult.confidence.purchase_price || 0) < 90 ||
           (finalResult.confidence.buyer_names || 0) < 90;
 
-        // PHASE 5: Save results
+        // PHASE 5: Save results with RPA block metadata
         await db.parse.update({
           where: { id: parseId },
           data: {
             status: needsReview ? "NEEDS_REVIEW" : "COMPLETED",
             state: state || "Unknown",
             criticalPageNumbers,
-            rawJson: finalResult.raw,
+            rawJson: {
+              ...finalResult.raw,
+              // Store classification metadata
+              _classification_meta: {
+                rpaBlocksDetected: rpaBlocksDetected.length,
+                rpaBlocks: rpaBlocksDetected.map(b => ({
+                  startPage: b.startPage,
+                  confidence: b.confidence,
+                  pages: b.pages,
+                })),
+              },
+            },
             formatted: finalResult.extracted,
             renderZipUrl: extractZipUrl,
             renderZipKey: extractZipKey,
@@ -170,6 +192,9 @@ export async function GET(
         });
 
         console.log(`[process:${parseId}] ✓ Complete - confidence: ${finalResult.confidence.overall_confidence}%`);
+        if (rpaBlocksDetected.length > 1) {
+          console.log(`[process:${parseId}] ✓ Stored ${rpaBlocksDetected.length} RPA block metadata for review`);
+        }
 
         emit(controller, {
           type: "complete",
@@ -178,6 +203,7 @@ export async function GET(
           criticalPageNumbers,
           zipUrl: extractZipUrl,
           needsReview,
+          rpaBlocksDetected: rpaBlocksDetected.length,
         });
 
         controller.close();
