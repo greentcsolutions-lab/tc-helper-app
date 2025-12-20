@@ -28,6 +28,7 @@
     "next": "^15.1.9",
     "next-nprogress-bar": "^2.4.7",
     "next-themes": "^0.4.6",
+    "openai": "^6.15.0",
     "pdf-lib": "^1.17.1",
     "react": "^18.3.1",
     "react-big-calendar": "^1.19.4",
@@ -36,7 +37,8 @@
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.4.0",
     "tailwindcss-animate": "^1.0.7",
-    "unzipper": "0.10.11"
+    "unzipper": "0.10.11",
+    "zod": "^4.2.1"
   },
   "devDependencies": {
     "@types/jszip": "^3.4.1",
