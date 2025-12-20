@@ -1,7 +1,8 @@
 // src/app/api/parse/process/[parseId]/route.ts
-// Version: 2.7.0 - 2025-12-19
-// FULL PRODUCTION MODE: Complete pipeline runs end-to-end
-// No debug ZIP upload, no early exit, no extra logs for cropped images
+// Version: 2.8.0 - 2025-12-20
+// ROLLBACK: Classification now uses full pages at 120 DPI (no footer cropping)
+// KEPT: Parallel processing, sequential validation, high-res extraction at 200 DPI
+// IMPROVED: Clearer phase separation and logging
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
@@ -54,10 +55,10 @@ export async function GET(
         const pageCount = pdfDoc.getPageCount();
         console.log(`[process:${parseId}] PDF loaded - ${pageCount} pages detected`);
 
-        // PHASE 1: Footer-only classification render
+        // PHASE 1: Classification render at 120 DPI (full pages)
         emit(controller, {
           type: "progress",
-          message: "Rendering page footers for AI classification...",
+          message: "Rendering all pages for AI classification...",
           stage: "classify_render",
         });
 
@@ -65,32 +66,28 @@ export async function GET(
           //@ts-ignore
           parse.pdfBuffer,
           { 
-            dpi: 160,
-            footerOnly: true,
+            dpi: 120,
             totalPages: pageCount
           }
         );
 
-        const footerImages = await downloadAndExtractZip(classifyZipUrl, { 
-            footerOnly: true,
-            dpi: 160  // ← Pass the DPI we rendered at
-        });
+        const fullPageImages = await downloadAndExtractZip(classifyZipUrl);
 
         await db.user.update({
           where: { id: parse.userId },
           data: { credits: { decrement: 1 } },
         });
-        console.log(`[process:${parseId}] ✓ Credit deducted - rendered + cropped ${footerImages.length} footer strips`);
+        console.log(`[process:${parseId}] ✓ Credit deducted - rendered ${fullPageImages.length} full pages @ 120 DPI`);
 
         emit(controller, {
           type: "progress",
-          message: `Analyzing ${footerImages.length} page footers with AI vision model...`,
+          message: `Analyzing ${fullPageImages.length} pages with AI vision model...`,
           stage: "classify_ai",
         });
 
-        // PHASE 2: Classification
+        // PHASE 2: Classification (Grok looks at bottom 15% of full pages)
         const { criticalPageNumbers, state } = await classifyCriticalPages(
-          footerImages,
+          fullPageImages,
           pageCount
         );
 
@@ -118,7 +115,7 @@ export async function GET(
 
         const { url: extractZipUrl, key: extractZipKey } = await renderPdfToPngZipUrl(
           criticalPagesPdfBuffer,
-          { dpi: 200, maxPages: criticalPageNumbers.length } // 200 DPI plenty for most digital extractions
+          { dpi: 200, maxPages: criticalPageNumbers.length }
         );
 
         const criticalPagesHighRes = await downloadAndExtractZip(extractZipUrl);

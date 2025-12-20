@@ -1,26 +1,33 @@
 // src/lib/extractor/prompts.ts
-// Version: 2.3.0 - 2025-12-19
-// FIXED: Added explicit JSON response schema for classification
+// Version: 2.4.0 - 2025-12-20
+// UPDATED: Classification prompt now instructs Grok to look at BOTTOM 15% of full-page images
+// KEPT: Explicit JSON response schema, footer matching patterns, sequential hints
 
 import { RPA_FORM, COUNTER_OFFERS, KEY_ADDENDA } from "./form-definitions";
 
 /**
  * Builds the classifier prompt dynamically based on total pages
- * Grok receives footer-only PNGs tagged with "Image X/Y:" prefix
+ * Grok receives FULL PAGE PNGs but is instructed to focus on the BOTTOM 15%
  */
 export function buildClassifierPrompt(totalPages: number): string {
-  return `You are analyzing FOOTER IMAGES from a ${totalPages}-page California real estate transaction packet.
+  return `You are analyzing FULL-PAGE images from a ${totalPages}-page California real estate transaction packet.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-YOUR TASK: Find these EXACT forms by examining the footer text in each image.
+⚠️ CRITICAL: LOOK ONLY AT THE BOTTOM 15% OF EACH IMAGE ⚠️
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Each image shows a complete page, but you must IGNORE the top 85% and focus ONLY on the footer area (bottom 15%).
+
+The footer contains a single-line identifier that looks like this:
+[FORM_CODE] Revised mm/yy (PAGE N OF M)
 
 Each image is tagged as "━━━ Image X/${totalPages} ━━━" where X is the PDF page number (1-${totalPages}).
 
-These images contain ONLY the footer region of each page. You will NOT see headers, main content, or signatures - ONLY footer text.
-
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-⚠️ FOOTER MATCHING: Look for this EXACT pattern anywhere in the footer image ⚠️
+YOUR TASK: Find these EXACT forms by examining the footer text (bottom 15% only)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+⚠️ FOOTER MATCHING: Look for this EXACT pattern in the BOTTOM 15% of each image
 
 The critical identifier is ALWAYS this single-line string:
 [FORM_CODE] Revised mm/yy (PAGE N OF M)
@@ -38,14 +45,15 @@ FORM_CODE is always uppercase: RPA, SCO, BCO, SMCO, ADM, TOA, AEA.
 
 Ignore all other form codes. 
 Ignore alignment — the line may be left-aligned or centered.
-Ignore all other lines, titles, broker information, logos, or any other content.
+Ignore all other lines, titles, broker information, logos, or any other content in the footer.
+DO NOT look at page headers or main content area - footer only (bottom 15%).
 
-Match ONLY when you can clearly read the complete revision line.
+Match ONLY when you can clearly read the complete revision line in the footer.
 If the text is blurry or incomplete, do NOT match it.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 1. RPA (MAIN CONTRACT)
-If the revision line contains "RPA" + any case "Revised" + date + "(PAGE N OF 17)" and N is:
+If the revision line in the BOTTOM 15% contains "RPA" + any case "Revised" + date + "(PAGE N OF 17)" and N is:
 - 1 → RPA Page 1
 - 2 → RPA Page 2
 - 3 → RPA Page 3
@@ -110,7 +118,8 @@ RULES:
 - Set page numbers to null if not found
 - Do NOT hallucinate page numbers beyond ${totalPages}
 - Use the PDF page number from the "━━━ Image X/${totalPages} ━━━" tag
-- Double-check all page numbers are ≤ ${totalPages}`.trim();
+- Double-check all page numbers are ≤ ${totalPages}
+- ONLY look at the BOTTOM 15% of each image for footer text`.trim();
 }
 
 export const EXTRACTOR_PROMPT = `

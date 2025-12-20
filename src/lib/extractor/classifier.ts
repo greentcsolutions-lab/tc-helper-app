@@ -1,8 +1,8 @@
 // src/lib/extractor/classifier.ts
-// Version: 3.1.0 - 2025-12-19
-// FIXED: Added better error logging and response validation
-// Form-specific footer matching with PNG tagging + sequential validation
-// Optimized for Vercel Hobby 60s timeout with parallel batches
+// Version: 3.2.0 - 2025-12-20
+// ROLLBACK: Now receives full-page images at 120 DPI, instructs Grok to look at bottom 15%
+// KEPT: Parallel batch processing, sequential validation, detailed logging
+// IMPROVED: Clearer messaging about full-page analysis focusing on footer region
 
 import { buildClassifierPrompt } from "./prompts";
 import { RPA_FORM } from "./form-definitions";
@@ -125,7 +125,8 @@ export async function classifyCriticalPages(
   const batches = chunk(pages, BATCH_SIZE);
   const fullPrompt = buildClassifierPrompt(totalPages);
 
-  console.log(`[classifier] Starting PARALLEL classification: ${pages.length} pages → ${batches.length} batches of ~${BATCH_SIZE}`);
+  console.log(`[classifier] Starting PARALLEL classification: ${pages.length} full pages @ 120 DPI → ${batches.length} batches of ~${BATCH_SIZE}`);
+  console.log(`[classifier] Grok will analyze BOTTOM 15% of each page for footer patterns`);
   const startTime = Date.now();
 
   // 🚀 PARALLEL PROCESSING
@@ -218,8 +219,8 @@ export async function classifyCriticalPages(
     console.error('[classifier] ✗ CRITICAL: RPA block validation failed');
     console.error('[classifier] Missing pages:', rpaBlock.gaps);
     console.error('[classifier] This might be due to:');
-    console.error('  1. Footer images too small/blurry (current DPI: 160)');
-    console.error('  2. Grok not finding footer text in cropped images');
+    console.error('  1. Footer text too blurry at 120 DPI');
+    console.error('  2. Grok not finding footer text in full page images');
     console.error('  3. Footer text in unexpected location (not bottom 15%)');
     throw new Error(`Missing required RPA pages: ${rpaBlock.gaps.join(', ')}`);
   }
