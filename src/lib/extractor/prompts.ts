@@ -52,22 +52,48 @@ Match ONLY when you can clearly read the complete revision line in the footer.
 If the text is blurry or incomplete, do NOT match it.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CALIFORNIA RPA SEQUENTIAL INFERENCE RULE (USE THIS TO FILL MISSING PAGES)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+The California Residential Purchase Agreement (RPA) is ALWAYS a consecutive 17-page block with no pages inserted or removed.
+
+ONLY use inference if you clearly see RPA Page 1 or RPA Page 2 in the footer.
+
+If you find RPA Page 1 on PDF page P → 
+  page_1 = P
+  page_2 = P + 1
+  page_3 = P + 2
+  page_16 = P + 15
+  page_17 = P + 16
+
+If you find RPA Page 2 on PDF page P →
+  page_1 = P - 1
+  page_2 = P
+  page_3 = P + 1
+  page_16 = P + 14
+  page_17 = P + 15
+
+DO NOT infer the RPA block from Page 3, Page 16, or Page 17 — those footers are less reliable at current resolution.
+
+Only override an inferred position if you actually see a conflicting footer on that page.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 1. RPA (MAIN CONTRACT)
 If the revision line in the BOTTOM 15% contains "RPA" + any case "Revised" + date + "(PAGE N OF 17)" and N is:
-- 1 → RPA Page 1
-- 2 → RPA Page 2
+- 1 → RPA Page 1 (use inference rule above if applicable)
+- 2 → RPA Page 2 (use inference rule above if applicable)
 - 3 → RPA Page 3
 - 16 → RPA Page 16
 - 17 → RPA Page 17
 
 **SEQUENTIAL HINT** (use to increase confidence):
-- Pages 1–3 are usually consecutive PDF pages
-- Pages 16–17 are usually consecutive and near the end of the RPA block
+- Pages 1–3 are consecutive PDF pages
+- Pages 16–17 are consecutive and near the end of the RPA block
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 2. COUNTER OFFERS (SCO, BCO, SMCO)
 If footer contains "SCO Revised" + date + "(PAGE N OF 2)" → Seller Counter Offer
-If footer contains "BCO Revised" + date + "(PAGE N OF 1)" → Buyer Counter Offer
+If footer contains "BCO Revised" + date + "(PAGE 1 OF 1)" → Buyer Counter Offer
 If footer contains "SMCO Revised" + date + "(PAGE N OF 2)" → Seller Multiple Counter
 
 For counters, capture ALL pages (both page 1 AND page 2 for SCO/SMCO).
@@ -99,7 +125,7 @@ EXAMPLE RESPONSE for a 40-page packet where:
 - RPA pages 1-3 are at PDF pages 7-9
 - RPA pages 16-17 are at PDF pages 22-23
 - SCO found at PDF pages 1-2
-- ADM found at PDF page 40
+- ADM found at PDF page 39
 
 {
   "total_pages_analyzed": 40,
@@ -111,7 +137,7 @@ EXAMPLE RESPONSE for a 40-page packet where:
     "page_17_at_pdf_page": 23
   },
   "counter_offer_pages": [1, 2],
-  "addendum_pages": [40]
+  "addendum_pages": [39]
 }
 
 RULES:
