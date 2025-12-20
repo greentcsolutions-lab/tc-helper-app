@@ -121,7 +121,7 @@ export async function classifyCriticalPages(
     throw new Error("classifyCriticalPages received invalid pages array");
   }
 
-  const BATCH_SIZE = 6;
+  const BATCH_SIZE = 15; // ~15 pages per batch. 6 was too small for Grok to find patterns reliably.
   const batches = chunk(pages, BATCH_SIZE);
   const fullPrompt = buildClassifierPrompt(totalPages);
 
