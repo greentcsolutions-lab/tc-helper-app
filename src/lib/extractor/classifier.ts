@@ -177,20 +177,19 @@ export async function classifyCriticalPages(
     });
 
   if (validInferences.length > 0) {
-    const best = validInferences[0].rpa_pages!;
-    console.log(`[classifier] 🎯 Using best RPA inference`);
-    console.log(`    → RPA: 1@${best.page_1_at_pdf_page} 2@${best.page_2_at_pdf_page} 3@${best.page_3_at_pdf_page} 16@${best.page_16_at_pdf_page} 17@${best.page_17_at_pdf_page}`);
+  const best = validInferences[0].rpa_pages!;
+  console.log(`[classifier] 🎯 Using best RPA inference`);
+  console.log(`    → RPA: 1@${best.page_1_at_pdf_page} 2@${best.page_2_at_pdf_page} 3@${best.page_3_at_pdf_page} 16@${best.page_16_at_pdf_page} 17@${best.page_17_at_pdf_page}`);
 
-    aggregated.rpa_pages = {
-      page_1_at_pdf_page: best.page_1_at_pdf_page ?? null,
-      page_2_at_pdf_page: best.page_2_at_pdf_page ?? null,
-      page_3_at_pdf_page: best.page_3_at_pdf_page ?? null,
-      page_16_at_pdf_page: best.page_16_at_pdf_page ?? null,
-      page_17_at_pdf_page: best.page_17_at_pdf_page ?? null,
-    };
-  } else {
-    console.warn('[classifier] ⚠ No valid RPA inference found across any batch');
-  }
+  // ←←← FIX: Direct assignment instead of object replacement
+  aggregated.rpa_pages.page_1_at_pdf_page = best.page_1_at_pdf_page ?? null;
+  aggregated.rpa_pages.page_2_at_pdf_page = best.page_2_at_pdf_page ?? null;
+  aggregated.rpa_pages.page_3_at_pdf_page = best.page_3_at_pdf_page ?? null;
+  aggregated.rpa_pages.page_16_at_pdf_page = best.page_16_at_pdf_page ?? null;
+  aggregated.rpa_pages.page_17_at_pdf_page = best.page_17_at_pdf_page ?? null;
+} else {
+  console.warn('[classifier] ⚠ No valid RPA inference found across any batch');
+}
 
   // Collect counters/addenda from all batches
   results.forEach(result => {
