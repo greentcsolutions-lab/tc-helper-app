@@ -5,7 +5,7 @@ import { auth, clerkClient } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export async function POST(req: NextRequest) {
   try {

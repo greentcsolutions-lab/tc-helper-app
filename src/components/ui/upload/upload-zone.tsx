@@ -13,7 +13,6 @@ import { useRouter } from "next/navigation";
 import CategoryPurchaseTerms from "@/components/CategoryPurchaseTerms";
 import CategoryTimelineContingencies from "@/components/CategoryTimelineContingencies";
 import CategoryRepresentingParties from "@/components/CategoryRepresentingParties";
-import { useUser, useAuth } from "@clerk/nextjs"; //for dynamic jokes
 
 const JOKES = [
   "Don't trust AI to identify mushrooms...",
@@ -45,7 +44,7 @@ export default function UploadZone() {
     if (view !== "processing") return;
 
     const interval = setInterval(() => {
-      if (Date.now() - lastActivity.current > 10000) {
+      if (Date.now() - lastActivity.current > 9000) {
         setJokeIndex((prev) => (prev + 1) % JOKES.length);
         setLiveMessage(JOKES[jokeIndex]);
       }

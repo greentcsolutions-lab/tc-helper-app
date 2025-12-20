@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/prisma";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 const isPublicRoute = createRouteMatcher([
   "/",

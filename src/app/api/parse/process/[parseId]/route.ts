@@ -11,7 +11,7 @@ import { extractFromCriticalPages } from "@/lib/extractor/extractor";
 import { PDFDocument } from "pdf-lib";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 function emit(controller: ReadableStreamDefaultController, data: any) {
   controller.enqueue(`data: ${JSON.stringify(data)}\n\n`);
