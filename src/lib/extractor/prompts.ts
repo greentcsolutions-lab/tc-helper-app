@@ -244,6 +244,8 @@ If field blank/not found after waiver check:
 
 Return ONLY valid JSON matching this exact schema:
 
+EXAMPLE SCHEMA REPLACE WITH EXTRACTED DATA ONLY - NO EXPLANATIONS:
+
 {
   "extracted": {
     "buyer_names": ["Bruce Lee Calamoteos"],
@@ -307,6 +309,7 @@ Return ONLY valid JSON matching this exact schema:
   },
   "handwriting_detected": false
 }
+  END OF EXAMPLE
 `.trim();
 
 export const SECOND_TURN_PROMPT = `The previous extraction had low confidence or detected handwriting.
