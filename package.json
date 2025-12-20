@@ -11,8 +11,6 @@
     "type-check": "tsc --noEmit --pretty"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.948.0",
-    "@aws-sdk/s3-request-presigner": "^3.948.0",
     "@clerk/nextjs": "5.7.4",
     "@prisma/client": "^5.22.0",
     "@radix-ui/react-collapsible": "^1.1.12",

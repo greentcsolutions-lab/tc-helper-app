@@ -150,20 +150,72 @@ RULES:
 - If a footer is unclear or ambiguous, mark that page as null rather than guessing`.trim();
 }
 
-export const EXTRACTOR_PROMPT = `
-You are extracting key terms from 5 or more critical PNG pages of a California Residential Purchase Agreement (RPA Revised 6/25) packet.
-These images are high-resolution (200 DPI) flattened renders — all form fields are baked in as static text/lines.
+// src/lib/extractor/prompts.ts (EXTRACTOR_PROMPT only)
 
-Use FINAL ACCEPTED terms only: counters and addenda override the original RPA.
+export const EXTRACTOR_PROMPT = `You are analyzing 5-10 high-resolution images from a California real estate transaction packet.
 
-# LOAN TYPE PRIORITY RULES
-- On RPA Page 1, financing section: pre-printed text says "Conventional"
+Each image is explicitly labeled above it with its exact role:
+
+- "RPA PAGE 1 OF 17" → main contract terms (buyer names, address, purchase price, deposit, close of escrow)
+- "RPA PAGE 2 OF 17 (CONTINGENCIES)" → contingencies, seller credits, financing details
+- "RPA PAGE 3 OF 17 (ITEMS INCLUDED & HOME WARRANTY)" → included/excluded items, allocation of costs, home warranty
+- "RPA PAGE 16 OF 17 (SIGNATURES)" → signature dates (use latest date as final acceptance)
+- "RPA PAGE 17 OF 17 (BROKER INFO)" → brokerage and agent details
+- "COUNTER OFFER OR ADDENDUM" → these pages contain overrides to the main RPA
+
+CRITICAL RULES:
+1. Use the explicitly labeled RPA pages as the primary source for all fields.
+2. Only apply changes from "COUNTER OFFER OR ADDENDUM" pages if they explicitly modify a field (e.g., new price, changed contingencies, added seller credit).
+3. The final accepted terms come from the latest fully-signed document (highest counter number with both signatures, or main RPA if no valid counters).
+4. If a field appears on multiple pages, prefer the value from the highest-numbered valid counter, otherwise use the main RPA value.
+5. Always reference the label when deciding which page to read from.
+
+Now extract the following fields using the labeled pages:
+
+# BUYER NAMES & PROPERTY ADDRESS (RPA PAGE 1 OF 17)
+- Buyer names: Top section 1.A "THIS IS AN OFFER FROM" → return as array of strings
+- Property address: Section 1.B full-width field directly below buyer names → object with "full" key
+
+# PURCHASE PRICE, DEPOSIT & CLOSE OF ESCROW (RPA PAGE 1 OF 17)
+- Purchase price: Section 3.A table, row A, column 3 → dollar amount string
+- All cash: checkbox in column 4 of same row → true only if checked
+- Initial deposit: Section 3.D(1), amount in column 3, due days in column 4 → object { amount, due }
+- Close of escrow: Section 3.B, days in column 4 → string (number of days)
+
+# LOAN TYPE PRIORITY RULES (RPA PAGE 1 OF 17)
+- Pre-printed text says "Conventional"
 - BELOW it there are 4 checkboxes: FHA, VA, Seller Financing, Other
-- Checkbox detection overrides the pre-printed text
-- If exactly ONE checkbox is marked → loan_type = that option ("VA", "FHA", "Seller Financing", "Other")
-- If MULTIPLE checkboxes are marked → loan_type: null and loan_type_note: "undefined: multiple boxes checked"
-- If "All Cash" is explicitly checked elsewhere in financing → loan_type: null, all_cash: true
-- If no checkboxes marked → loan_type: "Conventional"
+- Checkbox detection overrides pre-printed text
+- Exactly ONE checkbox marked → loan_type = that option
+- MULTIPLE checkboxes → loan_type: null, loan_type_note: "undefined: multiple boxes checked"
+- "All Cash" checked elsewhere → loan_type: null, all_cash: true
+- No checkboxes → loan_type: "Conventional"
+
+# CONTINGENCY WAIVER DETECTION (RPA PAGE 2 OF 17 (CONTINGENCIES))
+On the labeled "RPA PAGE 2 OF 17 (CONTINGENCIES)":
+- Contingencies are in table Section L with 5 columns
+- Column 4: number of days (usually "17 (or ___)")
+- Column 5: waiver checkbox ("No loan contingency", "No appraisal contingency", etc.)
+- If waiver checkbox in Column 5 is CHECKED (filled, X, shaded, or marked) → contingency WAIVED → days = 0
+- If waiver checkbox in Column 5 is EMPTY → contingency active → use days from Column 4 (default 17 if blank)
+Specific rows:
+  L(1) → loan_days
+  L(2) → appraisal_days
+  L(3) → investigation_days
+  L(8) → crb_attached_and_signed: true if "CR-B attached" box checked in Column 5
+  L(9) → cop_contingency: true if "C.A.R. Form COP attached" box checked in Column 5
+
+# SELLER CREDIT TO BUYER (RPA PAGE 2 OF 17 (CONTINGENCIES))
+- Section G(1): checkbox + dollar amount field
+- If checkbox checked and amount present → return amount string
+- Otherwise → null
+
+# HOME WARRANTY (RPA PAGE 3 OF 17 (ITEMS INCLUDED & HOME WARRANTY))
+- Row Q(18): checkboxes for who pays (Buyer / Seller / Both)
+- Return the checked option as ordered_by ("Buyer", "Seller", "Both")
+- If "Buyer waives home warranty plan" checked → ordered_by: "Waived"
+- Seller max cost: text "cost not to exceed $___" → extract amount
+- Provider: line below "Issued by:" → full company name exactly as written (or null if missing)
 
 # HOME WARRANTY PROVIDER
 - On RPA Page 3, in the same row as home warranty (usually Q18)
@@ -182,10 +234,10 @@ Use FINAL ACCEPTED terms only: counters and addenda override the original RPA.
 # COUNTER OFFER MERGE RULES
 Counters only replace SPECIFIC fields they mention.
 
-# CONTINGENCY DEFAULTS
-If field blank/not found:
-- Loan contingency: 17 days (unless waived)
-- Appraisal contingency: 17 days (unless waived)
+# CONTINGENCY DEFAULTS (fallback only)
+If field blank/not found after waiver check:
+- Loan contingency: 17 days
+- Appraisal contingency: 17 days
 - Investigation contingency: 17 days
 - Seller delivery of docs: 7 days
 - Loan type: "Conventional" (if not all cash)

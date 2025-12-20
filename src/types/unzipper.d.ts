@@ -24,7 +24,6 @@ declare module "unzipper" {
     function buffer(buffer: Buffer, options?: any): Promise<Directory>;
     function file(path: string, options?: any): Promise<Directory>;
     function url(requestLib: any, url: string, options?: any): Promise<Directory>;
-    function s3(awsClient: any, params: any, options?: any): Promise<Directory>;
     function custom(source: any, options?: any): Promise<Directory>;
   }
 

@@ -1,6 +1,6 @@
 // src/app/api/parse/process/[parseId]/route.ts
-// Version: 3.0.0 - 2025-12-20
-// UPDATED: Handles multiple RPA blocks from classifier, stores metadata
+// Version: 3.0.1 - 2025-12-20
+// UPDATED: Passes explicit RPA page labels to extraction phase
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
@@ -126,10 +126,40 @@ export async function GET(
 
         const { url: extractZipUrl, key: extractZipKey } = await renderPdfToPngZipUrl(
           criticalPagesPdfBuffer,
-          { dpi: 200, maxPages: criticalPageNumbers.length }
+          { dpi: 250, maxPages: criticalPageNumbers.length } // bumped to 250 for extra clarity
         );
 
         const criticalPagesHighRes = await downloadAndExtractZip(extractZipUrl);
+
+        // ███████████████████████████████████████████████████████████
+        // NEW: Build explicit human-readable labels for extraction
+        // ███████████████████████████████████████████████████████████
+        const pageLabels: Record<number, string> = {};
+
+        // Use the first (primary) RPA block for precise labeling
+        const primaryBlock = rpaBlocksDetected[0];
+        if (primaryBlock?.detectedPages) {
+          const d = primaryBlock.detectedPages;
+          if (d.page1) pageLabels[d.page1] = "RPA PAGE 1 OF 17";
+          if (d.page2) pageLabels[d.page2] = "RPA PAGE 2 OF 17 (CONTINGENCIES)";
+          if (d.page3) pageLabels[d.page3] = "RPA PAGE 3 OF 17 (ITEMS INCLUDED & HOME WARRANTY)";
+          if (d.page16) pageLabels[d.page16] = "RPA PAGE 16 OF 17 (SIGNATURES)";
+          if (d.page17) pageLabels[d.page17] = "RPA PAGE 17 OF 17 (BROKER INFO)";
+        }
+
+        // All remaining critical pages = counters or addenda
+        criticalPageNumbers.forEach(pdfPage => {
+          if (!pageLabels[pdfPage]) {
+            pageLabels[pdfPage] = "COUNTER OFFER OR ADDENDUM";
+          }
+        });
+
+        // Attach labels to images
+        const labeledCriticalImages = criticalPagesHighRes.map(img => ({
+          pageNumber: img.pageNumber,
+          base64: img.base64,
+          label: pageLabels[img.pageNumber] || `PDF PAGE ${img.pageNumber}`,
+        }));
 
         emit(controller, {
           type: "progress",
@@ -138,7 +168,7 @@ export async function GET(
         });
 
         // PHASE 4: Extraction
-        const firstPass = await extractFromCriticalPages(criticalPagesHighRes);
+        const firstPass = await extractFromCriticalPages(labeledCriticalImages);
 
         let finalResult = firstPass;
         const needsSecondPass =
@@ -153,7 +183,7 @@ export async function GET(
           });
 
           const secondPass = await extractFromCriticalPages(
-            criticalPagesHighRes,
+            labeledCriticalImages,
             firstPass.raw
           );
           finalResult = secondPass;

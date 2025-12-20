@@ -1,11 +1,17 @@
 // src/lib/extractor/extractor.ts
-// Version: 2.0.0 - 2025-12-18
-// Context-aware extraction with counter merger and handwriting rejection
+// Version: 2.1.0 - 2025-12-20
+// UPDATED: Accepts labeled images and injects clear section headers for Grok
 
 import { EXTRACTOR_PROMPT, SECOND_TURN_PROMPT } from "./prompts";
 
+interface LabeledImage {
+  pageNumber: number;
+  base64: string;
+  label: string;
+}
+
 export async function extractFromCriticalPages(
-  images: { pageNumber: number; base64: string }[],
+  images: LabeledImage[],
   previousResult?: any  // optional for second-turn boost
 ) {
   let prompt = EXTRACTOR_PROMPT;
@@ -31,10 +37,16 @@ export async function extractFromCriticalPages(
         role: "user",
         content: [
           { type: "text", text: prompt },
-          ...images.map(img => ({
-            type: "image_url",
-            image_url: { url: img.base64 }
-          }))
+          ...images.flatMap(img => [
+            {
+              type: "text",
+              text: `\n━━━ ${img.label} ━━━`
+            },
+            {
+              type: "image_url",
+              image_url: { url: img.base64 }
+            }
+          ])
         ]
       }]
     }),
