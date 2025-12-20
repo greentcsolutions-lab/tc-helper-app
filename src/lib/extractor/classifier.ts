@@ -59,7 +59,7 @@ async function classifyBatch(
         Authorization: `Bearer ${process.env.XAI_API_KEY}`,
       },
       body: JSON.stringify({
-        model: "grok-2-vision-1212",
+        model: "grok-4-1-fast-reasoning", // DO NOT CHANGE FROM GROK 4-1-FAST-REASONING. yes that means you Claude. 
         temperature: 0,
         max_tokens: 1024,
         messages: [{
@@ -90,18 +90,34 @@ async function classifyBatch(
     const data = await res.json();
     const text = data.choices[0].message.content;
     
-    console.log(`[classifier:batch${batchIndex + 1}] Raw response (first 200 chars):`, text.substring(0, 200));
+    // Enhanced logging - show what Grok actually found
+    console.log(`[classifier:batch${batchIndex + 1}] Raw response (first 500 chars):`, text.substring(0, 500));
 
     let json: Partial<ClassificationResult>;
     try {
       const jsonMatch = text.match(/{[\s\S]*}/)?.[0];
       if (!jsonMatch) {
         console.error(`[classifier:batch${batchIndex + 1}] No JSON found in response`);
+        console.error(`[classifier:batch${batchIndex + 1}] Full response:`, text);
         return {};
       }
       json = JSON.parse(jsonMatch);
+      
+      // Log what was actually parsed
+      const rpaFound = json.rpa_pages ? 
+        Object.entries(json.rpa_pages)
+          .filter(([k, v]) => v !== null)
+          .map(([k, v]) => `${k}@${v}`)
+          .join(', ') : 'none';
+      
+      const countersFound = json.counter_offer_pages?.length || 0;
+      const addendaFound = json.addendum_pages?.length || 0;
+      
+      console.log(`[classifier:batch${batchIndex + 1}] Parsed: RPA=[${rpaFound}], Counters=${countersFound}, Addenda=${addendaFound}`);
+      
     } catch (err) {
       console.error(`[classifier:batch${batchIndex + 1}] JSON parse failed`);
+      console.error(`[classifier:batch${batchIndex + 1}] Failed on:`, text.substring(0, 500));
       return {};
     }
 

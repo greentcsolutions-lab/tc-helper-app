@@ -34,10 +34,10 @@ Footer pattern for RPA pages:
 "RPA REVISED 6/25 (PAGE 2 OF 17)" → RPA Page 2
 
 ⚠️ MULTIPLE RPA BLOCKS MAY EXIST IN THE SAME DOCUMENT ⚠️
-- California contracts with COP (Contingency on Property) often include TWO complete RPA forms
+- California contracts with COP (Contingency for Sale of Buyer's Property) often include TWO partial OR complete RPA forms
 - One RPA for the buyer's current property (being sold)
 - One RPA for the main property (being purchased)
-- Report ALL RPA Page 1 & 2 pairs you find, even if there are multiple
+- Report ALL RPA Pages you find, even if there are multiple
 - We will handle disambiguation in the extraction phase
 
 VALIDATION:
@@ -58,7 +58,7 @@ COUNTER OFFERS (OPTIONAL BUT HELPFUL)
 
 If footer contains:
 - "SCO Revised" + date + "(PAGE N OF 2)" → Seller Counter Offer
-- "BCO Revised" + date + "(PAGE N OF 1)" → Buyer Counter Offer  
+- "BCO Revised" + date + "(PAGE 1 OF 1)" → Buyer Counter Offer  
 - "SMCO Revised" + date + "(PAGE N OF 2)" → Seller Multiple Counter Offer
 
 Report ALL pages for each counter (both pages for SCO/SMCO, single page for BCO).
@@ -70,13 +70,15 @@ KEY ADDENDA (OPTIONAL BUT HELPFUL)
 If footer contains:
 - "ADM Revised" + date + "(PAGE 1 OF 1)" → General Addendum
 - "TOA Revised" + date + "(PAGE 1 OF 1)" → Text Overflow Addendum
-- "AEA Revised" + date + "(PAGE 1 OF 1)" → Amendment to Escrow
+- "AEA Revised" + date + "(PAGE 1 OF 1)" → Amendment of Existing Agreement Terms
 
 Report the page number for each.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Return ONLY this exact JSON structure:
+⚠️ CRITICAL: RETURN ONLY JSON - NO EXPLANATIONS ⚠️
+
+Return ONLY this exact JSON structure (no markdown, no text before or after):
 
 {
   "total_document_pages": ${totalPages},
@@ -91,8 +93,9 @@ Return ONLY this exact JSON structure:
   "addendum_pages": []
 }
 
-EXAMPLE RESPONSE for a batch containing RPA pages 1-3:
+EXAMPLES:
 
+Example 1 - Batch with RPA pages 1-3 and SCO pages 1-2:
 {
   "total_document_pages": 40,
   "rpa_pages": {
@@ -102,16 +105,47 @@ EXAMPLE RESPONSE for a batch containing RPA pages 1-3:
     "page_16_at_pdf_page": null,
     "page_17_at_pdf_page": null
   },
+  "counter_offer_pages": [1, 2],
+  "addendum_pages": []
+}
+
+Example 2 - Batch with only counter offers and addenda:
+{
+  "total_document_pages": 40,
+  "rpa_pages": {
+    "page_1_at_pdf_page": null,
+    "page_2_at_pdf_page": null,
+    "page_3_at_pdf_page": null,
+    "page_16_at_pdf_page": null,
+    "page_17_at_pdf_page": null
+  },
+  "counter_offer_pages": [38, 39],
+  "addendum_pages": [40]
+}
+
+Example 3 - Batch with no critical pages:
+{
+  "total_document_pages": 40,
+  "rpa_pages": {
+    "page_1_at_pdf_page": null,
+    "page_2_at_pdf_page": null,
+    "page_3_at_pdf_page": null,
+    "page_16_at_pdf_page": null,
+    "page_17_at_pdf_page": null
+  },
   "counter_offer_pages": [],
   "addendum_pages": []
 }
 
 RULES:
+- NO explanatory text - ONLY JSON
 - Only report pages that appear in THIS batch
 - Use the absolute PDF page number from the "PDF_Page_X" label
 - Do NOT hallucinate page numbers beyond ${totalPages}
 - RPA Page 1 and Page 2 MUST be consecutive (PDF page N and N+1)
 - If you see multiple RPA blocks (e.g., RPA 1@11 and RPA 1@25), report BOTH
+- Include ALL pages of counter offers (SCO has 2 pages, BCO has 1 page, SMCO has 2 pages)
+- Include ALL addendum pages you find (ADM, TOA, AEA)
 - ONLY look at the BOTTOM 15% of each image for footer text
 - If a footer is unclear or ambiguous, mark that page as null rather than guessing`.trim();
 }
