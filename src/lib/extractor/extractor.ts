@@ -1,6 +1,7 @@
 // src/lib/extractor/extractor.ts
-// Version: 2.2.0 - 2025-12-20
-// UPDATED: Passes explicit RPA page labels to extraction phase
+// Version: 2.3.0 - 2025-12-20
+// UPDATED: Graceful Zod validation with partial results
+
 import OpenAI from "openai";
 import { ExtractionSchema } from "./schema";
 import { EXTRACTOR_PROMPT, SECOND_TURN_PROMPT } from "./prompts";
@@ -11,7 +12,6 @@ interface LabeledImage {
   label: string;
 }
 
-// Create client with xAI base URL
 const client = new OpenAI({
   apiKey: process.env.XAI_API_KEY!,
   baseURL: "https://api.x.ai/v1",
@@ -42,17 +42,19 @@ export async function extractFromCriticalPages(
       },
       {
         type: "image_url" as const,
-        image_url: { url: `data:image/png;base64,${img.base64}` }, // OpenAI format
+        image_url: { url: img.base64 },
       },
     ]),
   ];
 
+  console.log(`[extractor] Sending ${images.length} images to Grok 4.1`);
+
   const response = await client.chat.completions.create({
-    model: "grok-4-1-fast-reasoning", // or "grok-4" if you prefer more reasoning
+    model: "grok-4-1-fast-reasoning",
     temperature: 0,
     max_tokens: 4096,
     messages: [{ role: "user", content }],
-    response_format: { type: "json_object"},
+    response_format: { type: "json_object" },
   });
 
   const rawContent = response.choices[0].message.content;
@@ -64,19 +66,49 @@ export async function extractFromCriticalPages(
   try {
     json = JSON.parse(rawContent);
   } catch (e) {
-    console.error("[extractor] Failed to parse Grok response as JSON:", rawContent);
+    console.error("[extractor] Failed to parse Grok response as JSON:", rawContent.substring(0, 500));
     throw new Error("Invalid JSON from model");
   }
 
+  // Attempt Zod validation
   const parsed = ExtractionSchema.safeParse(json);
+  
   if (!parsed.success) {
-    console.error("[extractor] Schema validation failed:", parsed.error.format());
-    throw new Error("Extraction failed schema validation");
+    console.error("[extractor] ⚠️ Zod validation failed:");
+    console.error(JSON.stringify(parsed.error.format(), null, 2));
+    
+    // Log what Grok actually returned
+    console.log("[extractor] Raw Grok response:");
+    console.log(JSON.stringify(json, null, 2).substring(0, 1000));
+    
+    // Try to extract partial data with lower confidence
+    // This requires the raw JSON to at least have the basic structure
+    const rawData = json as any;
+    
+    if (rawData.extracted && rawData.confidence) {
+      console.warn("[extractor] ⚠️ Returning partial data with NEEDS_REVIEW flag");
+      
+      return {
+        extracted: rawData.extracted,
+        confidence: {
+          ...rawData.confidence,
+          overall_confidence: Math.min(rawData.confidence.overall_confidence || 0, 70), // Cap at 70
+        },
+        handwriting_detected: rawData.handwriting_detected || false,
+        raw: {
+          ...rawData,
+          _zod_validation_failed: true,
+          _zod_errors: parsed.error.format(),
+        },
+      };
+    }
+    
+    // If we can't extract anything useful, throw
+    throw new Error("Extraction failed schema validation - invalid data structure");
   }
 
   const result = parsed.data;
 
-  // Your existing gate logic
   const lowConfidence =
     result.confidence.overall_confidence < 80 ||
     result.confidence.purchase_price < 90 ||
@@ -84,7 +116,7 @@ export async function extractFromCriticalPages(
     result.handwriting_detected;
 
   if (lowConfidence) {
-    console.warn("[extractor] Low confidence or handwriting → route to human review");
+    console.warn("[extractor] ⚠️ Low confidence or handwriting → will route to NEEDS_REVIEW");
   }
 
   return {
