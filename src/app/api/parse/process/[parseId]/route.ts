@@ -126,7 +126,7 @@ export async function GET(
 
         const { url: extractZipUrl, key: extractZipKey } = await renderPdfToPngZipUrl(
           criticalPagesPdfBuffer,
-          { dpi: 300, maxPages: criticalPageNumbers.length } // Increased to 300 DPI for better OCR (test between 300-350)
+          { dpi: 325, maxPages: criticalPageNumbers.length } // Increased to 325 DPI for better OCR (test between 300-350)
         );
 
         const criticalPagesHighRes = await downloadAndExtractZip(extractZipUrl);
