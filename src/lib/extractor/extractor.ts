@@ -52,14 +52,7 @@ export async function extractFromCriticalPages(
     temperature: 0,
     max_tokens: 4096,
     messages: [{ role: "user", content }],
-    response_format: {
-      type: "json_schema",
-      json_schema: {
-        name: "california_rpa_extraction",
-        strict: true,
-        schema: ExtractionSchema.parse({}), // Zod → JSON schema
-      },
-    },
+    response_format: { type: "json_object"},
   });
 
   const rawContent = response.choices[0].message.content;

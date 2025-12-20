@@ -150,26 +150,87 @@ RULES:
 - If a footer is unclear or ambiguous, mark that page as null rather than guessing`.trim();
 }
 
-// src/lib/extractor/prompts.ts (EXTRACTOR_PROMPT only)
+// IMPROVED: Zero-example, step-by-step reasoning, strict override rules, anti-hallucination guards
+export const EXTRACTOR_PROMPT = `
+You are an expert California real estate transaction analyst examining 5-10 high-resolution PNG images from a single transaction packet.
 
-export const EXTRACTOR_PROMPT = `You are analyzing 5-10 high-resolution images from a California real estate transaction packet.
+Each image is labeled with its exact role, e.g.:
+- "RPA PAGE 1 OF 17"
+- "RPA PAGE 2 OF 17 (CONTINGENCIES)"
+- "RPA PAGE 3 OF 17 (ITEMS INCLUDED & HOME WARRANTY)"
+- "RPA PAGE 16 OF 17 (SIGNATURES)"
+- "RPA PAGE 17 OF 17 (BROKER INFO)"
+- "SELLER COUNTER OFFER #1" (or #2, etc.)
+- "BUYER COUNTER OFFER #1"
+- "ADDENDUM" or similar
 
-Each image is explicitly labeled above it with its exact role (e.g., "RPA PAGE 1 OF 17", "SELLER COUNTER OFFER #1").
+CRITICAL INSTRUCTIONS (follow exactly):
+1. First, extract all values from the RPA pages ONLY — these are the baseline terms.
+2. Then, scan ALL counter offer and addendum pages in order of appearance (highest number = latest).
+3. A counter/addendum OVERRIDES a baseline value ONLY if it explicitly changes that field (e.g., new price, modified contingencies, different deposit, seller credit added).
+4. Do NOT assume a counter changes something unless it is clearly written on that page.
+5. The FINAL ACCEPTANCE DATE is determined by the latest fully-signed document:
+   - Find the highest-numbered counter with BOTH buyer and seller signatures/dates.
+   - If latest is buyer-originated (RPA or BCO) → use seller's signature date.
+   - If latest is seller-originated (SCO or SMCO) → use buyer's signature date.
+   - If no valid counters → use RPA seller signature date.
+6. Detect handwriting anywhere → set handwriting_detected: true and lower relevant confidence scores.
+7. For every field, assign a confidence 0-100 based on clarity/readability (lower for handwriting, faint text, ambiguity).
+8. NEVER invent data. If a field is blank/not visible/not mentioned → use null or schema default where applicable.
+9. You MUST think step-by-step internally, but return ONLY the final JSON.
 
-CRITICAL RULES:
-1. Use the labeled RPA pages as primary source.
-2. Counters/addenda override any conflicting terms in the main RPA.
-3. Latest fully-signed counter with both signatures determines final acceptance date.
-4. For every field provide a confidence score 0–100. Lower if handwriting is present.
+Return EXACTLY one valid JSON object matching this structure. Start with { and end with }. No explanations, no markdown, no extra text.
 
-Return ONLY valid JSON conforming exactly to the schema (no extra text, no markdown).
+{
+  "extracted": {
+    "buyer_names": string[],
+    "property_address": { "full": string },
+    "purchase_price": string,  // e.g. "$1,250,000.00"
+    "all_cash": boolean,
+    "close_of_escrow": string,  // days or date
+    "initial_deposit": { "amount": string, "due": string },
+    "loan_type": string | null,
+    "loan_type_note": string | null,
+    "seller_credit_to_buyer": string | null,
+    "contingencies": {
+      "loan_days": number,
+      "appraisal_days": number,
+      "investigation_days": number,
+      "crb_attached_and_signed": boolean
+    },
+    "cop_contingency": boolean,
+    "seller_delivery_of_documents_days": number,
+    "home_warranty": {
+      "ordered_by": "Buyer" | "Seller" | "Both" | "Waived" | null,
+      "seller_max_cost": string | null,
+      "provider": string | null
+    },
+    "final_acceptance_date": string,  // "MM/DD/YYYY"
+    "counters": {
+      "has_counter_or_addendum": boolean,
+      "counter_chain": string[],  // e.g. ["RPA", "SCO #1", "BCO #2"]
+      "final_version_page": number | null,
+      "summary": string
+    },
+    "buyers_broker": { "brokerage_name": string | null, "agent_name": string | null, "email": string | null, "phone": string | null },
+    "sellers_broker": { "brokerage_name": string | null, "agent_name": string | null, "email": string | null, "phone": string | null }
+  },
+  "confidence": {
+    "overall_confidence": number,
+    "purchase_price": number,
+    "property_address": number,
+    "buyer_names": number,
+    "close_of_escrow": number,
+    "final_acceptance_date": number,
+    "contingencies": number,
+    "home_warranty": number,
+    "brokerage_info": number,
+    "loan_type": number
+  },
+  "handwriting_detected": boolean
+}
 
-Schema reminder (DO NOT copy values — extract fresh from images):
-- extracted: { buyer_names: string[], property_address: {full: string}, purchase_price: string, ... }
-- confidence: { overall_confidence: number, purchase_price: number, ... }
-- handwriting_detected: boolean
-
-Now extract from the labeled images below:`.trim();
+Extract fresh values from the labeled images below:`.trim();
 
 export const SECOND_TURN_PROMPT = `The previous extraction had low confidence or detected handwriting.
 
