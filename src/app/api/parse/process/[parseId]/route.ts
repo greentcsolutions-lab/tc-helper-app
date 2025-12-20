@@ -49,6 +49,7 @@ export async function GET(
   const stream = new ReadableStream({
     async start(controller) {
       try {
+        //@ts-ignore
         const pdfDoc = await PDFDocument.load(parse.pdfBuffer);
         const pageCount = pdfDoc.getPageCount();
         console.log(`[process:${parseId}] PDF loaded - ${pageCount} pages detected`);
@@ -61,6 +62,7 @@ export async function GET(
         });
 
         const { url: classifyZipUrl } = await renderPdfToPngZipUrl(
+          //@ts-ignore
           parse.pdfBuffer,
           { 
             dpi: 160,
