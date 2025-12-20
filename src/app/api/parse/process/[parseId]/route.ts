@@ -56,7 +56,7 @@ export async function GET(
         // PHASE 1: Classification render at 120 DPI (full pages)
         emit(controller, {
           type: "progress",
-          message: "Rendering all pages for AI classification...",
+          message: "Making your packet easier for Grok to read...",
           stage: "classify_render",
         });
 
@@ -79,7 +79,7 @@ export async function GET(
 
         emit(controller, {
           type: "progress",
-          message: `Analyzing ${fullPageImages.length} pages with AI vision model...`,
+          message: `Looking through ${fullPageImages.length} pages for the important stuff...`,
           stage: "classify_ai",
         });
 
@@ -93,14 +93,14 @@ export async function GET(
         if (rpaBlocksDetected.length > 1) {
           emit(controller, {
             type: "progress",
-            message: `⚠️ Multiple RPA blocks detected (${rpaBlocksDetected.length}) - likely COP scenario`,
+            message: `⚠️ Multiple RPA blocks detected (${rpaBlocksDetected.length}) - COP?`,
             stage: "classify_multi_rpa",
           });
         }
 
         emit(controller, {
           type: "progress",
-          message: `Found ${criticalPageNumbers.length} critical pages - rendering at high quality...`,
+          message: `Found ${criticalPageNumbers.length} critical pages - pulling them now...`,
           stage: "extract_render",
           criticalPageNumbers,
           rpaBlocksDetected: rpaBlocksDetected.map(b => ({
@@ -133,7 +133,7 @@ export async function GET(
 
         emit(controller, {
           type: "progress",
-          message: "Extracting contract terms with Grok...",
+          message: "Extracting terms with Grok...",
           stage: "extract_ai",
         });
 

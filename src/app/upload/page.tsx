@@ -83,7 +83,7 @@ export default async function UploadPage() {
                 </div>
                 <div>
                   <p className="font-medium text-sm">Lightning Fast</p>
-                  <p className="text-xs text-muted-foreground">Extracts in ~60 seconds</p>
+                  <p className="text-xs text-muted-foreground">Extracts in ~90 seconds</p>
                 </div>
               </div>
 

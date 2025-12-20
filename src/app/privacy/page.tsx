@@ -37,7 +37,7 @@ export default function PrivacyPage() {
           <ul className="list-disc pl-6 space-y-2">
             <li>Sell, rent, or share your documents or personal information</li>
             <li>Use your PDFs or images to train any AI models</li>
-            <li>Keep your PDF files longer than the ~60 seconds needed to process them</li>
+            <li>Keep your PDF files longer than the ~90 seconds needed to process them</li>
           </ul>
         </section>
 
