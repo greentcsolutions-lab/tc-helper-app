@@ -1,6 +1,6 @@
 // src/lib/pdf/renderer.ts
 // Version: 3.6.0 - 2025-12-20
-// ROLLBACK: Removed footer-only cropping - now renders full pages at 120 DPI for classification
+// ROLLBACK: Removed footer-only cropping - now renders full pages at 180 DPI for classification
 // KEPT: Parallel processing, logging structure, and sequential validation
 // SIMPLIFIED: Removed sharp cropping logic and footer-specific metadata handling
 

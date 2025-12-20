@@ -1,6 +1,6 @@
 // src/lib/extractor/classifier.ts
 // Version: 3.2.0 - 2025-12-20
-// ROLLBACK: Now receives full-page images at 120 DPI, instructs Grok to look at bottom 15%
+// ROLLBACK: Now receives full-page images at 180 DPI, instructs Grok to look at bottom 15%
 // KEPT: Parallel batch processing, sequential validation, detailed logging
 // IMPROVED: Clearer messaging about full-page analysis focusing on footer region
 
@@ -125,7 +125,7 @@ export async function classifyCriticalPages(
   const batches = chunk(pages, BATCH_SIZE);
   const fullPrompt = buildClassifierPrompt(totalPages);
 
-  console.log(`[classifier] Starting PARALLEL classification: ${pages.length} full pages @ 120 DPI → ${batches.length} batches of ~${BATCH_SIZE}`);
+  console.log(`[classifier] Starting PARALLEL classification: ${pages.length} full pages @ 180 DPI → ${batches.length} batches of ~${BATCH_SIZE}`);
   console.log(`[classifier] Grok will analyze BOTTOM 15% of each page for footer patterns`);
   const startTime = Date.now();
 
@@ -219,7 +219,7 @@ export async function classifyCriticalPages(
     console.error('[classifier] ✗ CRITICAL: RPA block validation failed');
     console.error('[classifier] Missing pages:', rpaBlock.gaps);
     console.error('[classifier] This might be due to:');
-    console.error('  1. Footer text too blurry at 120 DPI');
+    console.error('  1. Footer text too blurry at 180 DPI');
     console.error('  2. Grok not finding footer text in full page images');
     console.error('  3. Footer text in unexpected location (not bottom 15%)');
     throw new Error(`Missing required RPA pages: ${rpaBlock.gaps.join(', ')}`);

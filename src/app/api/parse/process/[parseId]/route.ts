@@ -1,6 +1,6 @@
 // src/app/api/parse/process/[parseId]/route.ts
 // Version: 2.8.0 - 2025-12-20
-// ROLLBACK: Classification now uses full pages at 120 DPI (no footer cropping)
+// ROLLBACK: Classification now uses full pages at 180 DPI (no footer cropping)
 // KEPT: Parallel processing, sequential validation, high-res extraction at 200 DPI
 // IMPROVED: Clearer phase separation and logging
 
@@ -55,7 +55,7 @@ export async function GET(
         const pageCount = pdfDoc.getPageCount();
         console.log(`[process:${parseId}] PDF loaded - ${pageCount} pages detected`);
 
-        // PHASE 1: Classification render at 120 DPI (full pages)
+        // PHASE 1: Classification render at 180 DPI (full pages)
         emit(controller, {
           type: "progress",
           message: "Rendering all pages for AI classification...",
@@ -66,7 +66,7 @@ export async function GET(
           //@ts-ignore
           parse.pdfBuffer,
           { 
-            dpi: 120,
+            dpi: 180,
             totalPages: pageCount
           }
         );
@@ -77,7 +77,7 @@ export async function GET(
           where: { id: parse.userId },
           data: { credits: { decrement: 1 } },
         });
-        console.log(`[process:${parseId}] ✓ Credit deducted - rendered ${fullPageImages.length} full pages @ 120 DPI`);
+        console.log(`[process:${parseId}] ✓ Credit deducted - rendered ${fullPageImages.length} full pages @ 180 DPI`);
 
         emit(controller, {
           type: "progress",
