@@ -8,77 +8,56 @@ import { RPA_FORM, COUNTER_OFFERS, KEY_ADDENDA } from "./form-definitions";
  * Builds the classifier prompt dynamically based on total pages
  */
 export function buildClassifierPrompt(totalPages: number): string {
-  return `You are analyzing FULL-PAGE images from a ${totalPages}-page California real estate transaction packet.
+  return `You are analyzing a batch of ~15 pages from a ${totalPages}-page California real estate transaction packet.
+
+Focus ONLY on the bottom 15% of each image for footer text.
+
+Footer pattern: [FORM_CODE] Revised mm/yy (PAGE N OF M)
+
+Match ONLY when the full line is clearly readable.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-⚠️ CRITICAL: LOOK ONLY AT THE BOTTOM 15% OF EACH IMAGE ⚠️
+CALIFORNIA RPA SEQUENTIAL INFERENCE (CRITICAL — ALWAYS APPLY)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Each image shows a complete page, but you must IGNORE the top 85% and focus ONLY on the footer area (bottom 15%).
+The RPA is ALWAYS a consecutive 17-page block.
 
-The footer contains a single-line identifier that looks like this:
-[FORM_CODE] Revised mm/yy (PAGE N OF M)
+If you clearly see "RPA ... (PAGE 1 OF 17)" on PDF page P:
+  page_1_at_pdf_page = P
+  page_2_at_pdf_page = P + 1
+  page_3_at_pdf_page = P + 2
+  page_16_at_pdf_page = P + 15
+  page_17_at_pdf_page = P + 16
 
-Each image is tagged as "━━━ Image X/${totalPages} ━━━" where X is the PDF page number (1-${totalPages}).
+If you clearly see "RPA ... (PAGE 2 OF 17)" on PDF page P:
+  page_1_at_pdf_page = P - 1
+  page_2_at_pdf_page = P
+  page_3_at_pdf_page = P + 1
+  page_16_at_pdf_page = P + 14
+  page_17_at_pdf_page = P + 15
+
+DO NOT infer from Page 3, 16, or 17 alone.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-YOUR TASK: Find these EXACT forms by examining the footer text (bottom 15% only)
+COUNTER OFFERS & ADDENDA (ALWAYS SCAN FOR THESE)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-⚠️ FOOTER MATCHING: Look for this EXACT pattern in the BOTTOM 15% of each image
+Always look for:
+- SCO or SMCO → 2-page counter → add both PDF page numbers to counter_offer_pages
+- BCO → 1-page counter → add that PDF page number
+- ADM, TOA, AEA → 1-page addendum → add that PDF page number
 
-The critical identifier is ALWAYS this single-line string:
-[FORM_CODE] Revised mm/yy (PAGE N OF M)
-
-"Revised" can appear in any case (REVISED, Revised, revised, etc.).
-
-Exact examples of real footer text:
-- "RPA REVISED 6/25 (PAGE 1 OF 17)"
-- "RPA Revised 6/25 (PAGE 2 OF 17)"
+Examples of footers to match:
 - "SCO Revised 12/24 (PAGE 1 OF 2)"
 - "SCO Revised 12/24 (PAGE 2 OF 2)"
+- "BCO Revised 6/25 (PAGE 1 OF 1)"
 - "ADM REVISED 6/25 (PAGE 1 OF 1)"
 
-FORM_CODE is always uppercase: RPA, SCO, BCO, SMCO, ADM, TOA, AEA.
-
-Ignore all other form codes. 
-Ignore alignment — the line may be left-aligned or centered.
-Ignore all other lines, titles, broker information, logos, or any other content in the footer.
-DO NOT look at page headers or main content area - footer only (bottom 15%).
-
-Match ONLY when you can clearly read the complete revision line in the footer.
-If the text is blurry or incomplete, do NOT match it.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-1. RPA (MAIN CONTRACT)
-If the revision line in the BOTTOM 15% contains "RPA" + any case "Revised" + date + "(PAGE N OF 17)" and N is:
-- 1 → RPA Page 1
-- 2 → RPA Page 2
-- 3 → RPA Page 3
-- 16 → RPA Page 16
-- 17 → RPA Page 17
-
-**SEQUENTIAL HINT** (use to increase confidence):
-- Pages 1–3 are usually consecutive PDF pages
-- Pages 16–17 are usually consecutive and near the end of the RPA block
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-2. COUNTER OFFERS (SCO, BCO, SMCO)
-If footer contains "SCO Revised" + date + "(PAGE N OF 2)" → Seller Counter Offer
-If footer contains "BCO Revised" + date + "(PAGE N OF 1)" → Buyer Counter Offer
-If footer contains "SMCO Revised" + date + "(PAGE N OF 2)" → Seller Multiple Counter
-
-For counters, capture ALL pages (both page 1 AND page 2 for SCO/SMCO).
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-3. KEY ADDENDA (ADM, TOA, AEA)
-If footer contains "ADM Revised" + date + "(PAGE 1 OF 1)" → General Addendum
-If footer contains "TOA Revised" + date + "(PAGE 1 OF 1)" → Text Overflow Addendum
-If footer contains "AEA Revised" + date + "(PAGE 1 OF 1)" → Amendment
+If you see any of these, include ALL relevant pages.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Return ONLY this exact JSON structure (no markdown, no explanation):
+Return ONLY this exact JSON:
 
 {
   "pages_in_this_batch": number,
@@ -94,8 +73,7 @@ Return ONLY this exact JSON structure (no markdown, no explanation):
   "addendum_pages": []
 }
 
-EXAMPLE RESPONSE for a batch that saw 15 pages and found RPA Page 1 at PDF 11:
-
+EXAMPLE (RPA Page 1 at 11 + SCO at 38–39 + ADM at 40):
 {
   "pages_in_this_batch": 15,
   "total_document_pages": 40,
@@ -106,19 +84,16 @@ EXAMPLE RESPONSE for a batch that saw 15 pages and found RPA Page 1 at PDF 11:
     "page_16_at_pdf_page": 26,
     "page_17_at_pdf_page": 27
   },
-  "counter_offer_pages": [],
-  "addendum_pages": []
+  "counter_offer_pages": [38, 39],
+  "addendum_pages": [40]
 }
 
 RULES:
-- "pages_in_this_batch" = exact number of images you are analyzing right now
-- Set page numbers to null if not found
-- Do NOT hallucinate page numbers beyond ${totalPages}
-- Use the PDF page number from the "━━━ Image X/${totalPages} ━━━" tag
-- Double-check all page numbers are ≤ ${totalPages}
-- ONLY look at the BOTTOM 15% of each image for footer text`.trim();
+- pages_in_this_batch = exact number of images in this batch
+- Infer full RPA block from Page 1 or 2
+- Always include all counter and addendum pages seen
+- null if not found`.trim();
 }
-
 
 export const EXTRACTOR_PROMPT = `
 You are extracting key terms from 5 or more critical PNG pages of a California Residential Purchase Agreement (RPA Revised 6/25) packet.
