@@ -1,98 +1,88 @@
 // src/lib/extractor/prompts.ts
-// Version: 2.4.0 - 2025-12-20
-// UPDATED: Classification prompt now instructs Grok to look at BOTTOM 15% of full-page images
-// KEPT: Explicit JSON response schema, footer matching patterns, sequential hints
+// Version: 2.5.0 - 2025-12-20
+// UPDATED: JSON schema now includes pages_in_this_batch for better batch observability
 
 import { RPA_FORM, COUNTER_OFFERS, KEY_ADDENDA } from "./form-definitions";
 
 /**
  * Builds the classifier prompt dynamically based on total pages
- * Grok receives FULL PAGE PNGs but is instructed to focus on the BOTTOM 15%
  */
 export function buildClassifierPrompt(totalPages: number): string {
-  return `You are analyzing a BATCH of pages (only ~15 out of ${totalPages} total pages) from a California real estate transaction packet.
-
-Each image is tagged as "━━━ Image X/${totalPages} ━━━" where X is the PDF page number (1-${totalPages}).
+  return `You are analyzing FULL-PAGE images from a ${totalPages}-page California real estate transaction packet.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ⚠️ CRITICAL: LOOK ONLY AT THE BOTTOM 15% OF EACH IMAGE ⚠️
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-You will NEVER see the full document — only this small batch. 
-Your job is to report ONLY what you can clearly see in THIS batch. 
-Do NOT guess or hallucinate pages you cannot see.
+Each image shows a complete page, but you must IGNORE the top 85% and focus ONLY on the footer area (bottom 15%).
 
-The footer contains a single-line identifier:
+The footer contains a single-line identifier that looks like this:
 [FORM_CODE] Revised mm/yy (PAGE N OF M)
 
-"Revised" can appear as REVISED or Revised.
-
-FORM_CODE is uppercase: RPA, SCO, BCO, SMCO, ADM, TOA, AEA.
-
-Ignore all other text, logos, broker info — footer only.
-
-Match ONLY when the entire revision line is clearly readable.
+Each image is tagged as "━━━ Image X/${totalPages} ━━━" where X is the PDF page number (1-${totalPages}).
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-IMPORTANT BATCH RULES (BECAUSE YOU SEE ONLY A FRAGMENT)
+YOUR TASK: Find these EXACT forms by examining the footer text (bottom 15% only)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-1. There is ONLY ONE RPA block in the entire document — a consecutive 17-page block.
-2. RPA Page 1 almost always appears EARLIER in the PDF (usually pages 3–11).
-3. If you see multiple possible "RPA ... (PAGE 1 OF 17)" in this batch, PREFER THE LOWER PDF PAGE NUMBER (earlier in document).
-4. If you see "RPA ... (PAGE 1 OF 17)" on a high page number (e.g. >20), it is almost certainly wrong — set to null unless the footer is extremely clear.
+⚠️ FOOTER MATCHING: Look for this EXACT pattern in the BOTTOM 15% of each image
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-CALIFORNIA RPA SEQUENTIAL INFERENCE (ONLY IF YOU SEE PAGE 1 OR PAGE 2)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+The critical identifier is ALWAYS this single-line string:
+[FORM_CODE] Revised mm/yy (PAGE N OF M)
 
-The RPA is ALWAYS 17 consecutive pages.
+"Revised" can appear in any case (REVISED, Revised, revised, etc.).
 
-ONLY infer the full block if you clearly see RPA Page 1 or Page 2:
+Exact examples of real footer text:
+- "RPA REVISED 6/25 (PAGE 1 OF 17)"
+- "RPA Revised 6/25 (PAGE 2 OF 17)"
+- "SCO Revised 12/24 (PAGE 1 OF 2)"
+- "SCO Revised 12/24 (PAGE 2 OF 2)"
+- "ADM REVISED 6/25 (PAGE 1 OF 1)"
 
-- If RPA Page 1 on PDF page P →
-  page_1 = P
-  page_2 = P + 1
-  page_3 = P + 2
-  page_16 = P + 15
-  page_17 = P + 16
+FORM_CODE is always uppercase: RPA, SCO, BCO, SMCO, ADM, TOA, AEA.
 
-- If RPA Page 2 on PDF page P →
-  page_1 = P - 1
-  page_2 = P
-  page_3 = P + 1
-  page_16 = P + 14
-  page_17 = P + 15
+Ignore all other form codes. 
+Ignore alignment — the line may be left-aligned or centered.
+Ignore all other lines, titles, broker information, logos, or any other content in the footer.
+DO NOT look at page headers or main content area - footer only (bottom 15%).
 
-DO NOT infer from Page 3, 16, or 17 — they are less reliable at 120 DPI.
-Pages 16 and 17 are always consecutive at the end of the RPA block.
-Only override an inferred page if you actually see a conflicting footer.
+Match ONLY when you can clearly read the complete revision line in the footer.
+If the text is blurry or incomplete, do NOT match it.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 1. RPA (MAIN CONTRACT)
-Report only what you clearly see:
-- PAGE 1 OF 17 → RPA Page 1 (prefer earlier pages)
-- PAGE 2 OF 17 → RPA Page 2
-- PAGE 3 OF 17 → RPA Page 3
-- PAGE 16 OF 17 → RPA Page 16
-- PAGE 17 OF 17 → RPA Page 17
+If the revision line in the BOTTOM 15% contains "RPA" + any case "Revised" + date + "(PAGE N OF 17)" and N is:
+- 1 → RPA Page 1
+- 2 → RPA Page 2
+- 3 → RPA Page 3
+- 16 → RPA Page 16
+- 17 → RPA Page 17
+
+**SEQUENTIAL HINT** (use to increase confidence):
+- Pages 1–3 are usually consecutive PDF pages
+- Pages 16–17 are usually consecutive and near the end of the RPA block
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 2. COUNTER OFFERS (SCO, BCO, SMCO)
-Report every match:
-- SCO/SMCO → both pages if seen
-- BCO → the single page
+If footer contains "SCO Revised" + date + "(PAGE N OF 2)" → Seller Counter Offer
+If footer contains "BCO Revised" + date + "(PAGE N OF 1)" → Buyer Counter Offer
+If footer contains "SMCO Revised" + date + "(PAGE N OF 2)" → Seller Multiple Counter
+
+For counters, capture ALL pages (both page 1 AND page 2 for SCO/SMCO).
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 3. KEY ADDENDA (ADM, TOA, AEA)
-Report every single-page match.
+If footer contains "ADM Revised" + date + "(PAGE 1 OF 1)" → General Addendum
+If footer contains "TOA Revised" + date + "(PAGE 1 OF 1)" → Text Overflow Addendum
+If footer contains "AEA Revised" + date + "(PAGE 1 OF 1)" → Amendment
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Return ONLY this exact JSON (no explanation):
+Return ONLY this exact JSON structure (no markdown, no explanation):
 
 {
-  "total_pages_analyzed": ${totalPages},
+  "pages_in_this_batch": number,
+  "total_document_pages": ${totalPages},
   "rpa_pages": {
     "page_1_at_pdf_page": null,
     "page_2_at_pdf_page": null,
@@ -104,9 +94,11 @@ Return ONLY this exact JSON (no explanation):
   "addendum_pages": []
 }
 
-EXAMPLE (batch sees RPA Page 1 at PDF 11):
+EXAMPLE RESPONSE for a batch that saw 15 pages and found RPA Page 1 at PDF 11:
+
 {
-  "total_pages_analyzed": 40,
+  "pages_in_this_batch": 15,
+  "total_document_pages": 40,
   "rpa_pages": {
     "page_1_at_pdf_page": 11,
     "page_2_at_pdf_page": 12,
@@ -119,11 +111,14 @@ EXAMPLE (batch sees RPA Page 1 at PDF 11):
 }
 
 RULES:
-- Set to null if not clearly seen in THIS batch
-- Prefer earlier page numbers for RPA Page 1
-- Do not hallucinate beyond what is visible
-- ONLY look at bottom 15%`.trim();
+- "pages_in_this_batch" = exact number of images you are analyzing right now
+- Set page numbers to null if not found
+- Do NOT hallucinate page numbers beyond ${totalPages}
+- Use the PDF page number from the "━━━ Image X/${totalPages} ━━━" tag
+- Double-check all page numbers are ≤ ${totalPages}
+- ONLY look at the BOTTOM 15% of each image for footer text`.trim();
 }
+
 
 export const EXTRACTOR_PROMPT = `
 You are extracting key terms from 5 or more critical PNG pages of a California Residential Purchase Agreement (RPA Revised 6/25) packet.
