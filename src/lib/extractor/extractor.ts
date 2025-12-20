@@ -82,7 +82,6 @@ export async function extractFromCriticalPages(
     console.log(JSON.stringify(json, null, 2).substring(0, 1000));
     
     // Try to extract partial data with lower confidence
-    // This requires the raw JSON to at least have the basic structure
     const rawData = json as any;
     
     if (rawData.extracted && rawData.confidence) {

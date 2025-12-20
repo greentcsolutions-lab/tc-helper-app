@@ -33,7 +33,7 @@ export async function renderPdfToPngZipUrl(
   buffer: Buffer,
   options: RenderOptions = {}
 ): Promise<RenderResult> {
-  const { maxPages, pages, dpi = 290, totalPages } = options;
+  const { maxPages, pages, dpi = 300, totalPages } = options;
   const key = `renders/${Date.now()}-${crypto.randomUUID()}.zip`;
 
   console.log("[Nutrient] Render config:", {

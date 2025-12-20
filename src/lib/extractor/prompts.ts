@@ -1,6 +1,6 @@
 // src/lib/extractor/prompts.ts
-// Version: 3.0.0 - 2025-12-20
-// UPDATED: Emphasizes RPA 1-2 as critical anchors, others optional
+// Version: 3.1.0 - 2025-12-20
+// UPDATED: Enhanced field instructions, capitalization requirements, name extraction emphasis
 
 import { RPA_FORM, COUNTER_OFFERS, KEY_ADDENDA } from "./form-definitions";
 
@@ -154,12 +154,12 @@ export const EXTRACTOR_PROMPT = `
 You are an expert California real estate transaction analyst examining 5-10 high-resolution PNG images from a single transaction packet.
 
 Each image is labeled with its exact role, e.g.:
-- "RPA PAGE 1 OF 17" → Buyer names, property address, purchase price, deposit, close of escrow
-- "RPA PAGE 2 OF 17 (CONTINGENCIES)" → Loan terms, contingencies (L1-L9), seller delivery (N1)
-- "RPA PAGE 3 OF 17 (ITEMS INCLUDED & HOME WARRANTY)" → Home warranty (Q18)
-- "RPA PAGE 16 OF 17 (SIGNATURES)" → Seller signatures with dates
-- "RPA PAGE 17 OF 17 (BROKER INFO)" → Real estate brokers section
-- "COUNTER OFFER OR ADDENDUM" → Changes to terms
+- "RPA PAGE 1 OF 17"
+- "RPA PAGE 2 OF 17 (CONTINGENCIES)"
+- "RPA PAGE 3 OF 17 (ITEMS INCLUDED & HOME WARRANTY)"
+- "RPA PAGE 16 OF 17 (SIGNATURES)"
+- "RPA PAGE 17 OF 17 (BROKER INFO)"
+- "COUNTER OFFER OR ADDENDUM"
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🎯 CRITICAL EXTRACTION RULES — FOLLOW EXACTLY
@@ -201,16 +201,30 @@ buyer_names (REQUIRED):
   - Format: Array of strings ["John Smith", "Jane Smith"]
   - Often starts with "THIS IS AN OFFER FROM:"
   - Include ALL names exactly as written
+  - Names may be separated by commas, "and", or "and/or"
+  - Read the ENTIRE line - do not truncate
+  - If multiple middle names, include ALL of them
+  - If name appears as "First Middle Last", include all parts
+  - Examples:
+    ✓ "John Michael Smith" → ["John Michael Smith"]
+    ✓ "John Smith and Jane Doe" → ["John Smith", "Jane Doe"]
+    ✓ "John Smith, Jane Doe" → ["John Smith", "Jane Doe"]
 
 property_address (REQUIRED):
   - Location: Section 1.B, directly under buyer names
   - Format: { "full": "123 Main St, Los Angeles, CA 90001" }
   - Must be complete street address with city, state, zip
+  - DO NOT leave this field empty - it is ALWAYS present on RPA Page 1
+  - If unclear, extract what you can see and mark low confidence
 
 purchase_price (REQUIRED):
   - Location: Section 3.A, first row of table
   - Format: "$1,200,000" (must include $ and commas)
   - Look in columns 2-4 of the 5-column table
+  - Pay careful attention to distinguish handwritten digits:
+    → 3 vs 8 (3 has flat top, 8 has two loops)
+    → 1 vs 7 (1 is straight, 7 has angled top)
+    → 0 vs 6 (0 is round, 6 has tail)
 
 all_cash (REQUIRED):
   - Location: Section 3.A, rightmost column (column 5), same row as purchase_price
@@ -302,6 +316,7 @@ home_warranty.ordered_by (REQUIRED):
   - If "waives" checkbox checked → "Waived"
   - If no checkbox checked → null
   - ONLY ONE should be checked - if multiple checked, use first checked in order above
+  - ⚠️ CRITICAL: Use exact capitalization - "Buyer" NOT "buyer", "Seller" NOT "seller"
 
 home_warranty.seller_max_cost:
   - Location: Section Q(18), right side of columns 4+5
@@ -338,7 +353,7 @@ RPA PAGE 17 OF 17 (BROKER INFO):
 buyers_broker:
   - Location: "REAL ESTATE BROKERS" section, buyer's side
   - brokerage_name: Company name
-  - agent_name: Individual agent name
+  - agent_name: Individual agent name (read FULL name, do not truncate)
   - email: Agent email address
   - phone: Agent phone number
   - All fields nullable - if section blank → all null
@@ -393,13 +408,13 @@ If any REQUIRED field has confidence < 50 → overall_confidence automatically <
 Before returning your response, verify:
 
 ✓ buyer_names array has at least 1 name
-✓ property_address.full is a complete address (not just "123 Main St")
+✓ property_address.full is a complete address (not empty, not just "123 Main St")
 ✓ purchase_price includes "$" and is realistic ($100,000 - $50,000,000)
 ✓ close_of_escrow is either a number (15-120 days) or valid date
 ✓ final_acceptance_date is in MM/DD/YYYY format
 ✓ All contingency days are 0-60 (anything outside this range is wrong)
 ✓ If all_cash = true, then loan_type MUST be null
-✓ home_warranty.ordered_by is ONLY one of: "Buyer", "Seller", "Both", "Waived", null
+✓ home_warranty.ordered_by uses exact capitalization: "Buyer", "Seller", "Both", or "Waived"
 ✓ All confidence scores are 0-100
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -478,5 +493,8 @@ Focus on:
 - Fields with confidence < 80 in previous extraction
 - Any checkboxes that might have been misread
 - Handwriting vs digital signatures distinction
+- Property address if it was empty (ALWAYS present on RPA Page 1)
+- Exact capitalization for home_warranty.ordered_by
+- Full names without truncation
 
 Return the SAME JSON schema as before with corrected values and NEW confidence scores:`.trim();
