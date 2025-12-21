@@ -4,8 +4,8 @@
 //        No more fs.readFileSync or __dirname issues
 
 // Static imports — Next.js bundles these correctly at build time
-import classifierSchema from '@src/forms/california/classifier.schema.json';
-import extractorSchema from '@src/forms/california/extractor.schema.json';
+import classifierSchema from '@/forms/california/classifier.schema.json';
+import extractorSchema from '@/forms/california/extractor.schema.json';
 
 // Prettify for clean prompt insertion
 const classifierSchemaString = JSON.stringify(classifierSchema, null, 2);
