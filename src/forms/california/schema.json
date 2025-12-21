@@ -1,190 +1,203 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "California RPA – TC Core Fields",
-  "description": "Version 2.0.0 - 2025-01-09 - Updated to match CategorySection components exactly",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/schemas/real-estate-offer.schema.json",
+  "title": "Real Estate Purchase Offer",
+  "description": "Version 2.1.0 - 2025/12/20 Schema for extracted data from real estate purchase offer contracts",
   "type": "object",
   "properties": {
-    "buyer_names": {
-      "description": "Section 1.A - All buyer names exactly as written",
+    "buyerNames": {
+      "description": "Names of the buyer(s). Supports 1 to 4 buyers.",
       "type": "array",
-      "items": { "type": "string" },
-      "minItems": 1
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1,
+      "maxItems": 4,
+      "example": ["John Doe", "Jane Doe"]
     },
-    
-    "property_address": {
-      "description": "Section 1.B",
-      "type": "object",
-      "properties": {
-        "full": { "type": "string" }
-      },
-      "required": ["full"]
-    },
-    
-    "purchase_price": {
-      "description": "Section 3.A, Columns 2-4",
+    "propertyAddress": {
       "type": "string",
-      "pattern": "^\\$\\d{1,3}(,\\d{3})*(\\.\\d{2})?$"
+      "description": "Full address of the property being purchased.",
+      "example": "123 Main St, Los Angeles, CA 90210"
     },
-    
-    "all_cash": {
-      "description": "Section 3.A, Column 5 checkbox",
-      "type": "boolean"
+    "purchasePrice": {
+      "type": "number",
+      "description": "Purchase price in USD (stored as a number without currency symbol).",
+      "minimum": 0,
+      "example": 1950000
     },
-    
-    "close_of_escrow": {
-      "description": "Section 3.B, Column 4 - Days after acceptance OR specific date",
+    "allCashOffer": {
+      "type": "boolean",
+      "description": "Whether the offer is all cash (no financing).",
+      "example": false
+    },
+    "initialDepositAmount": {
+      "type": "number",
+      "description": "Initial earnest money deposit amount in USD.",
+      "minimum": 0,
+      "example": 12345
+    },
+    "loanType": {
+      "type": "string",
+      "enum": ["Conventional", "FHA", "VA", "n/a"],
+      "description": "Type of loan. Defaults to 'Conventional' unless a checkbox for FHA or VA is selected, or 'n/a' for all cash.",
+      "default": "Conventional",
+      "example": "Conventional"
+    },
+    "sellerCreditToBuyer": {
+      "description": "Seller credit toward buyer's costs. Use the string 'None' when no credit is offered.",
       "oneOf": [
-        { "type": "integer", "minimum": 1 },
-        { "type": "string", "pattern": "^(0[1-9]|1[0-2])\\/(0[1-9]|[12]\\d|3[01])\\/\\d{4}$" }
-      ]
+        { "type": "string", "const": "None" },
+        { "type": "number", "minimum": 0 }
+      ],
+      "default": "None",
+      "example": "None"
     },
-    
-    "initial_deposit": {
-      "description": "Section 3.D(1)",
-      "type": "object",
-      "properties": {
-        "amount": {
-          "description": "Column 4 - Dollar amount or percentage",
-          "type": "string",
-          "pattern": "^(\\$\\d{1,3}(,\\d{3})*(\\.\\d{2})?|\\d+(\\.\\d+)?%)$"
-        },
-        "due": {
-          "description": "Column 5 - Days after acceptance OR specific date",
-          "oneOf": [
-            { "type": "integer", "minimum": 0 },
-            { "type": "string", "pattern": "^(0[1-9]|1[0-2])\\/(0[1-9]|[12]\\d|3[01])\\/\\d{4}$" }
-          ]
-        }
-      },
-      "required": ["amount"]
-    },
-    
-    "loan_type": {
-      "description": "Section 3.E(1), Column 5 - Null if all_cash is true",
+    "countersAndAddendaSummary": {
       "type": ["string", "null"],
-      "enum": ["Conventional", "FHA", "VA", "Seller Financing", "Other", "Assumable", null]
+      "description": "Free-text summary of counters and addenda reflecting the latest accepted terms. Requires reasoning to determine final terms. Use null if no counters or addenda exist.",
+      "example": "Counter offer accepted with revised close date of 45 days and $5,000 seller credit."
     },
-    
-    "seller_credit_to_buyer": {
-      "description": "Section 3.G(1) - Checkbox Column 3, Amount Column 4",
-      "type": ["string", "null"],
-      "pattern": "^\\$\\d{1,3}(,\\d{3})*(\\.\\d{2})?$"
-    },
-    
-    "final_acceptance_date": {
-      "description": "Latest signature date from RPA Page 16 or final counter offer",
+    "homeWarrantyOrderedBy": {
       "type": "string",
-      "pattern": "^(0[1-9]|1[0-2])\\/(0[1-9]|[12]\\d|3[01])\\/\\d{4}$"
+      "enum": ["Seller", "Buyer", "Both", "Waived"],
+      "description": "Who is responsible for ordering the home warranty.",
+      "example": "Buyer"
     },
-    
-    "contingencies": {
-      "description": "Section L on RPA Page 2",
-      "type": "object",
-      "properties": {
-        "loan_days": {
-          "description": "L(1) - Column 4 has days, Column 5 has waiver checkbox. Null if waived.",
-          "type": ["integer", "null"],
-          "default": 17
-        },
-        "appraisal_days": {
-          "description": "L(2) - Column 4 has days, Column 5 has waiver checkbox. Null if waived.",
-          "type": ["integer", "null"],
-          "default": 17
-        },
-        "investigation_days": {
-          "description": "L(3) - Column 4 only (no waiver checkbox for this one)",
-          "type": ["integer", "null"],
-          "default": 17
-        },
-        "crb_attached_and_signed": {
-          "description": "L(8) - Checkbox in Column 5 (multi-row span)",
-          "type": "boolean"
-        }
-      }
+    "sellerMaxWarrantyCost": {
+      "type": ["string", "null"],
+      "description": "Maximum cost the seller will pay for warranty (often 'Not Specified').",
+      "default": "Not Specified",
+      "example": "Not Specified"
     },
-    
-    "cop_contingency": {
-      "description": "Section L(9) - Contingency for Sale of Buyer's Property. Checkbox in Columns 3+5 (combined cell). If checked, timelines start when this contingency is removed.",
-      "type": "boolean"
+    "homeWarrantyProvider": {
+      "type": ["string", "null"],
+      "description": "Name of the home warranty company, if specified.",
+      "example": "First American Home Warranty"
     },
-    
-    "seller_delivery_of_documents_days": {
-      "description": "Section N(1), Column 4 - Default 7 if not specified",
+    "copContingency": {
+      "type": "boolean",
+      "description": "Contingency for the Sale of Buyer's Property. True if active, false if waived.",
+      "example": false
+    },
+    "finalAcceptanceDate": {
+      "type": ["string", "null"],
+      "format": "date",
+      "description": "Date the offer was fully accepted (YYYY-MM-DD).",
+      "example": "2023-10-20"
+    },
+    "initialDepositDue": {
+      "description": "Number of business days after acceptance the initial deposit is due. Use the written-in value if present; otherwise apply default of 3.",
       "type": "integer",
-      "default": 7
+      "minimum": 0,
+      "default": 3,
+      "example": 3
     },
-    
-    "counters": {
-      "description": "Counter offer tracking and merge logic",
-      "type": "object",
-      "properties": {
-        "has_counter_or_addendum": {
-          "type": "boolean"
-        },
-        "counter_chain": {
-          "description": "Sequence of documents (e.g., ['RPA', 'SCO #1', 'BCO #1'])",
-          "type": "array",
-          "items": { "type": "string" },
-          "default": ["RPA"]
-        },
-        "final_version_page": {
-          "description": "PDF page number where final acceptance signature appears",
-          "type": ["integer", "null"]
-        },
-        "summary": {
-          "description": "Human-readable summary of counter chain",
-          "type": "string"
-        }
-      },
-      "required": ["has_counter_or_addendum"]
+    "sellerDeliveryOfDocuments": {
+      "description": "Number of days after acceptance seller must deliver documents. Use written-in value if present; otherwise apply default of 7.",
+      "type": "integer",
+      "minimum": 0,
+      "default": 7,
+      "example": 7
     },
-    
-    "home_warranty": {
-      "description": "Section 3.Q(18) on RPA Page 3",
-      "type": "object",
-      "properties": {
-        "ordered_by": {
-          "description": "Columns 4+5 (combined cell) - Who pays",
-          "type": "string",
-          "enum": ["Buyer", "Seller", "Both", "Waived"]
-        },
-        "seller_max_cost": {
-          "description": "Right side of combined cell",
-          "type": ["string", "null"],
-          "pattern": "^\\$\\d{1,3}(,\\d{3})*(\\.\\d{2})?$"
-        }
-      },
-      "required": ["ordered_by"]
+    "crbAttachedAndSigned": {
+      "type": "string",
+      "enum": ["Yes", "No"],
+      "description": "Whether the CR-B form is attached and signed.",
+      "example": "No"
     },
-    
-    "buyers_broker": {
-      "description": "RPA Page 17 - REAL ESTATE BROKERS section",
-      "type": "object",
-      "properties": {
-        "brokerage_name": { "type": ["string", "null"] },
-        "agent_name": { "type": ["string", "null"] },
-        "email": { "type": ["string", "null"] },
-        "phone": { "type": ["string", "null"] }
-      }
+    "inspectionContingency": {
+      "description": "Inspection contingency timeframe. Can be number of days after acceptance (default 17 if blank) or a specific date if overridden.",
+      "oneOf": [
+        { "type": "integer", "minimum": 0, "example": 17 },
+        { "type": "string", "format": "date", "example": "2025-12-31" },
+        { "type": "string", "const": "Waived" }
+      ],
+      "default": 17
     },
-    
-    "sellers_broker": {
-      "description": "RPA Page 17 - REAL ESTATE BROKERS section",
-      "type": "object",
-      "properties": {
-        "brokerage_name": { "type": ["string", "null"] },
-        "agent_name": { "type": ["string", "null"] },
-        "email": { "type": ["string", "null"] },
-        "phone": { "type": ["string", "null"] }
-      }
+    "appraisalContingency": {
+      "description": "Appraisal contingency timeframe. Can be number of days after acceptance (default 17 if blank) or a specific date if overridden.",
+      "oneOf": [
+        { "type": "integer", "minimum": 0, "example": 17 },
+        { "type": "string", "format": "date", "example": "2025-12-31" },
+        { "type": "string", "const": "Waived" }
+      ],
+      "default": 17
+    },
+    "loanContingency": {
+      "description": "Loan contingency timeframe. Can be number of days after acceptance (default 17 if blank) or a specific date if overridden.",
+      "oneOf": [
+        { "type": "integer", "minimum": 0, "example": 17 },
+        { "type": "string", "format": "date", "example": "2025-12-31" },
+        { "type": "string", "const": "Waived" }
+      ],
+      "default": 17
+    },
+    "closeOfEscrow": {
+      "description": "Close of escrow timeframe. Must preserve exactly what appears on the final accepted contract: either number of days after acceptance or a specific date.",
+      "oneOf": [
+        { "type": "integer", "minimum": 0, "example": 30 },
+        { "type": "string", "format": "date", "example": "2025-12-25" }
+      ],
+      "example": 30
+    },
+    "buyersBrokerage": {
+      "type": "string",
+      "description": "Name of the buyer's brokerage firm.",
+      "example": "Equity Union Mortgage"
+    },
+    "buyersAgent": {
+      "type": "string",
+      "description": "Name of the buyer's agent.",
+      "example": "Sarah Johnson"
+    },
+    "buyersAgentEmail": {
+      "type": "string",
+      "format": "email",
+      "description": "Email address of the buyer's agent.",
+      "example": "sarah.johnson@equityunion.com"
+    },
+    "buyersAgentPhone": {
+      "type": "string",
+      "description": "Phone number of the buyer's agent in US format (XXX) XXX-XXXX.",
+      "pattern": "^\\(\\d{3}\\) \\d{3}-\\d{4}$",
+      "example": "(555) 123-4567"
+    },
+    "sellersBrokerage": {
+      "type": "string",
+      "description": "Name of the seller's/listing brokerage firm.",
+      "example": "Redfin"
+    },
+    "listingAgent": {
+      "type": "string",
+      "description": "Name of the listing agent.",
+      "example": "Michael Chen"
+    },
+    "listingAgentEmail": {
+      "type": "string",
+      "format": "email",
+      "description": "Email address of the listing agent.",
+      "example": "michael.chen@redfin.com"
+    },
+    "listingAgentPhone": {
+      "type": "string",
+      "description": "Phone number of the listing agent in US format (XXX) XXX-XXXX.",
+      "pattern": "^\\(\\d{3}\\) \\d{3}-\\d{4}$",
+      "example": "(555) 987-6543"
     }
   },
   "required": [
-    "buyer_names",
-    "property_address",
-    "purchase_price",
-    "final_acceptance_date",
-    "contingencies"
+    "buyerNames",
+    "propertyAddress",
+    "purchasePrice",
+    "allCashOffer",
+    "initialDepositAmount",
+    "loanType",
+    "homeWarrantyOrderedBy",
+    "copContingency",
+    "closeOfEscrow",
+    "buyersBrokerage",
+    "buyersAgent",
+    "sellersBrokerage",
+    "listingAgent"
   ],
   "additionalProperties": false
 }
