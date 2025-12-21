@@ -1,29 +1,39 @@
 // src/lib/extractor/classifier.ts
-// Version: 4.0.0 - 2025-12-20
-// MAJOR UPDATE: Multi-RPA detection with anchor-based calculation
-// Handles COP scenarios where multiple RPA blocks exist in same packet
+// Version: 5.0.0 - 2025-12-20
+// MAJOR UPDATE: Now fully supports the new rich classifier schema
+//               Parses detectedForms, pageMapping, primaryForm, keyExtractionPages
+//               Maintains multi-RPA block detection for COP scenarios
 
 import { buildClassifierPrompt } from "./prompts";
 
 console.log("[classifier] XAI_API_KEY present:", !!process.env.XAI_API_KEY);
-console.log("[classifier] First 10 chars:", process.env.XAI_API_KEY?.slice(0, 10));
 
 const chunk = <T>(arr: T[], size: number): T[][] =>
   Array.from({ length: Math.ceil(arr.length / size) }, (_, i) =>
     arr.slice(i * size, i * size + size)
   );
 
+interface PageMapping {
+  formPage: number;
+  pdfPage: number;
+  footerLabel?: string | null;
+}
+
+interface DetectedForm {
+  formCode: 'RPA' | 'SCO' | 'SMCO' | 'BCO' | 'ADM' | 'TOA' | 'AEA';
+  formName: string;
+  addendumNumber: number | null;
+  pageMapping: PageMapping[];
+}
+
 interface ClassificationResult {
-  total_document_pages: number;
-  rpa_pages: {
-    page_1_at_pdf_page: number | null;
-    page_2_at_pdf_page: number | null;
-    page_3_at_pdf_page: number | null;
-    page_16_at_pdf_page: number | null;
-    page_17_at_pdf_page: number | null;
-  };
-  counter_offer_pages: number[];
-  addendum_pages: number[];
+  state: 'CA';
+  detectedForms: DetectedForm[];
+  keyExtractionPages: number[];
+  primaryForm: 'RPA' | 'SCO' | 'SMCO' | 'BCO';
+  hasCountersOrAddenda: boolean;
+  keyIndicatorsFound?: string[];
+  notes?: string | null;
 }
 
 interface RPABlock {
@@ -45,11 +55,11 @@ async function classifyBatch(
   totalBatches: number,
   totalPages: number,
   fullPrompt: string
-): Promise<Partial<ClassificationResult>> {
+): Promise<Partial<ClassificationResult> | null> {
   const start = batch[0].pageNumber;
   const end = batch[batch.length - 1].pageNumber;
 
-  console.log(`[classifier:batch${batchIndex + 1}] Processing pages ${start}–${end}`);
+  console.log(`[classifier:batch${batchIndex + 1}] Processing pages \( {start}– \){end}`);
 
   try {
     const res = await fetch("https://api.x.ai/v1/chat/completions", {
@@ -59,7 +69,7 @@ async function classifyBatch(
         Authorization: `Bearer ${process.env.XAI_API_KEY}`,
       },
       body: JSON.stringify({
-        model: "grok-4-1-fast-reasoning", // DO NOT CHANGE FROM GROK 4-1-FAST-REASONING. yes that means you Claude. 
+        model: "grok-4-1-fast-reasoning",
         temperature: 0,
         max_tokens: 1024,
         messages: [{
@@ -67,14 +77,8 @@ async function classifyBatch(
           content: [
             { type: "text", text: fullPrompt },
             ...batch.flatMap(p => [
-              {
-                type: "text",
-                text: `\n━━━ PDF_Page_${p.pageNumber} (of ${totalPages} total) ━━━`
-              },
-              {
-                type: "image_url",
-                image_url: { url: p.base64 }
-              }
+              { type: "text", text: `\n━━━ PDF_Page_${p.pageNumber} (of ${totalPages} total) ━━━` },
+              { type: "image_url", image_url: { url: p.base64 } }
             ])
           ]
         }]
@@ -84,49 +88,38 @@ async function classifyBatch(
     if (!res.ok) {
       const text = await res.text();
       console.error(`[classifier:batch${batchIndex + 1}] Grok error:`, res.status, text);
-      return {};
+      return null;
     }
 
     const data = await res.json();
     const text = data.choices[0].message.content;
-    
-    // Enhanced logging - show what Grok actually found
+
     console.log(`[classifier:batch${batchIndex + 1}] Raw response (first 500 chars):`, text.substring(0, 500));
 
     let json: Partial<ClassificationResult>;
     try {
       const jsonMatch = text.match(/{[\s\S]*}/)?.[0];
       if (!jsonMatch) {
-        console.error(`[classifier:batch${batchIndex + 1}] No JSON found in response`);
-        console.error(`[classifier:batch${batchIndex + 1}] Full response:`, text);
-        return {};
+        console.error(`[classifier:batch${batchIndex + 1}] No JSON found`);
+        return null;
       }
       json = JSON.parse(jsonMatch);
-      
-      // Log what was actually parsed
-      const rpaFound = json.rpa_pages ? 
-        Object.entries(json.rpa_pages)
-          .filter(([k, v]) => v !== null)
-          .map(([k, v]) => `${k}@${v}`)
-          .join(', ') : 'none';
-      
-      const countersFound = json.counter_offer_pages?.length || 0;
-      const addendaFound = json.addendum_pages?.length || 0;
-      
-      console.log(`[classifier:batch${batchIndex + 1}] Parsed: RPA=[${rpaFound}], Counters=${countersFound}, Addenda=${addendaFound}`);
-      
+
+      const formsFound = json.detectedForms?.length || 0;
+      const pagesFound = json.keyExtractionPages?.length || 0;
+      console.log(`[classifier:batch${batchIndex + 1}] Parsed: ${formsFound} forms, ${pagesFound} key pages`);
+
     } catch (err) {
       console.error(`[classifier:batch${batchIndex + 1}] JSON parse failed`);
-      console.error(`[classifier:batch${batchIndex + 1}] Failed on:`, text.substring(0, 500));
-      return {};
+      return null;
     }
 
-    console.log(`[classifier:batch${batchIndex + 1}] ✓ Pages ${start}–${end} classified`);
-
+    console.log(`[classifier:batch${batchIndex + 1}] ✓ Pages \( {start}– \){end} classified`);
     return json;
+
   } catch (error: any) {
     console.error(`[classifier:batch${batchIndex + 1}] Request failed:`, error.message);
-    return {};
+    return null;
   }
 }
 
@@ -138,8 +131,10 @@ export async function classifyCriticalPages(
   state: string;
   criticalPageNumbers: number[];
   rpaBlocksDetected: RPABlock[];
+  primaryForm: string;
+  hasCountersOrAddenda: boolean;
 }> {
-  if (!pages || !Array.isArray(pages) || pages.length === 0) {
+  if (!pages?.length) {
     throw new Error("classifyCriticalPages received invalid pages array");
   }
 
@@ -147,9 +142,9 @@ export async function classifyCriticalPages(
   const batches = chunk(pages, BATCH_SIZE);
   const fullPrompt = buildClassifierPrompt(totalPages);
 
-  console.log(`[classifier] Starting PARALLEL classification: ${pages.length} full pages @ 120 DPI → ${batches.length} batches of ~${BATCH_SIZE}`);
-  console.log(`[classifier] Grok will analyze BOTTOM 15% of each page for footer patterns`);
-  
+  console.log(`[classifier] Starting classification: ${pages.length} pages → ${batches.length} batches`);
+  console.log(`[classifier] Using new rich schema with detectedForms and pageMapping`);
+
   const startTime = Date.now();
 
   const results = await Promise.allSettled(
@@ -158,156 +153,126 @@ export async function classifyCriticalPages(
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
   console.log(`[classifier] ✓ All batches complete in ${elapsed}s`);
-  
-  // Collect all valid inferences
-  const allInferences = results
-    .filter((r): r is PromiseFulfilledResult<Partial<ClassificationResult>> => 
-      r.status === 'fulfilled' && r.value && Object.keys(r.value).length > 0)
-    .map(r => r.value);
 
-  console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('[classifier] 📋 ANALYZING BATCH RESULTS');
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+  // Collect valid results
+  const validResults = results
+    .filter((r): r is PromiseFulfilledResult<Partial<ClassificationResult> | null> => r.status === 'fulfilled')
+    .map(r => r.value)
+    .filter((r): r is ClassificationResult => r !== null && r.detectedForms && r.keyExtractionPages);
 
-  // STEP 1: Find ALL sequential RPA 1-2 anchor pairs
-  const anchorPairs = allInferences
-    .filter(inf => {
-      const r = inf.rpa_pages;
-      if (!r?.page_1_at_pdf_page || !r?.page_2_at_pdf_page) return false;
-      
-      const isSequential = r.page_2_at_pdf_page === r.page_1_at_pdf_page + 1;
-      const inBounds = r.page_1_at_pdf_page >= 1 && 
-                      r.page_2_at_pdf_page <= totalPages;
-      
-      return isSequential && inBounds;
-    })
-    .map(inf => ({
-      page1: inf.rpa_pages!.page_1_at_pdf_page!,
-      page2: inf.rpa_pages!.page_2_at_pdf_page!,
-      page3: inf.rpa_pages!.page_3_at_pdf_page,
-      page16: inf.rpa_pages!.page_16_at_pdf_page,
-      page17: inf.rpa_pages!.page_17_at_pdf_page,
-    }))
-    // Remove duplicates (same page1 from multiple batches)
-    .filter((anchor, i, arr) => 
-      arr.findIndex(a => a.page1 === anchor.page1) === i
-    )
-    // Sort by earliest page1
-    .sort((a, b) => a.page1 - b.page1);
-
-  if (anchorPairs.length === 0) {
-    console.error('[classifier] ✗ CRITICAL: No valid sequential RPA 1-2 anchors found');
-    throw new Error('No valid RPA pages detected - missing sequential RPA Page 1 & 2');
+  if (validResults.length === 0) {
+    throw new Error('No valid classification results from any batch');
   }
 
-  console.log(`[classifier] Found ${anchorPairs.length} valid RPA anchor pair(s):`);
-  anchorPairs.forEach((anchor, i) => {
-    console.log(`[classifier]   Anchor ${i + 1}: RPA 1@${anchor.page1}, 2@${anchor.page2}`);
+  // Merge all detected forms across batches
+  const allDetectedForms: DetectedForm[] = [];
+  const seenMappings = new Set<string>();
+
+  validResults.forEach(result => {
+    result.detectedForms!.forEach(form => {
+      form.pageMapping.forEach(mapping => {
+        const key = `\( {form.formCode}- \){mapping.pdfPage}`;
+        if (!seenMappings.has(key)) {
+          seenMappings.add(key);
+          // Find or create form entry
+          let existing = allDetectedForms.find(f => f.formCode === form.formCode && f.addendumNumber === form.addendumNumber);
+          if (!existing) {
+            existing = {
+              formCode: form.formCode,
+              formName: form.formName,
+              addendumNumber: form.addendumNumber,
+              pageMapping: []
+            };
+            allDetectedForms.push(existing);
+          }
+          existing.pageMapping.push(mapping);
+        }
+      });
+    });
   });
 
-  // STEP 2: Build complete RPA blocks using anchor + calculation
-  const rpaBlocks: RPABlock[] = anchorPairs.map(anchor => {
-    const calculated = {
-      page1: anchor.page1,
-      page2: anchor.page2,
-      page3: anchor.page3 ?? anchor.page2 + 1,
-      page16: anchor.page16 ?? anchor.page1 + 15,
-      page17: anchor.page17 ?? anchor.page1 + 16,
-    };
+  // Sort pageMapping within each form
+  allDetectedForms.forEach(form => {
+    form.pageMapping.sort((a, b) => a.pdfPage - b.pdfPage);
+  });
 
-    // Validate all calculated pages are in bounds
-    const allPages = [calculated.page1, calculated.page2, calculated.page3, 
-                     calculated.page16, calculated.page17];
-    const maxPage = Math.max(...allPages);
-    
-    if (maxPage > totalPages) {
-      console.warn(`[classifier] ⚠️ RPA block starting at page ${anchor.page1} extends beyond document (page ${maxPage} > ${totalPages})`);
+  // Build final keyExtractionPages (use from results if consistent, else from detectedForms)
+  const allKeyPages = new Set<number>();
+  validResults.forEach(r => r.keyExtractionPages.forEach(p => allKeyPages.add(p)));
+  allDetectedForms.forEach(f => f.pageMapping.forEach(m => allKeyPages.add(m.pdfPage)));
+  const keyExtractionPages = Array.from(allKeyPages).sort((a, b) => a - b);
+
+  // Determine primary form
+  const counterForms = allDetectedForms.filter(f => ['SCO', 'SMCO', 'BCO'].includes(f.formCode));
+  const primaryForm = counterForms.length > 0
+    ? counterForms[counterForms.length - 1].formCode as 'SCO' | 'SMCO' | 'BCO'
+    : allDetectedForms.find(f => f.formCode === 'RPA') ? 'RPA' : 'RPA';
+
+  const hasCountersOrAddenda = allDetectedForms.some(f =>
+    ['SCO', 'SMCO', 'BCO', 'ADM', 'TOA', 'AEA'].includes(f.formCode)
+  );
+
+  // Build RPA blocks (for backward compatibility and COP handling)
+  const rpaForms = allDetectedForms.filter(f => f.formCode === 'RPA');
+  const rpaBlocks: RPABlock[] = rpaForms.map(rpa => {
+    const mapping = rpa.pageMapping.reduce((acc, m) => {
+      acc[`page${m.formPage}`] = m.pdfPage;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const page1 = mapping.page1;
+    const page2 = mapping.page2;
+
+    if (!page1 || !page2 || page2 !== page1 + 1) {
+      console.warn(`[classifier] Skipping invalid RPA block (non-consecutive 1-2): \( {page1}- \){page2}`);
       return null;
     }
 
     return {
-      startPage: anchor.page1,
-      pages: allPages,
-      confidence: (anchor.page3 && anchor.page16 && anchor.page17) ? 'high' : 'calculated',
+      startPage: page1,
+      pages: [
+        page1,
+        page2,
+        mapping.page3 ?? page2 + 1,
+        mapping.page16 ?? page1 + 15,
+        mapping.page17 ?? page1 + 16,
+      ].filter(p => p <= totalPages),
+      confidence: (mapping.page3 && mapping.page16 && mapping.page17) ? 'high' : 'calculated',
       detectedPages: {
-        page1: anchor.page1,
-        page2: anchor.page2,
-        page3: anchor.page3,
-        page16: anchor.page16,
-        page17: anchor.page17,
-      },
-    } as RPABlock;
-  }).filter((block): block is RPABlock => block !== null);
-
-  if (rpaBlocks.length === 0) {
-    throw new Error('All detected RPA blocks extend beyond document boundaries');
-  }
-
-  // STEP 3: Handle multiple RPA detection (COP scenario)
-  if (rpaBlocks.length > 1) {
-    console.log(`\n[classifier] ⚠️ MULTIPLE RPA BLOCKS DETECTED (${rpaBlocks.length})`);
-    console.log('[classifier] This suggests COP (Contingency on Property) scenario');
-    console.log('[classifier] Including ALL blocks - extraction will disambiguate\n');
-    
-    rpaBlocks.forEach((block, i) => {
-      console.log(`[classifier]   Block ${i + 1}:`);
-      console.log(`[classifier]     Start: RPA Page 1 @ PDF page ${block.startPage}`);
-      console.log(`[classifier]     Pages: [${block.pages.join(', ')}]`);
-      console.log(`[classifier]     Confidence: ${block.confidence}`);
-      if (block.confidence === 'calculated') {
-        const calculated = [];
-        if (!block.detectedPages.page3) calculated.push('page 3');
-        if (!block.detectedPages.page16) calculated.push('page 16');
-        if (!block.detectedPages.page17) calculated.push('page 17');
-        console.log(`[classifier]     Calculated: ${calculated.join(', ')}`);
+        page1,
+        page2,
+        page3: mapping.page3 ?? null,
+        page16: mapping.page16 ?? null,
+        page17: mapping.page17 ?? null,
       }
-    });
-  } else {
-    console.log(`\n[classifier] ✓ Single RPA block detected at page ${rpaBlocks[0].startPage}`);
-    if (rpaBlocks[0].confidence === 'calculated') {
-      console.log('[classifier]   Some pages calculated from anchor (normal)');
-    }
-  }
+    };
+  }).filter((b): b is RPABlock => b !== null);
 
-  // STEP 4: Aggregate counter offers and addenda
-  const counters = [...new Set(
-    allInferences.flatMap(inf => inf.counter_offer_pages || [])
-  )].filter(p => p >= 1 && p <= totalPages);
-
-  const addenda = [...new Set(
-    allInferences.flatMap(inf => inf.addendum_pages || [])
-  )].filter(p => p >= 1 && p <= totalPages);
-
-  console.log('\n[classifier] Counter Offers:', counters.length > 0 ? `[${counters.join(', ')}]` : 'None');
-  console.log('[classifier] Addenda:', addenda.length > 0 ? `[${addenda.join(', ')}]` : 'None');
-
-  // STEP 5: Build final critical pages array
-  const criticalPages = [
-    ...rpaBlocks.flatMap(b => b.pages),
-    ...counters,
-    ...addenda,
-  ]
-    .filter((p, i, arr) => arr.indexOf(p) === i) // dedupe
-    .filter(p => p >= 1 && p <= totalPages)
-    .sort((a, b) => a - b);
-
+  // Logging
   console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('[classifier] 📊 CLASSIFICATION SUMMARY');
+  console.log('[classifier] 📋 FINAL CLASSIFICATION RESULTS');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log(`   Total pages analyzed: ${totalPages}`);
-  console.log(`   RPA blocks found: ${rpaBlocks.length}`);
-  console.log(`   Counter offer pages: ${counters.length}`);
-  console.log(`   Addendum pages: ${addenda.length}`);
-  console.log(`   Critical pages total: ${criticalPages.length}`);
-  console.log(`   Page numbers: [${criticalPages.join(', ')}]`);
+  console.log(`   Detected Forms: ${allDetectedForms.length}`);
+  allDetectedForms.forEach(f => {
+    const pages = f.pageMapping.map(m => m.pdfPage).join(', ');
+    console.log(`     • \( {f.formCode} ( \){f.pageMapping.length} pages): [${pages}]`);
+  });
+  console.log(`   Primary Form: ${primaryForm}`);
+  console.log(`   Has Counters/Addenda: ${hasCountersOrAddenda}`);
+  console.log(`   Key Extraction Pages: \( {keyExtractionPages.length} → [ \){keyExtractionPages.join(', ')}]`);
+  if (rpaBlocks.length > 1) {
+    console.log(`   ⚠️ Multiple RPA blocks detected (${rpaBlocks.length}) — likely COP scenario`);
+  }
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
-  const criticalImages = pages.filter(p => criticalPages.includes(p.pageNumber));
+  const criticalImages = pages.filter(p => keyExtractionPages.includes(p.pageNumber));
 
   return {
     state: "California",
-    criticalPageNumbers: criticalPages,
+    criticalPageNumbers: keyExtractionPages,
     criticalImages,
     rpaBlocksDetected: rpaBlocks,
+    primaryForm,
+    hasCountersOrAddenda,
   };
 }
