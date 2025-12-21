@@ -48,8 +48,9 @@ export async function GET(
   const stream = new ReadableStream({
     async start(controller) {
       try {
+        // FIX: Ignore encryption (common in owner-restricted PDFs with no user password)
         //@ts-ignore
-        const pdfDoc = await PDFDocument.load(parse.pdfBuffer);
+        const pdfDoc = await PDFDocument.load(parse.pdfBuffer, { ignoreEncryption: true });
         const pageCount = pdfDoc.getPageCount();
         console.log(`[process:${parseId}] PDF loaded - ${pageCount} pages detected`);
 
@@ -110,11 +111,12 @@ export async function GET(
         });
 
         // PHASE 3: High-res extraction render
-        console.log(`[process:${parseId}] Creating new PDF with pages: [${criticalPageNumbers.join(", ")}]`);
+        console.log(`[process:\( {parseId}] Creating new PDF with pages: [ \){criticalPageNumbers.join(", ")}]`);
 
         const newPdf = await PDFDocument.create();
+        // FIX: Also ignore encryption here when loading source for copying pages
         //@ts-ignore
-        const sourcePdf = await PDFDocument.load(parse.pdfBuffer);
+        const sourcePdf = await PDFDocument.load(parse.pdfBuffer, { ignoreEncryption: true });
 
         for (const pageNum of criticalPageNumbers) {
           const [copiedPage] = await newPdf.copyPages(sourcePdf, [pageNum - 1]);
@@ -122,7 +124,7 @@ export async function GET(
         }
 
         const criticalPagesPdfBuffer = Buffer.from(await newPdf.save());
-        console.log(`[process:${parseId}] ✓ Extracted ${criticalPageNumbers.length} pages into new PDF (${(criticalPagesPdfBuffer.length / 1024).toFixed(0)} KB)`);
+        console.log(`[process:${parseId}] ✓ Extracted \( {criticalPageNumbers.length} pages into new PDF ( \){(criticalPagesPdfBuffer.length / 1024).toFixed(0)} KB)`);
 
         const { url: extractZipUrl, key: extractZipKey } = await renderPdfToPngZipUrl(
           criticalPagesPdfBuffer,
@@ -155,9 +157,9 @@ export async function GET(
         const labeledCriticalImages = criticalPagesHighRes.map((img, index) => {
           const originalPdfPage = criticalPageNumbers[index]; // Maps position to original page
           const label = pageLabels[originalPdfPage] || `PDF PAGE ${originalPdfPage}`;
-          
+
           console.log(`[process:${parseId}] Image ${index + 1} = PDF Page ${originalPdfPage} → ${label}`);
-          
+
           return {
             pageNumber: originalPdfPage, // Use original page number
             base64: img.base64,
@@ -207,7 +209,7 @@ export async function GET(
               );
               finalResult = secondPass;
               console.log(`[process:${parseId}] ✓ Second pass: confidence ${secondPass.confidence.overall_confidence}%`);
-              
+
               // Check if second pass also failed Zod
               if (secondPass.raw._zod_validation_failed) {
                 zodValidationFailed = true;
