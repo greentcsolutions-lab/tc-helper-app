@@ -1,8 +1,23 @@
 // src/lib/extractor/prompts.ts
-// Version: 3.1.0 - 2025-12-20
-// UPDATED: Enhanced field instructions, capitalization requirements, name extraction emphasis
+// Version: 3.2.0 - 2025-12-20
+// UPDATED: TypeScript + dynamically imported JSON schemas for classifier and extractor outputs
+//          Prompts now reference the actual schema files for accuracy and maintainability
 
-import { RPA_FORM, COUNTER_OFFERS, KEY_ADDENDA } from "./form-definitions";
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
+
+// Adjust these paths if your prompts.ts file is in a different location relative to the schemas
+const classifierSchemaPath = resolve(__dirname, '../../forms/california/classifier.schema.json');
+const extractorSchemaPath = resolve(__dirname, '../../forms/california/extractor.schema.json');
+
+const classifierSchema = JSON.parse(readFileSync(classifierSchemaPath, 'utf8'));
+const extractorSchema = JSON.parse(readFileSync(extractorSchemaPath, 'utf8'));
+
+// Prettify the schemas for clean insertion into prompts
+const classifierSchemaString = JSON.stringify(classifierSchema, null, 2);
+const extractorSchemaString = JSON.stringify(extractorSchema, null, 2);
+
+import { RPA_FORM, COUNTER_OFFERS, KEY_ADDENDA } from './form-definitions';
 
 /**
  * Builds the classifier prompt dynamically based on total pages
@@ -78,64 +93,9 @@ Report the page number for each.
 
 ⚠️ CRITICAL: RETURN ONLY JSON - NO EXPLANATIONS ⚠️
 
-Return ONLY this exact JSON structure (no markdown, no text before or after):
+Return ONLY valid JSON that strictly matches this schema (no markdown, no extra text):
 
-{
-  "total_document_pages": ${totalPages},
-  "rpa_pages": {
-    "page_1_at_pdf_page": null,
-    "page_2_at_pdf_page": null,
-    "page_3_at_pdf_page": null,
-    "page_16_at_pdf_page": null,
-    "page_17_at_pdf_page": null
-  },
-  "counter_offer_pages": [],
-  "addendum_pages": []
-}
-
-EXAMPLES:
-
-Example 1 - Batch with RPA pages 1-3 and SCO pages 1-2:
-{
-  "total_document_pages": 40,
-  "rpa_pages": {
-    "page_1_at_pdf_page": 11,
-    "page_2_at_pdf_page": 12,
-    "page_3_at_pdf_page": 13,
-    "page_16_at_pdf_page": null,
-    "page_17_at_pdf_page": null
-  },
-  "counter_offer_pages": [1, 2],
-  "addendum_pages": []
-}
-
-Example 2 - Batch with only counter offers and addenda:
-{
-  "total_document_pages": 40,
-  "rpa_pages": {
-    "page_1_at_pdf_page": null,
-    "page_2_at_pdf_page": null,
-    "page_3_at_pdf_page": null,
-    "page_16_at_pdf_page": null,
-    "page_17_at_pdf_page": null
-  },
-  "counter_offer_pages": [38, 39],
-  "addendum_pages": [40]
-}
-
-Example 3 - Batch with no critical pages:
-{
-  "total_document_pages": 40,
-  "rpa_pages": {
-    "page_1_at_pdf_page": null,
-    "page_2_at_pdf_page": null,
-    "page_3_at_pdf_page": null,
-    "page_16_at_pdf_page": null,
-    "page_17_at_pdf_page": null
-  },
-  "counter_offer_pages": [],
-  "addendum_pages": []
-}
+${classifierSchemaString}
 
 RULES:
 - NO explanatory text - ONLY JSON
@@ -419,68 +379,12 @@ Before returning your response, verify:
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Return ONLY valid JSON matching this EXACT schema:
+Return ONLY valid JSON that strictly matches this exact schema.
+NO explanatory text. NO markdown code blocks. Start with { and end with }.
 
-{
-  "extracted": {
-    "buyer_names": ["string"],
-    "property_address": { "full": "string" },
-    "purchase_price": "string",
-    "all_cash": boolean,
-    "close_of_escrow": "string",
-    "initial_deposit": { "amount": "string", "due": "string" },
-    "loan_type": "string | null",
-    "loan_type_note": "string | null",
-    "seller_credit_to_buyer": "string | null",
-    "contingencies": {
-      "loan_days": number,
-      "appraisal_days": number,
-      "investigation_days": number,
-      "crb_attached_and_signed": boolean
-    },
-    "cop_contingency": boolean,
-    "seller_delivery_of_documents_days": number,
-    "home_warranty": {
-      "ordered_by": "Buyer" | "Seller" | "Both" | "Waived" | null,
-      "seller_max_cost": "string | null",
-      "provider": "string | null"
-    },
-    "final_acceptance_date": "string",
-    "counters": {
-      "has_counter_or_addendum": boolean,
-      "counter_chain": ["string"],
-      "final_version_page": number | null,
-      "summary": "string"
-    },
-    "buyers_broker": {
-      "brokerage_name": "string | null",
-      "agent_name": "string | null",
-      "email": "string | null",
-      "phone": "string | null"
-    },
-    "sellers_broker": {
-      "brokerage_name": "string | null",
-      "agent_name": "string | null",
-      "email": "string | null",
-      "phone": "string | null"
-    }
-  },
-  "confidence": {
-    "overall_confidence": number,
-    "purchase_price": number,
-    "property_address": number,
-    "buyer_names": number,
-    "close_of_escrow": number,
-    "final_acceptance_date": number,
-    "contingencies": number,
-    "home_warranty": number,
-    "brokerage_info": number,
-    "loan_type": number
-  },
-  "handwriting_detected": boolean
-}
+${extractorSchemaString}
 
-NO explanatory text. NO markdown code blocks. Start with { and end with }. Extract from the labeled images below:`.trim();
+Extract from the labeled images below:`.trim();
 
 export const SECOND_TURN_PROMPT = `The previous extraction had low confidence or detected handwriting.
 
@@ -497,4 +401,6 @@ Focus on:
 - Exact capitalization for home_warranty.ordered_by
 - Full names without truncation
 
-Return the SAME JSON schema as before with corrected values and NEW confidence scores:`.trim();
+Return ONLY valid JSON matching the same schema as the main extractor prompt.
+
+${extractorSchemaString}`.trim();
