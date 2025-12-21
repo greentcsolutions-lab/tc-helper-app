@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/schemas/states/ca/classifier.schema.json",
+  "title": "California Real Estate Document Classifier Output",
+  "description": "Classifier output for California CAR forms in a multi-document PDF package. Maps form pages to actual PDF page locations.",
+  "type": "object",
+  "properties": {
+    "state": {
+      "type": "string",
+      "const": "CA"
+    },
+    "detectedForms": {
+      "type": "array",
+      "description": "All detected CAR forms with their exact location in the PDF",
+      "items": {
+        "type": "object",
+        "properties": {
+          "formCode": {
+            "type": "string",
+            "enum": ["RPA", "SCO", "SMCO", "BCO", "ADM", "TOA", "AEA"]
+          },
+          "formName": {
+            "type": "string"
+          },
+          "addendumNumber": {
+            "type": ["integer", "null"],
+            "minimum": 1
+          },
+          "pageMapping": {
+            "type": "array",
+            "description": "Maps each form-internal page to the actual PDF page number. Length = number of pages in this form.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "formPage": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "Page number as shown in the form footer (e.g., 1 for 'PAGE 1 OF 17')"
+                },
+                "pdfPage": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "Actual 1-based page number in the uploaded PDF"
+                },
+                "footerLabel": {
+                  "type": ["string", "null"],
+                  "description": "Exact footer text detected (e.g., 'RPA REVISED 6/25 (PAGE 1 OF 17)')"
+                }
+              },
+              "required": ["formPage", "pdfPage"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["formCode", "pageMapping"],
+        "additionalProperties": false
+      }
+    },
+    "keyExtractionPages": {
+      "type": "array",
+      "description": "Final unique list of PDF page numbers (global) needed for extraction, in recommended order",
+      "items": { "type": "integer", "minimum": 1 },
+      "uniqueItems": true
+    },
+    "primaryForm": {
+      "type": "string",
+      "enum": ["RPA", "SCO", "SMCO", "BCO"],
+      "description": "The governing offer form (latest counter wins)"
+    },
+    "hasCountersOrAddenda": {
+      "type": "boolean"
+    },
+    "keyIndicatorsFound": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "notes": {
+      "type": ["string", "null"]
+    }
+  },
+  "required": [
+    "state",
+    "detectedForms",
+    "keyExtractionPages",
+    "primaryForm",
+    "hasCountersOrAddenda"
+  ],
+  "additionalProperties": false
+}
