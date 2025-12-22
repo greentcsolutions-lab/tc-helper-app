@@ -94,12 +94,14 @@ ${classifierSchemaString}
 RULES:
 - NO explanatory text - ONLY JSON
 - Only report pages that appear in THIS batch
+- Only report RPA pages 1, 2, 3, 16 and 17
 - Use the absolute PDF page number from the "PDF_Page_X" label
 - Do NOT hallucinate page numbers beyond ${totalPages}
 - RPA Page 1 and Page 2 MUST be consecutive (PDF page N and N+1)
 - If you see multiple RPA blocks (e.g., RPA 1@11 and RPA 1@25), report BOTH
 - Include ALL pages of counter offers (SCO has 2 pages, BCO has 1 page, SMCO has 2 pages)
 - Include ALL addendum pages you find (ADM, TOA, AEA)
+- Ignore any forms not listed above
 - ONLY look at the BOTTOM 15% of each image for footer text
 - If a footer is unclear or ambiguous, mark that page as null rather than guessing`.trim();
 }
