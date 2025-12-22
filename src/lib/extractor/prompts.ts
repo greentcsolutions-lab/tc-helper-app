@@ -16,93 +16,47 @@ import { RPA_FORM, COUNTER_OFFERS, KEY_ADDENDA } from './form-definitions';
 /**
  * Builds the classifier prompt dynamically based on total pages
  */
-export function buildClassifierPrompt(totalPages: number): string {
-  return `You are analyzing a batch of FULL-PAGE images from a ${totalPages}-page California real estate transaction packet. This batch contains up to 15 consecutive pages.
+// Keep the function name exactly the same — only the prompt content changes
+export function buildClassifierPrompt(
+  batchStart: number,
+  batchEnd: number,
+  batchSize: number
+): string {
+  return `You are examining exactly ${batchSize} full-page images from a California real estate transaction PDF.
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-⚠️ CRITICAL: LOOK ONLY AT THE BOTTOM 15% OF EACH IMAGE ⚠️
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+These images are PDF pages ${batchStart} to ${batchEnd} ONLY. You cannot see any pages outside this range.
 
-Each image shows a complete page, but you must IGNORE the top 85% and focus ONLY on the footer area (bottom 15%).
+For EACH image independently, focus ONLY on the bottom 8% of the page — the single centered footer line directly above the thin rectangular broker information box (the box that contains agent name, Lone Wolf/zipForm credit, etc.). This line usually has the small CAR house icon to its right.
 
-The footer contains a single-line identifier that looks like this:
-[FORM_CODE] Revised mm/yy (PAGE N OF M)
+Your task per image:
+- If the footer clearly contains one of these exact patterns inside parentheses:
+  (RPA PAGE X OF 17)
+  (SCO PAGE X OF 2)
+  (SMCO PAGE X OF 2)
+  (BCO PAGE 1 OF 1)
 
-Each image is explicitly labeled as "PDF_Page_X" where X is the absolute PDF page number in the full ${totalPages}-page document.
+  → report the form code, the internal page number X, and the exact footer text you read.
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🎯 PRIMARY OBJECTIVE: FIND RPA PAGES 1 AND 2 (MANDATORY ANCHORS)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- Otherwise → return null for that image.
 
-YOUR #1 PRIORITY: Locate RPA Page 1 and RPA Page 2.
+Valid examples you may see:
+- "RPA REVISED 6/25 (PAGE 1 OF 17)"
+- "SELLER COUNTER OFFER (SCO PAGE 1 OF 2)"
+- "(RPA PAGE 16 OF 17)"
+- "SCO REVISED 12/24 (PAGE 2 OF 2)"
+- "CALIFORNIA RESIDENTIAL PURCHASE AGREEMENT AND JOINT ESCROW INSTRUCTIONS (RPA PAGE 3 OF 17)"
 
-These MUST be CONSECUTIVE PDF pages (Page N and Page N+1).
+Required for a match:
+- One of RPA / SCO / SMCO / BCO inside the parentheses
+- "PAGE X OF Y" inside parentheses with correct total pages (17 for RPA, 2 for SCO/SMCO, 1 for BCO)
 
-Footer pattern for RPA pages:
-"RPA REVISED 6/25 (PAGE 1 OF 17)" → RPA Page 1
-"RPA REVISED 6/25 (PAGE 2 OF 17)" → RPA Page 2
+If the footer is missing, blurry, cut off, or does not contain one of these exact patterns → return null.
 
-⚠️ MULTIPLE RPA BLOCKS MAY EXIST IN THE SAME DOCUMENT ⚠️
-- California contracts with COP (Contingency for Sale of Buyer's Property) often include TWO partial OR complete RPA forms
-- Report ALL RPA Pages you find, even if there are multiple
-- We will handle disambiguation in the extraction phase
+Do not guess, assume, or invent any footer text or page numbers.
 
-VALIDATION:
-✓ RPA Page 2 MUST be at PDF page = (RPA Page 1 PDF page) + 1
-✓ Both must have "RPA REVISED" footer
-✓ Page numbers in footer must be 1 and 2
+Return ONLY valid JSON — no explanations, no markdown.
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🎯 CRITICAL PAGES TO REPORT (ONLY THESE)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-You MUST report these RPA pages if found:
-- Page 1 and Page 2 (MUST be consecutive — your top priority)
-- Page 3 (items included, home warranty)
-- Page 16 (signatures)
-- Page 17 (broker compensation)
-
-Do NOT report other RPA pages (4–15) — they are not needed.
-
-For counters:
-- Report ALL pages of SCO, SMCO, BCO (SCO and SMCO have 2 pages, BCO has 1 page)
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-KEY ADDENDA (REPORT ALL PAGES YOU FIND)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Report EVERY page that has one of these footer codes:
-- "ADM Revised" → General Addendum
-- "TOA Revised" → Text Overflow Addendum  
-- "AEA Revised" → Amendment of Existing Agreement Terms
-
-These are always single-page forms (PAGE 1 OF 1).
-
-If multiple addenda exist in the packet, report ALL of them separately.
-
-Do NOT skip any just because another addendum was already found.
-
-Ignore all other forms.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-⚠️ CRITICAL: RETURN ONLY JSON - NO EXPLANATIONS ⚠️
-
-Return ONLY valid JSON that strictly matches this schema (no markdown, no extra text):
-
-${classifierSchemaString}
-
-RULES:
-- NO explanatory text - ONLY JSON
-- Only report pages that appear in THIS batch
-- Use the absolute PDF page number from the "PDF_Page_X" label
-- Do NOT hallucinate page numbers beyond ${totalPages}
-- RPA Page 1 and Page 2 MUST be consecutive (PDF page N and N+1)
-- If you see multiple RPA blocks (e.g., RPA 1@11 and RPA 1@25), report BOTH
-- Include ALL pages of counter offers (SCO has 2 pages, BCO has 1 page, SMCO has 2 pages)
-- Report EVERY ADM, TOA, AEA page you find
-- ONLY look at the BOTTOM 15% of each image for footer text
-- If a footer is unclear or ambiguous, mark that page as null rather than guessing`.trim();
+${classifierSchemaString}`.trim();
 }
 
 export const EXTRACTOR_PROMPT = `

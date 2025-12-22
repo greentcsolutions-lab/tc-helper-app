@@ -1,7 +1,7 @@
 // src/lib/extractor/classifier.ts
-// Version: 5.0.2 - 2025-12-22
-// FIX: RPA block assembly now correctly merges page mappings across batches
-//      Handles cases where Page 1/2 in one batch, Page 16/17 in another
+// Version: 5.1.0 - 2025-12-22
+// UPDATED: criticalImages now include rich, human-readable labels for the extractor
+//          Labels match EXTRACTOR_PROMPT examples exactly → better Grok accuracy + better human review UI
 
 import { buildClassifierPrompt } from "./prompts";
 
@@ -46,6 +46,13 @@ interface RPABlock {
     page16: number | null;
     page17: number | null;
   };
+}
+
+// NEW: Unified image type expected by extractor
+export interface LabeledCriticalImage {
+  pageNumber: number;
+  base64: string;
+  label: string;
 }
 
 async function classifyBatch(
@@ -126,7 +133,7 @@ export async function classifyCriticalPages(
   pages: { pageNumber: number; base64: string }[],
   totalPages: number
 ): Promise<{
-  criticalImages: { pageNumber: number; base64: string }[];
+  criticalImages: LabeledCriticalImage[];
   state: string;
   criticalPageNumbers: number[];
   rpaBlocksDetected: RPABlock[];
@@ -173,7 +180,6 @@ export async function classifyCriticalPages(
         const key = `${form.formCode}-${mapping.pdfPage}`;
         if (!seenMappings.has(key)) {
           seenMappings.add(key);
-          // Find or create form entry
           let existing = allDetectedForms.find(f => f.formCode === form.formCode && f.addendumNumber === form.addendumNumber);
           if (!existing) {
             existing = {
@@ -190,7 +196,6 @@ export async function classifyCriticalPages(
     });
   });
 
-  // Sort pageMapping within each form
   allDetectedForms.forEach(form => {
     form.pageMapping.sort((a, b) => a.pdfPage - b.pdfPage);
   });
@@ -207,32 +212,27 @@ export async function classifyCriticalPages(
     ? counterForms[counterForms.length - 1].formCode as 'SCO' | 'SMCO' | 'BCO'
     : allDetectedForms.find(f => f.formCode === 'RPA') ? 'RPA' : 'RPA';
 
-  // Fixed: safe boolean with fallback in case allDetectedForms is empty
   const hasCountersOrAddenda: boolean = allDetectedForms.some(f =>
     ['SCO', 'SMCO', 'BCO', 'ADM', 'TOA', 'AEA'].includes(f.formCode)
   );
 
-  // === FIXED RPA BLOCK ASSEMBLY START ===
+  // RPA BLOCK ASSEMBLY
   const rpaBlocks: RPABlock[] = [];
 
-  // Collect ALL RPA page mappings into one master list (same document = same RPA)
   const allRpaMappings = allDetectedForms
     .filter(f => f.formCode === 'RPA')
     .flatMap(f => f.pageMapping);
 
   if (allRpaMappings.length > 0) {
-    // Build mapping: formPage → pdfPage
     const mapping = allRpaMappings.reduce((acc, m) => {
       acc[`page${m.formPage}`] = m.pdfPage;
       return acc;
     }, {} as Record<string, number | undefined>);
 
-    // Find valid consecutive Page 1 and Page 2 (may appear in any order across batches)
     const page1 = mapping.page1;
     const page2 = mapping.page2;
 
     if (page1 && page2 && page2 === page1 + 1) {
-      // Valid anchor found — build the block
       rpaBlocks.push({
         startPage: page1,
         pages: [
@@ -254,13 +254,54 @@ export async function classifyCriticalPages(
     } else {
       console.warn(`[classifier] No valid consecutive RPA Page 1→2 found (page1: ${page1}, page2: ${page2})`);
     }
-
-    // Future: support multiple distinct RPA blocks (COP) by grouping by startPage clusters
-    // Not needed yet — current docs have only one RPA
   }
-  // === FIXED RPA BLOCK ASSEMBLY END ===
 
-  // Logging (unchanged)
+  // === BUILD RICH LABELS FOR EXTRACTOR ===
+  const labelMap = new Map<number, string>();
+
+  // RPA pages – highest-quality labels
+  if (rpaBlocks.length > 0) {
+    const block = rpaBlocks[0].detectedPages;
+    if (block.page1) labelMap.set(block.page1, "RPA PAGE 1 OF 17 (ADDRESS, PRICE, FINANCING & CLOSING)");
+    if (block.page2) labelMap.set(block.page2, "RPA PAGE 2 OF 17 (CONTINGENCIES & FINANCING)");
+    if (block.page3) labelMap.set(block.page3, "RPA PAGE 3 OF 17 (ITEMS INCLUDED & HOME WARRANTY)");
+    if (block.page16) labelMap.set(block.page16, "RPA PAGE 16 OF 17 (BUYER & SELLER SIGNATURES)");
+    if (block.page17) labelMap.set(block.page17, "RPA PAGE 17 OF 17 (BROKER INFORMATION)");
+  }
+
+  // Counters & Addenda
+  allDetectedForms.forEach(form => {
+    if (form.formCode === 'RPA') return; // already handled above
+
+    form.pageMapping.forEach(mapping => {
+      let label = form.formCode;
+      if (form.addendumNumber) label += ` #${form.addendumNumber}`;
+
+      const totalPages = form.formCode === 'BCO' ? 1 : 2;
+      const pageInfo = mapping.formPage ? ` PAGE ${mapping.formPage} OF ${totalPages}` : '';
+
+      label += `${pageInfo} (COUNTER OFFER OR ADDENDUM)`;
+      labelMap.set(mapping.pdfPage, label.trim());
+    });
+  });
+
+  // Fallback for any remaining key pages
+  keyExtractionPages.forEach(pdfPage => {
+    if (!labelMap.has(pdfPage)) {
+      labelMap.set(pdfPage, `KEY PAGE ${pdfPage} (TERMS OR SIGNATURES)`);
+    }
+  });
+
+  // Build final labeled critical images
+  const criticalImages: LabeledCriticalImage[] = pages
+    .filter(p => keyExtractionPages.includes(p.pageNumber))
+    .map(p => ({
+      pageNumber: p.pageNumber,
+      base64: p.base64,
+      label: labelMap.get(p.pageNumber) || `PDF Page ${p.pageNumber}`,
+    }));
+
+  // Logging
   console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('[classifier] 📋 FINAL CLASSIFICATION RESULTS');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -272,12 +313,14 @@ export async function classifyCriticalPages(
   console.log(`   Primary Form: ${primaryForm}`);
   console.log(`   Has Counters/Addenda: ${hasCountersOrAddenda}`);
   console.log(`   Key Extraction Pages: ${keyExtractionPages.length} → [${keyExtractionPages.join(', ')}]`);
+  console.log(`   Critical Images with Labels: ${criticalImages.length}`);
+  criticalImages.forEach(img => {
+    console.log(`     • Page ${img.pageNumber}: "${img.label}"`);
+  });
   if (rpaBlocks.length > 1) {
     console.log(`   ⚠️ Multiple RPA blocks detected (${rpaBlocks.length}) — likely COP scenario`);
   }
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
-
-  const criticalImages = pages.filter(p => keyExtractionPages.includes(p.pageNumber));
 
   return {
     state: "California",
