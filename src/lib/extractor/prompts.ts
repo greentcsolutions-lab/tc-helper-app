@@ -44,8 +44,6 @@ Footer pattern for RPA pages:
 
 ⚠️ MULTIPLE RPA BLOCKS MAY EXIST IN THE SAME DOCUMENT ⚠️
 - California contracts with COP (Contingency for Sale of Buyer's Property) often include TWO partial OR complete RPA forms
-- One RPA for the buyer's current property (being sold)
-- One RPA for the main property (being purchased)
 - Report ALL RPA Pages you find, even if there are multiple
 - We will handle disambiguation in the extraction phase
 
@@ -54,34 +52,37 @@ VALIDATION:
 ✓ Both must have "RPA REVISED" footer
 ✓ Page numbers in footer must be 1 and 2
 
-SECONDARY (HELPFUL BUT NOT REQUIRED):
-- RPA Page 3: Usually at (RPA Page 2) + 1
-- RPA Page 16: Usually at (RPA Page 1) + 15
-- RPA Page 17: Usually at (RPA Page 1) + 16
-
-If you find RPA 3, 16, or 17, report them. If not found, that's okay - they can be calculated.
-
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-COUNTER OFFERS (OPTIONAL BUT HELPFUL)
+🎯 CRITICAL PAGES TO REPORT (ONLY THESE)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-If footer contains:
-- "SCO Revised" + date + "(PAGE N OF 2)" → Seller Counter Offer
-- "BCO Revised" + date + "(PAGE 1 OF 1)" → Buyer Counter Offer  
-- "SMCO Revised" + date + "(PAGE N OF 2)" → Seller Multiple Counter Offer
+You MUST report these RPA pages if found:
+- Page 1 and Page 2 (MUST be consecutive — your top priority)
+- Page 3 (items included, home warranty)
+- Page 16 (signatures)
+- Page 17 (broker compensation)
 
-Report ALL pages for each counter (both pages for SCO/SMCO, single page for BCO).
+Do NOT report other RPA pages (4–15) — they are not needed.
+
+For counters:
+- Report ALL pages of SCO, SMCO, BCO (SCO and SMCO have 2 pages, BCO has 1 page)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-KEY ADDENDA (OPTIONAL BUT HELPFUL)
+KEY ADDENDA (REPORT ALL PAGES YOU FIND)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-If footer contains:
-- "ADM Revised" + date + "(PAGE 1 OF 1)" → General Addendum
-- "TOA Revised" + date + "(PAGE 1 OF 1)" → Text Overflow Addendum
-- "AEA Revised" + date + "(PAGE 1 OF 1)" → Amendment of Existing Agreement Terms
+Report EVERY page that has one of these footer codes:
+- "ADM Revised" → General Addendum
+- "TOA Revised" → Text Overflow Addendum  
+- "AEA Revised" → Amendment of Existing Agreement Terms
 
-Report the page number for each.
+These are always single-page forms (PAGE 1 OF 1).
+
+If multiple addenda exist in the packet, report ALL of them separately.
+
+Do NOT skip any just because another addendum was already found.
+
+Ignore all other forms.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -99,8 +100,7 @@ RULES:
 - RPA Page 1 and Page 2 MUST be consecutive (PDF page N and N+1)
 - If you see multiple RPA blocks (e.g., RPA 1@11 and RPA 1@25), report BOTH
 - Include ALL pages of counter offers (SCO has 2 pages, BCO has 1 page, SMCO has 2 pages)
-- Include ALL addendum pages you find (ADM, TOA, AEA)
-- Ignore any forms not listed above
+- Report EVERY ADM, TOA, AEA page you find
 - ONLY look at the BOTTOM 15% of each image for footer text
 - If a footer is unclear or ambiguous, mark that page as null rather than guessing`.trim();
 }
