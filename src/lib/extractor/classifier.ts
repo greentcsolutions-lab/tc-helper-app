@@ -1,8 +1,7 @@
 // src/lib/extractor/classifier.ts
-// Version: 5.0.0 - 2025-12-20
-// MAJOR UPDATE: Now fully supports the new rich classifier schema
-//               Parses detectedForms, pageMapping, primaryForm, keyExtractionPages
-//               Maintains multi-RPA block detection for COP scenarios
+// Version: 5.0.2 - 2025-12-22
+// FIX: RPA block assembly now correctly merges page mappings across batches
+//      Handles cases where Page 1/2 in one batch, Page 16/17 in another
 
 import { buildClassifierPrompt } from "./prompts";
 
@@ -59,7 +58,7 @@ async function classifyBatch(
   const start = batch[0].pageNumber;
   const end = batch[batch.length - 1].pageNumber;
 
-  console.log(`[classifier:batch${batchIndex + 1}] Processing pages \( {start}– \){end}`);
+  console.log(`[classifier:batch${batchIndex + 1}] Processing pages ${start}–${end}`);
 
   try {
     const res = await fetch("https://api.x.ai/v1/chat/completions", {
@@ -114,7 +113,7 @@ async function classifyBatch(
       return null;
     }
 
-    console.log(`[classifier:batch${batchIndex + 1}] ✓ Pages \( {start}– \){end} classified`);
+    console.log(`[classifier:batch${batchIndex + 1}] ✓ Pages ${start}–${end} classified`);
     return json;
 
   } catch (error: any) {
@@ -171,7 +170,7 @@ export async function classifyCriticalPages(
   validResults.forEach(result => {
     result.detectedForms!.forEach(form => {
       form.pageMapping.forEach(mapping => {
-        const key = `\( {form.formCode}- \){mapping.pdfPage}`;
+        const key = `${form.formCode}-${mapping.pdfPage}`;
         if (!seenMappings.has(key)) {
           seenMappings.add(key);
           // Find or create form entry
@@ -196,7 +195,7 @@ export async function classifyCriticalPages(
     form.pageMapping.sort((a, b) => a.pdfPage - b.pdfPage);
   });
 
-  // Build final keyExtractionPages (use from results if consistent, else from detectedForms)
+  // Build final keyExtractionPages
   const allKeyPages = new Set<number>();
   validResults.forEach(r => r.keyExtractionPages.forEach(p => allKeyPages.add(p)));
   allDetectedForms.forEach(f => f.pageMapping.forEach(m => allKeyPages.add(m.pdfPage)));
@@ -208,58 +207,71 @@ export async function classifyCriticalPages(
     ? counterForms[counterForms.length - 1].formCode as 'SCO' | 'SMCO' | 'BCO'
     : allDetectedForms.find(f => f.formCode === 'RPA') ? 'RPA' : 'RPA';
 
-  const hasCountersOrAddenda = allDetectedForms.some(f =>
+  // Fixed: safe boolean with fallback in case allDetectedForms is empty
+  const hasCountersOrAddenda: boolean = allDetectedForms.some(f =>
     ['SCO', 'SMCO', 'BCO', 'ADM', 'TOA', 'AEA'].includes(f.formCode)
   );
 
-  // Build RPA blocks (for backward compatibility and COP handling)
-  const rpaForms = allDetectedForms.filter(f => f.formCode === 'RPA');
-  const rpaBlocks: RPABlock[] = rpaForms.map(rpa => {
-    const mapping = rpa.pageMapping.reduce((acc, m) => {
+  // === FIXED RPA BLOCK ASSEMBLY START ===
+  const rpaBlocks: RPABlock[] = [];
+
+  // Collect ALL RPA page mappings into one master list (same document = same RPA)
+  const allRpaMappings = allDetectedForms
+    .filter(f => f.formCode === 'RPA')
+    .flatMap(f => f.pageMapping);
+
+  if (allRpaMappings.length > 0) {
+    // Build mapping: formPage → pdfPage
+    const mapping = allRpaMappings.reduce((acc, m) => {
       acc[`page${m.formPage}`] = m.pdfPage;
       return acc;
-    }, {} as Record<string, number>);
+    }, {} as Record<string, number | undefined>);
 
+    // Find valid consecutive Page 1 and Page 2 (may appear in any order across batches)
     const page1 = mapping.page1;
     const page2 = mapping.page2;
 
-    if (!page1 || !page2 || page2 !== page1 + 1) {
-      console.warn(`[classifier] Skipping invalid RPA block (non-consecutive 1-2): \( {page1}- \){page2}`);
-      return null;
+    if (page1 && page2 && page2 === page1 + 1) {
+      // Valid anchor found — build the block
+      rpaBlocks.push({
+        startPage: page1,
+        pages: [
+          page1,
+          page2,
+          mapping.page3 ?? page2 + 1,
+          mapping.page16 ?? page1 + 15,
+          mapping.page17 ?? page1 + 16,
+        ].filter(p => p <= totalPages),
+        confidence: (mapping.page3 && mapping.page16 && mapping.page17) ? 'high' : 'calculated',
+        detectedPages: {
+          page1,
+          page2,
+          page3: mapping.page3 ?? null,
+          page16: mapping.page16 ?? null,
+          page17: mapping.page17 ?? null,
+        }
+      });
+    } else {
+      console.warn(`[classifier] No valid consecutive RPA Page 1→2 found (page1: ${page1}, page2: ${page2})`);
     }
 
-    return {
-      startPage: page1,
-      pages: [
-        page1,
-        page2,
-        mapping.page3 ?? page2 + 1,
-        mapping.page16 ?? page1 + 15,
-        mapping.page17 ?? page1 + 16,
-      ].filter(p => p <= totalPages),
-      confidence: (mapping.page3 && mapping.page16 && mapping.page17) ? 'high' : 'calculated',
-      detectedPages: {
-        page1,
-        page2,
-        page3: mapping.page3 ?? null,
-        page16: mapping.page16 ?? null,
-        page17: mapping.page17 ?? null,
-      }
-    };
-  }).filter((b): b is RPABlock => b !== null);
+    // Future: support multiple distinct RPA blocks (COP) by grouping by startPage clusters
+    // Not needed yet — current docs have only one RPA
+  }
+  // === FIXED RPA BLOCK ASSEMBLY END ===
 
-  // Logging
+  // Logging (unchanged)
   console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('[classifier] 📋 FINAL CLASSIFICATION RESULTS');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log(`   Detected Forms: ${allDetectedForms.length}`);
   allDetectedForms.forEach(f => {
     const pages = f.pageMapping.map(m => m.pdfPage).join(', ');
-    console.log(`     • \( {f.formCode} ( \){f.pageMapping.length} pages): [${pages}]`);
+    console.log(`     • ${f.formCode} (${f.pageMapping.length} pages): [${pages}]`);
   });
   console.log(`   Primary Form: ${primaryForm}`);
   console.log(`   Has Counters/Addenda: ${hasCountersOrAddenda}`);
-  console.log(`   Key Extraction Pages: \( {keyExtractionPages.length} → [ \){keyExtractionPages.join(', ')}]`);
+  console.log(`   Key Extraction Pages: ${keyExtractionPages.length} → [${keyExtractionPages.join(', ')}]`);
   if (rpaBlocks.length > 1) {
     console.log(`   ⚠️ Multiple RPA blocks detected (${rpaBlocks.length}) — likely COP scenario`);
   }

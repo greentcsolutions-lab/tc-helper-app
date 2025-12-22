@@ -94,7 +94,6 @@ ${classifierSchemaString}
 RULES:
 - NO explanatory text - ONLY JSON
 - Only report pages that appear in THIS batch
-- Only report RPA pages 1, 2, 3, 16 and 17
 - Use the absolute PDF page number from the "PDF_Page_X" label
 - Do NOT hallucinate page numbers beyond ${totalPages}
 - RPA Page 1 and Page 2 MUST be consecutive (PDF page N and N+1)
