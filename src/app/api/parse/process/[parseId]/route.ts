@@ -211,7 +211,7 @@ export async function GET(
         const primaryBlock = rpaBlocksDetected[0];
         if (primaryBlock?.detectedPages) {
           const d = primaryBlock.detectedPages;
-          if (d.page1) pageLabels[d.page1] = "RPA PAGE 1 OF 17";
+          if (d.page1) pageLabels[d.page1] = "RPA PAGE 1 OF 17 (ADDRESS, PRICE, FINANCING & CLOSING)";
           if (d.page2) pageLabels[d.page2] = "RPA PAGE 2 OF 17 (CONTINGENCIES)";
           if (d.page3) pageLabels[d.page3] = "RPA PAGE 3 OF 17 (ITEMS INCLUDED & HOME WARRANTY)";
           if (d.page16) pageLabels[d.page16] = "RPA PAGE 16 OF 17 (SIGNATURES)";

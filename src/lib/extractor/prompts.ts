@@ -109,7 +109,7 @@ export const EXTRACTOR_PROMPT = `
 You are an expert California real estate transaction analyst examining 5-10 high-resolution PNG images from a single transaction packet.
 
 Each image is labeled with its exact role, e.g.:
-- "RPA PAGE 1 OF 17"
+- "RPA PAGE 1 OF 17 (ADDRESS, PRICE, FINANCING & CLOSING)"
 - "RPA PAGE 2 OF 17 (CONTINGENCIES)"
 - "RPA PAGE 3 OF 17 (ITEMS INCLUDED & HOME WARRANTY)"
 - "RPA PAGE 16 OF 17 (SIGNATURES)"
