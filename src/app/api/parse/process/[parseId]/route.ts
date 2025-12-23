@@ -49,8 +49,15 @@ export async function GET(
         console.log(`\n${"=".repeat(80)}`);
         console.log(`[process:${parseId}] 🚀 EXTRACTION PIPELINE STARTED`);
         console.log(`[process:${parseId}] File: ${parse.fileName}`);
-        //@ts-ignore
-        console.log(`[process:${parseId}] Buffer size: ${(parse.pdfBuffer.length / 1024).toFixed(2)} KB`);
+        // Line 50-55: Add runtime validation
+        if (!parse.pdfBuffer) {
+          return Response.json({ error: "PDF not found" }, { status: 500 });
+        }
+
+        const bufferSize = Buffer.isBuffer(parse.pdfBuffer) 
+           ? (parse.pdfBuffer.length / 1024).toFixed(2) 
+           : 'unknown';
+        console.log(`[process:${parseId}] Buffer size: ${bufferSize} KB`);
         console.log(`${"=".repeat(80)}\n`);
 
         emit(controller, {
@@ -123,40 +130,51 @@ export async function GET(
         console.log(`[process:${parseId}] Needs review: ${needsReview}`);
         console.log(`[process:${parseId}] Final status: ${finalStatus}`);
 
-        // Save results to DB
-        await db.parse.update({
-          where: { id: parseId },
-          data: {
-            status: finalStatus,
-            // === Universal core fields ===
-            buyerNames: universal.buyerNames,
-            sellerNames: universal.sellerNames,
-            propertyAddress: universal.propertyAddress || null,
-            purchasePrice: universal.purchasePrice || null,
-            earnestMoneyAmount: universal.earnestMoneyDeposit.amount,
-            earnestMoneyHolder: universal.earnestMoneyDeposit.holder,
-            closingDate: universal.closingDate
-              ? typeof universal.closingDate === "string"
-                ? universal.closingDate
-                : null
-              : null,
-            effectiveDate: universal.effectiveDate,
-            isAllCash: universal.financing.isAllCash,
-            loanType: universal.financing.loanType,
-            // === Rich data ===
-            extractionDetails: details ? { route, ...details } : { route },
-            // Only include timelineEvents if it has entries → Prisma Json? handles omitted → DB null
-            ...(timelineEvents.length > 0 ? { timelineEvents } : {}),
-            // === Debug/metadata ===
-            rawJson: {
-              _extraction_route: route,
-              _classifier_metadata: metadata.packageMetadata,
-              _critical_pages: metadata.criticalPageNumbers,
-            },
-            finalizedAt: new Date(),
-          },
-        });
+        // === Save results to DB ===
+await db.parse.update({
+  where: { id: parseId },
+  data: {
+    status: finalStatus,
+    // === Universal core fields ===
+    buyerNames: universal.buyerNames,
+    sellerNames: universal.sellerNames,
+    propertyAddress: universal.propertyAddress || null,
+    purchasePrice: universal.purchasePrice || null,
+    earnestMoneyAmount: universal.earnestMoneyDeposit.amount,
+    earnestMoneyHolder: universal.earnestMoneyDeposit.holder,
+    closingDate: universal.closingDate
+      ? typeof universal.closingDate === "string"
+        ? universal.closingDate
+        : null
+      : null,
+    effectiveDate: universal.effectiveDate,
+    isAllCash: universal.financing.isAllCash,
+    loanType: universal.financing.loanType,
+    // === Rich data ===
+    extractionDetails: details ? { route, ...details } : { route },
+    // Only include timelineEvents if it has entries → Prisma Json? handles omitted → DB null
+    ...(timelineEvents.length > 0 ? { timelineEvents } : {}),
+    // === Debug/metadata ===
+    rawJson: {
+      _extraction_route: route,
+      _classifier_metadata: metadata.packageMetadata,
+      _critical_pages: metadata.criticalPageNumbers,
+      _critical_page_count: metadata.criticalPageNumbers.length,
+    },
+    finalizedAt: new Date(),
+  },
+});
 
+console.log(`[process:${parseId}] ✅ Extraction complete & saved to DB`);
+
+emit(controller, {
+  type: "complete",
+  extracted: universal,
+  needsReview,
+  route,
+  pageCount,
+  criticalPages: metadata.criticalPageNumbers,
+});
         console.log(`[process:${parseId}] ✅ Extraction complete & saved to DB`);
 
         emit(controller, {

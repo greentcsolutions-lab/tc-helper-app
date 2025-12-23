@@ -1,5 +1,6 @@
 // src/lib/extraction/classify/classifier.ts
-// Version: 6.0.0 - 2025-12-23
+// Version: 6.0.1 - 2025-12-23
+// FIXED: Safer page correction (immutable), clearer image markers for Grok
 // Universal classifier: no state-specific assumptions
 // Handles Grok sweep only — all merging, critical page selection, and labeling moved to post-processor.ts
 
@@ -59,7 +60,7 @@ async function classifyBatch(
         Authorization: `Bearer ${process.env.XAI_API_KEY}`,
       },
       body: JSON.stringify({
-        model: 'grok-4-1-fast-reasoning',
+        model: 'grok-vision-beta',
         temperature: 0,
         max_tokens: 1024,
         messages: [
@@ -67,8 +68,11 @@ async function classifyBatch(
             role: 'user',
             content: [
               { type: 'text', text: batchPrompt },
-              ...batch.flatMap((p) => [
-                { type: 'text', text: `\n━━━ PDF_Page_${p.pageNumber} (of ${totalPages} total) ━━━` },
+              ...batch.flatMap((p, idx) => [
+                { 
+                  type: 'text', 
+                  text: `\n━━━ IMAGE ${idx + 1} OF ${batch.length} = PDF_Page_${p.pageNumber} (of ${totalPages} total) ━━━` 
+                },
                 { type: 'image_url', image_url: { url: p.base64 } },
               ]),
             ],
@@ -160,16 +164,20 @@ export async function classifyCriticalPages(
       const actualPdfPage = batchStartPage + indexInBatch;
 
       if (page !== null) {
-        // Trust our calculated page number over Grok's (prevents misalignment)
+        // FIXED: Create new immutable object with corrected page number
+        let correctedPage = page;
+        
         if (page.pdfPage !== actualPdfPage) {
           console.warn(
             `[classifier] ⚠️ Page mismatch: Grok said ${page.pdfPage}, correcting to ${actualPdfPage}`
           );
-          page.pdfPage = actualPdfPage;
+          correctedPage = { ...page, pdfPage: actualPdfPage };
         }
-      }
 
-      allGrokPages[actualPdfPage - 1] = page; // 1-based → 0-indexed
+        allGrokPages[actualPdfPage - 1] = correctedPage; // 1-based → 0-indexed
+      } else {
+        allGrokPages[actualPdfPage - 1] = null;
+      }
     });
   });
 

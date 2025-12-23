@@ -89,10 +89,10 @@ export function extractPackageMetadata(detectedPages: GrokPageResult[]) {
   const formCodes = Array.from(new Set(detectedPages.map((p) => p.formCode)));
 
   // FIXED: Clean sampleFooters — filter out undefined/null/empty strings
-  const sampleFooters = detectedPages
-    .map((p) => p.footerText)
-    .filter((text): text is string => typeof text === 'string' && text.trim() !== '')
-    .slice(0, 5); // limit to first 5 for safety
+const sampleFooters = detectedPages
+  .map((p) => p?.footerText)
+  .filter((text): text is string => typeof text === 'string' && text.trim() !== '')
+  .slice(0, 5);// limit to first 5 for safety
 
   return {
     detectedFormCodes: formCodes,
