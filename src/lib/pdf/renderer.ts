@@ -96,6 +96,8 @@ async function renderSingleDpi(
       type: "image",
       format: "png",
       dpi: dpi,
+      pages: { start: 0 },
+      multiPage: true,
     },
   };
 
