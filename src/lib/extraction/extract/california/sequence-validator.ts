@@ -1,8 +1,8 @@
-// src/lib/extraction/extract/california-sequences.ts
+// src/lib/extraction/extract/california/sequence-validator.ts
 // Version: 2.0.0 - 2025-01-09
 // Validates RPA pages are in correct sequential order
 
-import { RPA_FORM } from "./form-definitions";
+import { RPA_FORM } from "../form-definitions";
 
 export interface RPABlock {
   isValid: boolean;

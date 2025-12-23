@@ -1,166 +1,98 @@
 // src/lib/extraction/classify/post-processor.ts
-// Version: 2.0.0 - 2025-01-09
-// Signature-aware counter offer merge logic
+// Version: 2.0.0 - 2025-12-23
+// Universal post-processor: no state-specific assumptions
+// Merges batch data, identifies any form-footer pages as critical, builds generic labels
 
-export interface CounterOffer {
-  type: 'SCO' | 'BCO' | 'SMCO';
-  number: number;  // Counter number (1, 2, 3, etc.)
-  pdfPages: number[];  // Which PDF pages this counter appears on
-  hasSellerSignature: boolean;
-  hasBuyerSignature: boolean;
-  sellerSignatureDate?: string;
-  buyerSignatureDate?: string;
-  modifiedFields: Record<string, any>;  // Only fields this counter changes
+import type { LabeledCriticalImage } from './classifier';
+
+interface GrokPageResult {
+  pdfPage: number;
+  formCode: string;        // e.g., "RPA", "SCO", "TREC", "FARBAR", or any string
+  formPage: number;
+  footerText: string;
 }
 
-export interface MergeResult {
-  finalTerms: Record<string, any>;
-  finalAcceptanceDate: string;
-  counterChain: string[];  // e.g., ["RPA", "SCO #1", "BCO #1"]
-  isValid: boolean;
-  invalidReason?: string;
+interface GrokClassifierOutput {
+  pages: (GrokPageResult | null)[];
 }
 
 /**
- * Determine final acceptance date based on signature rules:
- * - Buyer-originated doc (RPA, BCO) → Seller's signature date is acceptance
- * - Seller-originated doc (SCO, SMCO) → Buyer's signature date is acceptance
+ * Merge all batch results into a single flat array of detected form pages
+ * Keeps original Grok output intact — no assumptions about form codes
  */
-export function getFinalAcceptanceDate(
-  rpa: { buyerSignatureDate?: string; sellerSignatureDate?: string },
-  counters: CounterOffer[]
-): { date: string; source: string } {
-  // Get the last VALID counter (both signatures present)
-  const validCounters = counters.filter(c => c.hasBuyerSignature && c.hasSellerSignature);
-  
-  if (validCounters.length === 0) {
-    // No counters or invalid counters → use RPA
-    const acceptanceDate = rpa.sellerSignatureDate || rpa.buyerSignatureDate || '';
-    return { date: acceptanceDate, source: 'RPA' };
-  }
-
-  // Sort by counter number descending (highest number wins)
-  validCounters.sort((a, b) => b.number - a.number);
-  const finalCounter = validCounters[0];
-
-  // Determine acceptance date based on counter type
-  let acceptanceDate: string;
-  if (finalCounter.type === 'BCO') {
-    // Buyer-originated → Seller's signature is acceptance
-    acceptanceDate = finalCounter.sellerSignatureDate || '';
-  } else {
-    // Seller-originated (SCO, SMCO) → Buyer's signature is acceptance
-    acceptanceDate = finalCounter.buyerSignatureDate || '';
-  }
-
-  return {
-    date: acceptanceDate,
-    source: `${finalCounter.type} #${finalCounter.number}`,
-  };
+export function mergeDetectedPages(
+  allGrokPages: (GrokPageResult | null)[]
+): GrokPageResult[] {
+  return allGrokPages.filter((p): p is GrokPageResult => p !== null);
 }
 
 /**
- * Merge RPA + counter offers into final terms
- * 
- * Rules:
- * 1. Highest counter number wins IF both signatures present
- * 2. Counters only replace SPECIFIC fields they mention
- * 3. If counter missing signature → ignore it
- * 4. BCO 3 > SCO 2 > BCO 2 > SCO 1 > RPA
+ * Identify critical pages for universal extraction
+ * Strategy: Any page with a detected form footer is potentially critical
+ * (main agreement, counters, addenda, disclosures all have footers)
  */
-export function mergeCounterOffers(
-  rpaTerms: Record<string, any>,
-  rpaSignatures: { buyerSignatureDate?: string; sellerSignatureDate?: string },
-  counters: CounterOffer[]
-): MergeResult {
-  // Start with RPA as base
-  const finalTerms = { ...rpaTerms };
-  const counterChain = ['RPA'];
+export function getCriticalPageNumbers(detectedPages: GrokPageResult[]): number[] {
+  const pages = detectedPages.map((p) => p.pdfPage);
+  return Array.from(new Set(pages)).sort((a, b) => a - b);
+}
 
-  // Filter to only valid counters (both signatures present)
-  const validCounters = counters.filter(c => {
-    if (!c.hasBuyerSignature || !c.hasSellerSignature) {
-      console.log(`[counter-merger] ✗ ${c.type} #${c.number} invalid - missing signatures`);
-      return false;
-    }
-    return true;
+/**
+ * Build generic, safe labels for the universal extractor prompt
+ * Avoids state-specific phrasing — works nationwide
+ */
+export function buildUniversalPageLabels(
+  detectedPages: GrokPageResult[],
+  criticalPageNumbers: number[]
+): Map<number, string> {
+  const labelMap = new Map<number, string>();
+
+  detectedPages.forEach((page) => {
+    const code = page.formCode || 'FORM';
+    const formPage = page.formPage || '?';
+    labelMap.set(
+      page.pdfPage,
+      `${code} PAGE ${formPage} – POSSIBLE KEY TERMS OR SIGNATURES`
+    );
   });
 
-  if (validCounters.length === 0) {
-    console.log('[counter-merger] No valid counters found - using RPA terms only');
-    
-    const { date, source } = getFinalAcceptanceDate(rpaSignatures, []);
-    
-    return {
-      finalTerms,
-      finalAcceptanceDate: date,
-      counterChain,
-      isValid: true,
-    };
-  }
-
-  // Sort counters by number ascending (so we apply them in order: 1, 2, 3)
-  validCounters.sort((a, b) => a.number - b.number);
-
-  console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('[counter-merger] 📋 MERGING COUNTER OFFERS');
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
-
-  // Apply each counter in sequence
-  for (const counter of validCounters) {
-    console.log(`[counter-merger] Applying ${counter.type} #${counter.number}:`);
-    
-    // Merge modified fields
-    for (const [field, value] of Object.entries(counter.modifiedFields)) {
-      const oldValue = finalTerms[field];
-      finalTerms[field] = value;
-      
-      console.log(`  ${field}: ${JSON.stringify(oldValue)} → ${JSON.stringify(value)}`);
+  // Fallback for any critical pages Grok didn't label (shouldn't happen, but safe)
+  criticalPageNumbers.forEach((pdfPage) => {
+    if (!labelMap.has(pdfPage)) {
+      labelMap.set(pdfPage, `KEY PAGE ${pdfPage} – TERMS, SIGNATURES OR ADDENDUM`);
     }
-    
-    counterChain.push(`${counter.type} #${counter.number}`);
-  }
+  });
 
-  // Get final acceptance date
-  const { date: finalAcceptanceDate, source: acceptanceSource } = getFinalAcceptanceDate(
-    rpaSignatures,
-    validCounters
-  );
+  return labelMap;
+}
 
-  console.log(`\n[counter-merger] ✓ Final acceptance: ${finalAcceptanceDate} (from ${acceptanceSource})`);
-  console.log(`[counter-merger] ✓ Counter chain: ${counterChain.join(' → ')}`);
-  console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+/**
+ * Final assembly: labeled critical images ready for universal extraction
+ */
+export function buildLabeledCriticalImages(
+  pages: { pageNumber: number; base64: string }[],
+  criticalPageNumbers: number[],
+  labelMap: Map<number, string>
+): LabeledCriticalImage[] {
+  return pages
+    .filter((p) => criticalPageNumbers.includes(p.pageNumber))
+    .map((p) => ({
+      pageNumber: p.pageNumber,
+      base64: p.base64,
+      label: labelMap.get(p.pageNumber) || `PDF PAGE ${p.pageNumber}`,
+    }));
+}
+
+/**
+ * Optional: Extract basic package metadata for routing/logging
+ */
+export function extractPackageMetadata(detectedPages: GrokPageResult[]) {
+  const formCodes = Array.from(new Set(detectedPages.map((p) => p.formCode)));
+  const footerSamples = detectedPages.slice(0, 5).map((p) => p.footerText);
 
   return {
-    finalTerms,
-    finalAcceptanceDate,
-    counterChain,
-    isValid: true,
+    detectedFormCodes: formCodes,
+    sampleFooters: footerSamples,
+    totalDetectedPages: detectedPages.length,
+    hasMultipleForms: formCodes.length > 1,
   };
-}
-
-/**
- * Validate counter offer structure
- * - SCO/SMCO must have 2 pages each
- * - BCO must have 1 page
- * - Signatures must be on correct pages
- */
-export function validateCounterStructure(counter: CounterOffer): boolean {
-  const expectedPages = counter.type === 'BCO' ? 1 : 2;
-  
-  if (counter.pdfPages.length !== expectedPages) {
-    console.warn(`[counter-merger] ⚠ ${counter.type} #${counter.number} has ${counter.pdfPages.length} pages, expected ${expectedPages}`);
-    return false;
-  }
-
-  return true;
-}
-
-/**
- * Extract counter number from form text
- * Example: "SELLER COUNTER OFFER NO. 2" → 2
- */
-export function extractCounterNumber(text: string): number {
-  const match = text.match(/(?:NO\.|#)\s*(\d+)/i);
-  return match ? parseInt(match[1]) : 1;  // Default to 1 if not found
 }

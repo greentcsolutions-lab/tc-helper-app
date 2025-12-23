@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/schemas/universal/extractor.schema.json",
+  "title": "Universal U.S. Real Estate Transaction Extraction",
+  "description": "Core fields common to major state residential purchase agreements (CA RPA, TX TREC, FL FAR/BAR, NV RPA, etc.)",
+  "type": "object",
+  "properties": {
+    "buyerNames": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "maxItems": 6,
+      "description": "Full buyer name(s) as written (1–6 strings). Empty string if not found."
+    },
+    "sellerNames": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "maxItems": 6,
+      "description": "Full seller name(s) as written."
+    },
+    "propertyAddress": {
+      "type": "string",
+      "description": "Full property address including street, city, state, ZIP, and APN/parcel if present."
+    },
+    "purchasePrice": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Final accepted purchase/sales price in USD (integer or decimal)."
+    },
+    "earnestMoneyDeposit": {
+      "type": "object",
+      "properties": {
+        "amount": { "type": ["number", "null"], "description": "Deposit amount in USD" },
+        "holder": { "type": ["string", "null"], "description": "Escrow/title company holding deposit" }
+      },
+      "required": ["amount"],
+      "additionalProperties": false,
+      "description": "Initial/earnest money deposit details"
+    },
+    "closingDate": {
+      "oneOf": [
+        { "type": "string", "format": "date", "description": "YYYY-MM-DD if specific date given" },
+        { "type": "integer", "description": "Days after acceptance if expressed that way" },
+        { "type": "null" }
+      ],
+      "description": "Close of escrow / closing date"
+    },
+    "financing": {
+      "type": "object",
+      "properties": {
+        "isAllCash": { "type": "boolean" },
+        "loanType": {
+          "type": ["string", "null"],
+          "enum": ["Conventional", "FHA", "VA", "USDA", "Other", null],
+          "description": "Primary loan type if financed"
+        },
+        "loanAmount": { "type": ["number", "null"] }
+      },
+      "required": ["isAllCash"],
+      "additionalProperties": false,
+      "description": "Financing terms – allCash true if no loan"
+    },
+    "contingencies": {
+      "type": "object",
+      "properties": {
+        "inspectionDays": { "type": ["integer", "string", "null"], "description": "Days or 'Waived'" },
+        "appraisalDays": { "type": ["integer", "string", "null"], "description": "Days or 'Waived'" },
+        "loanDays": { "type": ["integer", "string", "null"], "description": "Days or 'Waived'" },
+        "saleOfBuyerProperty": { "type": "boolean", "description": "COP contingency present" }
+      },
+      "additionalProperties": false,
+      "description": "Major contingencies"
+    },
+    "closingCosts": {
+      "type": "object",
+      "properties": {
+        "buyerPays": { "type": "array", "items": { "type": "string" }, "description": "e.g., ['title', 'escrow']" },
+        "sellerPays": { "type": "array", "items": { "type": "string" } },
+        "sellerCreditAmount": { "type": ["number", "null"], "description": "Seller credit/concession in USD" }
+      },
+      "additionalProperties": false,
+      "description": "Allocation of closing costs"
+    },
+    "brokers": {
+      "type": "object",
+      "properties": {
+        "listingBrokerage": { "type": ["string", "null"] },
+        "listingAgent": { "type": ["string", "null"] },
+        "sellingBrokerage": { "type": ["string", "null"] },
+        "sellingAgent": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false,
+      "description": "Listing and selling broker/agent names"
+    },
+    "personalPropertyIncluded": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Appliances/fixtures explicitly included (empty array if none specified)"
+    },
+    "effectiveDate": {
+      "type": ["string", "null"],
+      "format": "date",
+      "description": "Final acceptance/effective date (YYYY-MM-DD) from latest signature"
+    },
+    "escrowHolder": {
+      "type": ["string", "null"],
+      "description": "Escrow or title company name"
+    }
+  },
+  "required": [
+    "buyerNames",
+    "sellerNames",
+    "propertyAddress",
+    "purchasePrice",
+    "earnestMoneyDeposit",
+    "closingDate",
+    "financing",
+    "effectiveDate"
+  ],
+  "additionalProperties": false
+}

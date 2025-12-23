@@ -1,19 +1,13 @@
 // src/app/api/parse/process/[parseId]/route.ts
-// Version: 4.0.0 - 2025-12-23
-// PHASE 1: Parallel dual-DPI rendering with selective high-res extraction
-// MAINTAINED: California-specific logic, backward compatible
+// Version: 5.1.0 - 2025-12-23
+// Fixed: No longer assumes .pages on renderResult
+// Uses downloadAndExtractZip for low-res classification pages
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
-import { 
-  renderPdfParallel, 
-  downloadAndExtractZip,
-  extractSpecificPagesFromZip 
-} from "@/lib/pdf/renderer";
-import { classifyCriticalPages } from "@/lib/extraction/classify/classifier";
-import { extractFromCriticalPages } from "@/lib/extraction/extract/california";
-import { PDFDocument } from "pdf-lib";
+import { renderPdfParallel, downloadAndExtractZip } from "@/lib/pdf/renderer";
+import { routeAndExtract } from "@/lib/extraction/router";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -54,83 +48,37 @@ export async function GET(
     async start(controller) {
       try {
         console.log(`\n${"=".repeat(80)}`);
-        console.log(`[process:${parseId}] 🚀 PHASE 1 EXTRACTION PIPELINE`);
+        console.log(`[process:${parseId}] 🚀 EXTRACTION PIPELINE STARTED`);
         console.log(`[process:${parseId}] File: ${parse.fileName}`);
-        console.log(`[process:${parseId}] Strategy: Parallel dual-DPI rendering`);
         //@ts-ignore
         console.log(`[process:${parseId}] Buffer size: ${(parse.pdfBuffer.length / 1024).toFixed(2)} KB`);
         console.log(`${"=".repeat(80)}\n`);
 
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // PHASE 1A: GET PAGE COUNT (GRACEFUL FALLBACK)
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        
-        let pageCount: number | null = null;
-        let pdfLibFailed = false;
-        
-        try {
-          console.log(`[process:${parseId}] Attempting pdf-lib page count detection...`);
-          //@ts-ignore
-          const pdfDoc = await PDFDocument.load(parse.pdfBuffer, { ignoreEncryption: true });
-          pageCount = pdfDoc.getPageCount();
-          console.log(`[process:${parseId}] ✓ pdf-lib: ${pageCount} pages detected`);
-          
-          // Validate page limit (100 pages max)
-          if (pageCount > 100) {
-            throw new Error(`Document exceeds 100-page limit (${pageCount} pages)`);
-          }
-          
-        } catch (pdfLibError: any) {
-          if (pdfLibError.message.includes("exceeds 100-page limit")) {
-            throw pdfLibError; // Don't catch page limit errors
-          }
-          
-          pdfLibFailed = true;
-          console.warn(`[process:${parseId}] ⚠️ pdf-lib failed: ${pdfLibError.message}`);
-          console.log(`[process:${parseId}] Likely owner-restricted PDF - Nutrient will auto-detect`);
-          
-          emit(controller, {
-            type: "progress",
-            message: "Detected owner-restricted PDF - using advanced processing...",
-            stage: "pdf_lib_fallback",
-          });
-        }
-
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // PHASE 1B: PARALLEL DUAL-DPI RENDER (COST SAVER)
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        
         emit(controller, {
           type: "progress",
-          message: "Rendering document in parallel (150 DPI + 300 DPI)...",
+          message: "Rendering document in parallel (150 + 300 DPI)...",
           stage: "render_parallel",
         });
 
-        console.log(`[process:${parseId}] PHASE 1B: Parallel dual-DPI render`);
-        console.log(`[process:${parseId}] Page count hint: ${pageCount ?? "auto-detect"}`);
-
+        // Phase 1: Parallel dual-DPI render + upload
         const renderResult = await renderPdfParallel(
           //@ts-ignore
-          parse.pdfBuffer,
-          pageCount ?? undefined
+          parse.pdfBuffer
         );
 
-        // Update page count from render result
-        pageCount = renderResult.pageCount;
-        
-        console.log(`[process:${parseId}] ✓ Parallel render complete:`);
-        console.log(`[process:${parseId}]   • ${pageCount} pages detected`);
-        console.log(`[process:${parseId}]   • Low-res (150 DPI): ${renderResult.lowRes.key}`);
-        console.log(`[process:${parseId}]   • High-res (300 DPI): ${renderResult.highRes.key}`);
+        const pageCount = renderResult.pageCount;
 
-        // Deduct credit after successful render
+        console.log(`[process:${parseId}] ✓ Render complete: ${pageCount} pages`);
+        console.log(`[process:${parseId}] Low-res ZIP: ${renderResult.lowRes.key}`);
+        console.log(`[process:${parseId}] High-res ZIP: ${renderResult.highRes.key}`);
+
+        // Deduct credit
         await db.user.update({
           where: { id: parse.userId },
           data: { credits: { decrement: 1 } },
         });
-        console.log(`[process:${parseId}] ✓ Credit deducted`);
 
-        // Store both ZIPs in database
+        // Store render artifacts
         await db.parse.update({
           where: { id: parseId },
           data: {
@@ -140,261 +88,97 @@ export async function GET(
             lowResZipKey: renderResult.lowRes.key,
             highResZipUrl: renderResult.highRes.url,
             highResZipKey: renderResult.highRes.key,
-            pdfBuffer: null, // Delete original PDF buffer
+            pdfBuffer: null, // Clear original buffer
           },
         });
 
         emit(controller, {
           type: "progress",
-          message: `Analyzing ${pageCount} pages to identify critical sections...`,
-          stage: "classify_ai",
+          message: `Downloading low-res images for AI analysis...`,
+          stage: "download_lowres",
         });
 
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // PHASE 1C: CLASSIFICATION (FULL LOW-RES SWEEP)
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        
-        console.log(`[process:${parseId}] PHASE 1C: Classification @ 150 DPI`);
-        
-        const fullPageImages = await downloadAndExtractZip(renderResult.lowRes.url);
-        
-        const { criticalPageNumbers, state, rpaBlocksDetected } = await classifyCriticalPages(
-          fullPageImages,
+        // Phase 2: Download + extract low-res ZIP for classification
+        // This gives us { pageNumber: number; base64: string }[]
+        const lowResPages = await downloadAndExtractZip(renderResult.lowRes.url);
+
+        console.log(`[process:${parseId}] ✓ Low-res pages extracted: ${lowResPages.length}`);
+
+        emit(controller, {
+          type: "progress",
+          message: `Analyzing document with AI...`,
+          stage: "extraction_ai",
+        });
+
+        // Phase 3: Run full extraction pipeline (classifier → router → universal)
+        // Note: We pass empty highResPages array for now — universal uses low-res for extraction
+        // Later, when we build selective high-res extraction, we'll download high-res ZIP selectively
+        const extractionResult = await routeAndExtract(
+          lowResPages,
+          lowResPages, // fallback: use low-res for extraction (still good enough for Grok)
           pageCount
         );
 
-        console.log(`[process:${parseId}] ✓ Classification complete:`);
-        console.log(`[process:${parseId}]   • State: ${state}`);
-        console.log(`[process:${parseId}]   • Critical pages: ${criticalPageNumbers.length} → [${criticalPageNumbers.join(", ")}]`);
-        console.log(`[process:${parseId}]   • RPA blocks: ${rpaBlocksDetected.length}`);
+        const { universal, details, timelineEvents, needsReview, route, metadata } = extractionResult;
 
-        if (rpaBlocksDetected.length > 1) {
-          console.log(`[process:${parseId}] ⚠️ Multiple RPA blocks (${rpaBlocksDetected.length}) - likely COP scenario`);
-          emit(controller, {
-            type: "progress",
-            message: `⚠️ Multiple RPA blocks detected (${rpaBlocksDetected.length}) - COP contingency?`,
-            stage: "classify_multi_rpa",
-          });
-        }
-
-        // Update database with classification results
-        await db.parse.update({
-          where: { id: parseId },
-          data: {
-            status: "READY_FOR_EXTRACT",
-            state: state || "Unknown",
-            criticalPageNumbers,
-            lowResZipUrl: null, // Delete low-res ZIP - no longer needed
-            lowResZipKey: null,
-          },
-        });
-
-        emit(controller, {
-          type: "progress",
-          message: `Extracting ${criticalPageNumbers.length} critical pages at high resolution...`,
-          stage: "extract_selective",
-          criticalPageNumbers,
-        });
-
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // PHASE 1D: SELECTIVE HIGH-RES EXTRACTION (MAJOR COST SAVER)
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        
-        console.log(`[process:${parseId}] PHASE 1D: Selective high-res extraction`);
-        console.log(`[process:${parseId}] Extracting ${criticalPageNumbers.length}/${pageCount} pages (${((criticalPageNumbers.length / pageCount) * 100).toFixed(1)}% of document)`);
-
-        // Extract only critical pages from high-res ZIP
-        const criticalPagesHighRes = await extractSpecificPagesFromZip(
-          renderResult.highRes.url,
-          criticalPageNumbers
-        );
-
-        console.log(`[process:${parseId}] ✓ Extracted ${criticalPagesHighRes.length} critical pages @ 300 DPI`);
-
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // PHASE 1E: BUILD PAGE LABELS (CALIFORNIA-SPECIFIC)
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        
-        console.log(`[process:${parseId}] PHASE 1E: Building page labels for extraction`);
-        
-        const pageLabels: Record<number, string> = {};
-
-        const primaryBlock = rpaBlocksDetected[0];
-        if (primaryBlock?.detectedPages) {
-          const d = primaryBlock.detectedPages;
-          if (d.page1) pageLabels[d.page1] = "RPA PAGE 1 OF 17 (ADDRESS, PRICE, FINANCING & CLOSING)";
-          if (d.page2) pageLabels[d.page2] = "RPA PAGE 2 OF 17 (CONTINGENCIES)";
-          if (d.page3) pageLabels[d.page3] = "RPA PAGE 3 OF 17 (ITEMS INCLUDED & HOME WARRANTY)";
-          if (d.page16) pageLabels[d.page16] = "RPA PAGE 16 OF 17 (SIGNATURES)";
-          if (d.page17) pageLabels[d.page17] = "RPA PAGE 17 OF 17 (BROKER INFO)";
-        }
-
-        criticalPageNumbers.forEach(pdfPage => {
-          if (!pageLabels[pdfPage]) {
-            pageLabels[pdfPage] = "COUNTER OFFER OR ADDENDUM";
-          }
-        });
-
-        const labeledCriticalImages = criticalPagesHighRes.map((img) => {
-          const label = pageLabels[img.pageNumber] || `PDF PAGE ${img.pageNumber}`;
-          return {
-            pageNumber: img.pageNumber,
-            base64: img.base64,
-            label: label,
-          };
-        });
-
-        console.log(`[process:${parseId}] ✓ Page mapping complete: ${labeledCriticalImages.length} images labeled`);
-
-        emit(controller, {
-          type: "progress",
-          message: "Extracting contract terms with Grok AI...",
-          stage: "extract_ai",
-        });
-
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // PHASE 1F: AI EXTRACTION (CALIFORNIA SCHEMA)
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        
-        console.log(`[process:${parseId}] PHASE 1F: AI extraction (California schema)`);
-        
-        let finalResult;
-        let schemaValidationFailed = false;
-
-        try {
-          const firstPass = await extractFromCriticalPages(labeledCriticalImages);
-          finalResult = firstPass;
-
-          console.log(`[process:${parseId}] ✓ First pass complete`);
-          console.log(`[process:${parseId}] Property: ${firstPass.data.propertyAddress}`);
-          console.log(`[process:${parseId}] Price: $${firstPass.data.purchasePrice.toLocaleString()}`);
-
-          if (firstPass.needsReview) {
-            schemaValidationFailed = true;
-            console.warn(`[process:${parseId}] ⚠️ First pass flagged for review`);
-          }
-
-          const needsSecondPass = firstPass.needsReview;
-
-          if (needsSecondPass) {
-            emit(controller, {
-              type: "progress",
-              message: "Running verification pass to improve accuracy...",
-              stage: "extract_ai_boost",
-            });
-
-            console.log(`[process:${parseId}] Running second pass for quality improvement...`);
-
-            try {
-              const secondPass = await extractFromCriticalPages(
-                labeledCriticalImages,
-                firstPass.data
-              );
-              finalResult = secondPass;
-              console.log(`[process:${parseId}] ✓ Second pass complete`);
-
-              if (!secondPass.needsReview) {
-                schemaValidationFailed = false;
-                console.log(`[process:${parseId}] ✓ Second pass resolved validation issues`);
-              }
-            } catch (secondPassError: any) {
-              console.warn(`[process:${parseId}] Second pass failed, keeping first pass:`, secondPassError.message);
-            }
-          }
-
-        } catch (extractionError: any) {
-          throw extractionError;
-        }
-
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // PHASE 1G: FINALIZE & CLEANUP
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        
-        const needsReview = finalResult.needsReview;
         const finalStatus = needsReview ? "NEEDS_REVIEW" : "COMPLETED";
 
-        console.log(`\n[process:${parseId}] PHASE 1G: Finalizing extraction`);
+        console.log(`[process:${parseId}] Extraction route: ${route}`);
+        console.log(`[process:${parseId}] Needs review: ${needsReview}`);
         console.log(`[process:${parseId}] Final status: ${finalStatus}`);
-        if (schemaValidationFailed) {
-          console.warn(`[process:${parseId}] ⚠️ Marked as NEEDS_REVIEW due to validation issues`);
-        }
 
+        // Save results to DB
         await db.parse.update({
           where: { id: parseId },
           data: {
             status: finalStatus,
+            // === Universal core fields (add these to your Prisma model first!) ===
+            buyerNames: universal.buyerNames,
+            sellerNames: universal.sellerNames,
+            propertyAddress: universal.propertyAddress || null,
+            purchasePrice: universal.purchasePrice || null,
+            earnestMoneyAmount: universal.earnestMoneyDeposit.amount,
+            earnestMoneyHolder: universal.earnestMoneyDeposit.holder,
+            closingDate: universal.closingDate
+              ? typeof universal.closingDate === "string"
+                ? universal.closingDate
+                : null // handle "X days" later when needed
+              : null,
+            effectiveDate: universal.effectiveDate,
+            isAllCash: universal.financing.isAllCash,
+            loanType: universal.financing.loanType,
+            // === Rich data ===
+            extractionDetails: details ? { route, ...details } : { route },
+            timelineEvents: timelineEvents.length > 0 ? timelineEvents : null,
+            // === Debug/metadata ===
             rawJson: {
-              ...finalResult.raw,
-              _classification_meta: {
-                rpaBlocksDetected: rpaBlocksDetected.length,
-                rpaBlocks: rpaBlocksDetected.map(b => ({
-                  startPage: b.startPage,
-                  confidence: b.confidence,
-                  pages: b.pages,
-                })),
-                pdfLibWorked: !pdfLibFailed,
-                actualPageCount: pageCount,
-                phase1_selective_extraction: {
-                  totalPages: pageCount,
-                  criticalPages: criticalPageNumbers.length,
-                  extractionRatio: `${((criticalPageNumbers.length / pageCount) * 100).toFixed(1)}%`,
-                },
-              },
+              _extraction_route: route,
+              _classifier_metadata: metadata.packageMetadata,
+              _critical_pages: metadata.criticalPageNumbers,
             },
-            formatted: finalResult.data as any,
-            highResZipUrl: null, // Delete high-res ZIP - extraction complete
-            highResZipKey: null,
             finalizedAt: new Date(),
           },
         });
 
-        console.log(`[process:${parseId}] ✓ Results saved to database`);
-        console.log(`[process:${parseId}] ✓ All temporary files marked for deletion`);
-
-        console.log(`\n${"=".repeat(80)}`);
-        console.log(`[process:${parseId}] ✅ PHASE 1 EXTRACTION COMPLETE`);
-        console.log(`[process:${parseId}] Status: ${finalStatus}`);
-        console.log(`[process:${parseId}] Total pages: ${pageCount}`);
-        console.log(`[process:${parseId}] Critical pages extracted: ${criticalPageNumbers.length} (${((criticalPageNumbers.length / pageCount) * 100).toFixed(1)}%)`);
-        console.log(`[process:${parseId}] RPA blocks: ${rpaBlocksDetected.length}`);
-        console.log(`[process:${parseId}] Cost savings: ${((1 - criticalPageNumbers.length / pageCount) * 100).toFixed(1)}% reduction in high-res processing`);
-        console.log(`${"=".repeat(80)}\n`);
+        console.log(`[process:${parseId}] ✅ Extraction complete & saved to DB`);
 
         emit(controller, {
           type: "complete",
-          extracted: finalResult.data,
-          criticalPageNumbers,
+          extracted: universal,
           needsReview,
-          rpaBlocksDetected: rpaBlocksDetected.length,
-          phase1Stats: {
-            totalPages: pageCount,
-            criticalPages: criticalPageNumbers.length,
-            extractionRatio: `${((criticalPageNumbers.length / pageCount) * 100).toFixed(1)}%`,
-            costSavings: `${((1 - criticalPageNumbers.length / pageCount) * 100).toFixed(1)}%`,
-          },
+          route,
+          pageCount,
+          criticalPages: metadata.criticalPageNumbers.length,
         });
 
         controller.close();
 
       } catch (error: any) {
-        console.error(`\n[process:${parseId}] ❌ EXTRACTION FAILED:`, error);
-        console.error(`[process:${parseId}] Stack trace:`, error.stack);
+        console.error(`[process:${parseId}] ❌ EXTRACTION FAILED:`, error);
 
-        let errorMessage = error.message || "Extraction failed - please try again";
-        let errorDetails = null;
-
-        if (error.message?.includes("PDF_PASSWORD_PROTECTED")) {
-          errorMessage = "This PDF is password-protected";
-          errorDetails = "Please provide an unlocked version or remove the password before uploading.";
-        } else if (error.message?.includes("exceeds 100-page limit")) {
-          errorMessage = "Document too large";
-          errorDetails = error.message;
-        } else if (error.message?.includes("schema validation")) {
-          errorMessage = "Data format validation failed";
-          errorDetails = "Document may have unusual formatting. Please review manually or contact support.";
-        } else if (error.message?.includes("Invalid PDF")) {
-          errorMessage = "Invalid PDF file";
-          errorDetails = "The uploaded file may be corrupted or not a valid PDF.";
+        let errorMessage = error.message || "Extraction failed";
+        if (error.message?.includes("exceeds 100-page limit")) {
+          errorMessage = "Document too large (max 100 pages)";
         }
 
         await db.parse.update({
@@ -402,19 +186,12 @@ export async function GET(
           data: {
             status: "EXTRACTION_FAILED",
             errorMessage,
-            rawJson: {
-              _error: errorMessage,
-              _error_details: errorDetails,
-              _stack: error.stack,
-              _timestamp: new Date().toISOString(),
-            },
           },
         }).catch(() => {});
 
         emit(controller, {
           type: "error",
           message: errorMessage,
-          details: errorDetails,
         });
 
         controller.close();

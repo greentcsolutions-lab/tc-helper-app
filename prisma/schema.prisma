@@ -53,28 +53,40 @@ model Parse {
   counterInfo          Json?                               
 
   // Status tracking
-  // PROCESSING → RENDERED → READY_FOR_EXTRACT → COMPLETED/NEEDS_REVIEW
-  // Error states: RENDER_FAILED, EXTRACTION_FAILED
-  status               String    @default("PROCESSING")
+  status               String    @default("PROCESSING")  // PROCESSING → RENDERED → COMPLETED/NEEDS_REVIEW/EXTRACTION_FAILED
 
   // PHASE 1: Dual-DPI storage
-  // Low-res (150 DPI) used for classification sweep - deleted after classification
-  lowResZipUrl         String?   // Temporary - deleted after classification
-  lowResZipKey         String?   // Blob key for cleanup
+  lowResZipUrl         String?   
+  lowResZipKey         String?   
   
-  // High-res (300 DPI) stored for selective extraction - deleted after extraction
-  highResZipUrl        String?   // Full document @ 300 DPI
-  highResZipKey        String?   // Blob key for cleanup
+  highResZipUrl        String?   
+  highResZipKey        String?   
   
-  // DEPRECATED: Legacy single render storage (keep for backward compatibility)
-  pdfBuffer            Bytes?    // Original PDF - deleted after render                              
-  renderZipUrl         String?   // Legacy field - replaced by lowResZipUrl/highResZipUrl                             
-  renderZipKey         String?   // Legacy field - replaced by lowResZipKey/highResZipKey                             
+  // DEPRECATED: Legacy fields (keep for backward compatibility)
+  pdfBuffer            Bytes?    
+  renderZipUrl         String?   
+  renderZipKey         String?   
 
-  // Classification results
-  criticalPageNumbers  Int[]     @default([])   // Pages to extract from high-res
-  pageCount            Int?      // Total pages in document
-  
+  // Classification & page info
+  criticalPageNumbers  Int[]     @default([])   
+  pageCount            Int?      
+
+  // === UNIVERSAL CORE FIELDS (top-level for fast queries) ===
+  buyerNames           String[]  @default([])
+  sellerNames          String[]  @default([])
+  propertyAddress      String?
+  purchasePrice        Float?
+  earnestMoneyAmount   Float?
+  earnestMoneyHolder   String?
+  closingDate          String?    // YYYY-MM-DD
+  effectiveDate        String?    // YYYY-MM-DD (final acceptance)
+  isAllCash            Boolean?
+  loanType             String?
+
+  // === STATE-SPECIFIC RICHNESS ===
+  extractionDetails    Json?      // { route: "california", californiaSpecific: {...}, ... }
+  timelineEvents       Json?      // Array of { date, title, type, description? }
+
   // Error tracking
   errorMessage         String?                             
 

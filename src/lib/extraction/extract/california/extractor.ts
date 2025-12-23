@@ -1,4 +1,4 @@
-// src/lib/extractor/extractor.ts
+// src/lib/extraction/extract/california/california.ts
 // Version: 3.0.0 - 2025-12-20
 // UPDATED: No Zod — direct validation against the new flat real-estate-offer.schema.json (v2.1.0)
 //          Returns clean, normalized extraction matching the exact schema

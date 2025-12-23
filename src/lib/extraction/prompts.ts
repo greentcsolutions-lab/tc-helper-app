@@ -6,10 +6,12 @@
 // Static imports — Next.js bundles these correctly at build time
 import classifierSchema from '@/forms/classifier.schema.json';
 import extractorSchema from '@/forms/california/extractor.schema.json';
+import universalExtractorSchema from '@/forms/universal/extractor.schema.json';
 
 // Prettify for clean prompt insertion
 const classifierSchemaString = JSON.stringify(classifierSchema, null, 2);
 const extractorSchemaString = JSON.stringify(extractorSchema, null, 2);
+const universalExtractorSchemaString = JSON.stringify(universalExtractorSchema, null, 2);
 
 import { RPA_FORM, COUNTER_OFFERS, KEY_ADDENDA } from './extract/form-definitions';
 
@@ -59,6 +61,28 @@ Return ONLY valid JSON matching the schema below. No explanations.
 ${classifierSchemaString}
 `.trim();
 }
+
+export const UNIVERSAL_EXTRACTOR_PROMPT = `
+You are an expert U.S. real estate transaction analyst examining 5–10 high-resolution PNG images from a complete residential purchase packet.
+
+These images have been automatically selected as the most critical pages (main contract, counters/addenda, signature pages).
+
+Your task: Extract the FINAL accepted terms. If counters or addenda are present, they override earlier terms.
+
+Focus on visible filled fields, checked boxes, and signatures. Ignore blank fields.
+
+Key rules:
+- Use the latest signed counter/addendum for price, dates, contingencies.
+- Handwriting vs digital: only count actual pen/ink handwriting as handwriting_detected: true.
+- Checkboxes: checked if X, filled, shaded, or has text inside.
+- Confidence: 0–100 per field. Lower if handwriting, blurry, or ambiguous.
+
+Return ONLY valid JSON exactly matching this schema. No explanations, no markdown.
+
+${universalExtractorSchemaString}
+
+Images (critical pages only):
+`.trim();
 
 export const EXTRACTOR_PROMPT = `
 You are an expert California real estate transaction analyst examining 5-10 high-resolution PNG images from a single transaction packet.
