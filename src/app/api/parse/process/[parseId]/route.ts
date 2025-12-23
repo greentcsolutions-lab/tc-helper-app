@@ -1,12 +1,16 @@
 // src/app/api/parse/process/[parseId]/route.ts
-// Version: 3.2.0 - 2025-12-22
-// MAJOR UPDATE: Graceful pdf-lib fallback - owner-restricted PDFs now supported
-// MAINTAINED: Page mapping integrity, all downstream processing unchanged
+// Version: 4.0.0 - 2025-12-23
+// PHASE 1: Parallel dual-DPI rendering with selective high-res extraction
+// MAINTAINED: California-specific logic, backward compatible
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
-import { renderPdfToPngZipUrl, downloadAndExtractZip } from "@/lib/pdf/renderer";
+import { 
+  renderPdfParallel, 
+  downloadAndExtractZip,
+  extractSpecificPagesFromZip 
+} from "@/lib/pdf/renderer";
 import { classifyCriticalPages } from "@/lib/extractor/classifier";
 import { extractFromCriticalPages } from "@/lib/extractor/extractor";
 import { PDFDocument } from "pdf-lib";
@@ -50,14 +54,15 @@ export async function GET(
     async start(controller) {
       try {
         console.log(`\n${"=".repeat(80)}`);
-        console.log(`[process:${parseId}] 🚀 STARTING EXTRACTION PIPELINE`);
+        console.log(`[process:${parseId}] 🚀 PHASE 1 EXTRACTION PIPELINE`);
         console.log(`[process:${parseId}] File: ${parse.fileName}`);
+        console.log(`[process:${parseId}] Strategy: Parallel dual-DPI rendering`);
         //@ts-ignore
         console.log(`[process:${parseId}] Buffer size: ${(parse.pdfBuffer.length / 1024).toFixed(2)} KB`);
         console.log(`${"=".repeat(80)}\n`);
 
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // PHASE 1: TRY TO GET PAGE COUNT (GRACEFUL FALLBACK ON FAILURE)
+        // PHASE 1A: GET PAGE COUNT (GRACEFUL FALLBACK)
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         
         let pageCount: number | null = null;
@@ -68,12 +73,21 @@ export async function GET(
           //@ts-ignore
           const pdfDoc = await PDFDocument.load(parse.pdfBuffer, { ignoreEncryption: true });
           pageCount = pdfDoc.getPageCount();
-          console.log(`[process:${parseId}] ✓ pdf-lib: ${pageCount} pages detected\n`);
+          console.log(`[process:${parseId}] ✓ pdf-lib: ${pageCount} pages detected`);
+          
+          // Validate page limit (100 pages max)
+          if (pageCount > 100) {
+            throw new Error(`Document exceeds 100-page limit (${pageCount} pages)`);
+          }
+          
         } catch (pdfLibError: any) {
+          if (pdfLibError.message.includes("exceeds 100-page limit")) {
+            throw pdfLibError; // Don't catch page limit errors
+          }
+          
           pdfLibFailed = true;
           console.warn(`[process:${parseId}] ⚠️ pdf-lib failed: ${pdfLibError.message}`);
-          console.log(`[process:${parseId}] This is likely an owner-restricted PDF (printing disabled, etc.)`);
-          console.log(`[process:${parseId}] → Falling back to Nutrient auto-detection\n`);
+          console.log(`[process:${parseId}] Likely owner-restricted PDF - Nutrient will auto-detect`);
           
           emit(controller, {
             type: "progress",
@@ -83,68 +97,79 @@ export async function GET(
         }
 
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // PHASE 2: CLASSIFICATION RENDER (120 DPI, FULL PAGES)
+        // PHASE 1B: PARALLEL DUAL-DPI RENDER (COST SAVER)
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         
         emit(controller, {
           type: "progress",
-          message: "Converting your document for AI analysis...",
-          stage: "classify_render",
+          message: "Rendering document in parallel (150 DPI + 300 DPI)...",
+          stage: "render_parallel",
         });
 
-        console.log(`[process:${parseId}] PHASE 2: Classification render @ 120 DPI`);
+        console.log(`[process:${parseId}] PHASE 1B: Parallel dual-DPI render`);
         console.log(`[process:${parseId}] Page count hint: ${pageCount ?? "auto-detect"}`);
 
-        const { url: classifyZipUrl } = await renderPdfToPngZipUrl(
+        const renderResult = await renderPdfParallel(
           //@ts-ignore
           parse.pdfBuffer,
-          { 
-            dpi: 120,
-            totalPages: pageCount ?? undefined // undefined = Nutrient auto-detects
-          }
+          pageCount ?? undefined
         );
 
-        const fullPageImages = await downloadAndExtractZip(classifyZipUrl);
+        // Update page count from render result
+        pageCount = renderResult.pageCount;
         
-        // NOW we have the actual page count from Nutrient's output
-        const actualPageCount = fullPageImages.length;
-        console.log(`[process:${parseId}] ✓ Nutrient returned ${actualPageCount} pages`);
-        
-        // Verify page count consistency (if pdf-lib worked)
-        if (pageCount !== null && pageCount !== actualPageCount) {
-          console.warn(`[process:${parseId}] ⚠️ Page count mismatch: pdf-lib said ${pageCount}, Nutrient returned ${actualPageCount}`);
-          console.log(`[process:${parseId}] → Using Nutrient's count (${actualPageCount}) as source of truth`);
-        }
-        
-        // Use Nutrient's count as authoritative
-        pageCount = actualPageCount;
+        console.log(`[process:${parseId}] ✓ Parallel render complete:`);
+        console.log(`[process:${parseId}]   • ${pageCount} pages detected`);
+        console.log(`[process:${parseId}]   • Low-res (150 DPI): ${renderResult.lowRes.key}`);
+        console.log(`[process:${parseId}]   • High-res (300 DPI): ${renderResult.highRes.key}`);
 
+        // Deduct credit after successful render
         await db.user.update({
           where: { id: parse.userId },
           data: { credits: { decrement: 1 } },
         });
-        console.log(`[process:${parseId}] ✓ Credit deducted - rendered ${fullPageImages.length} full pages @ 120 DPI\n`);
+        console.log(`[process:${parseId}] ✓ Credit deducted`);
+
+        // Store both ZIPs in database
+        await db.parse.update({
+          where: { id: parseId },
+          data: {
+            status: "RENDERED",
+            pageCount,
+            lowResZipUrl: renderResult.lowRes.url,
+            lowResZipKey: renderResult.lowRes.key,
+            highResZipUrl: renderResult.highRes.url,
+            highResZipKey: renderResult.highRes.key,
+            pdfBuffer: null, // Delete original PDF buffer
+          },
+        });
 
         emit(controller, {
           type: "progress",
-          message: `Analyzing ${fullPageImages.length} pages to find critical sections...`,
+          message: `Analyzing ${pageCount} pages to identify critical sections...`,
           stage: "classify_ai",
         });
 
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // PHASE 3: CLASSIFICATION (MULTI-RPA AWARE)
+        // PHASE 1C: CLASSIFICATION (FULL LOW-RES SWEEP)
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         
-        console.log(`[process:${parseId}] PHASE 3: Classification with Grok-4`);
+        console.log(`[process:${parseId}] PHASE 1C: Classification @ 150 DPI`);
+        
+        const fullPageImages = await downloadAndExtractZip(renderResult.lowRes.url);
         
         const { criticalPageNumbers, state, rpaBlocksDetected } = await classifyCriticalPages(
           fullPageImages,
           pageCount
         );
 
-        // Log multi-RPA detection for user visibility
+        console.log(`[process:${parseId}] ✓ Classification complete:`);
+        console.log(`[process:${parseId}]   • State: ${state}`);
+        console.log(`[process:${parseId}]   • Critical pages: ${criticalPageNumbers.length} → [${criticalPageNumbers.join(", ")}]`);
+        console.log(`[process:${parseId}]   • RPA blocks: ${rpaBlocksDetected.length}`);
+
         if (rpaBlocksDetected.length > 1) {
-          console.log(`[process:${parseId}] ⚠️ Multiple RPA blocks detected (${rpaBlocksDetected.length}) - likely COP scenario`);
+          console.log(`[process:${parseId}] ⚠️ Multiple RPA blocks (${rpaBlocksDetected.length}) - likely COP scenario`);
           emit(controller, {
             type: "progress",
             message: `⚠️ Multiple RPA blocks detected (${rpaBlocksDetected.length}) - COP contingency?`,
@@ -152,59 +177,45 @@ export async function GET(
           });
         }
 
+        // Update database with classification results
+        await db.parse.update({
+          where: { id: parseId },
+          data: {
+            status: "READY_FOR_EXTRACT",
+            state: state || "Unknown",
+            criticalPageNumbers,
+            lowResZipUrl: null, // Delete low-res ZIP - no longer needed
+            lowResZipKey: null,
+          },
+        });
+
         emit(controller, {
           type: "progress",
-          message: `Found ${criticalPageNumbers.length} critical pages - rendering high-res versions...`,
-          stage: "extract_render",
+          message: `Extracting ${criticalPageNumbers.length} critical pages at high resolution...`,
+          stage: "extract_selective",
           criticalPageNumbers,
-          rpaBlocksDetected: rpaBlocksDetected.map(b => ({
-            startPage: b.startPage,
-            confidence: b.confidence,
-          })),
         });
 
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // PHASE 4: HIGH-RES EXTRACTION RENDER (325 DPI, CRITICAL PAGES ONLY)
+        // PHASE 1D: SELECTIVE HIGH-RES EXTRACTION (MAJOR COST SAVER)
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         
-        console.log(`[process:${parseId}] PHASE 4: Extracting critical pages for high-res render`);
-        console.log(`[process:${parseId}] Pages: [${criticalPageNumbers.join(", ")}]`);
+        console.log(`[process:${parseId}] PHASE 1D: Selective high-res extraction`);
+        console.log(`[process:${parseId}] Extracting ${criticalPageNumbers.length}/${pageCount} pages (${((criticalPageNumbers.length / pageCount) * 100).toFixed(1)}% of document)`);
 
-        // Create new PDF with only critical pages
-        const newPdf = await PDFDocument.create();
-        
-        // Re-load source PDF (with encryption bypass if needed)
-        let sourcePdf: any;
-        try {
-          //@ts-ignore
-          sourcePdf = await PDFDocument.load(parse.pdfBuffer, { ignoreEncryption: true });
-        } catch (loadError: any) {
-          // If pdf-lib failed earlier, try without ignoreEncryption
-          console.log(`[process:${parseId}] Retrying source PDF load without encryption flag...`);
-          //@ts-ignore
-          sourcePdf = await PDFDocument.load(parse.pdfBuffer);
-        }
-
-        for (const pageNum of criticalPageNumbers) {
-          const [copiedPage] = await newPdf.copyPages(sourcePdf, [pageNum - 1]);
-          newPdf.addPage(copiedPage);
-        }
-
-        const criticalPagesPdfBuffer = Buffer.from(await newPdf.save());
-        console.log(`[process:${parseId}] ✓ Extracted ${criticalPageNumbers.length} pages into new PDF (${(criticalPagesPdfBuffer.length / 1024).toFixed(0)} KB)`);
-
-        const { url: extractZipUrl, key: extractZipKey } = await renderPdfToPngZipUrl(
-          criticalPagesPdfBuffer,
-          { dpi: 325, maxPages: criticalPageNumbers.length }
+        // Extract only critical pages from high-res ZIP
+        const criticalPagesHighRes = await extractSpecificPagesFromZip(
+          renderResult.highRes.url,
+          criticalPageNumbers
         );
 
-        const criticalPagesHighRes = await downloadAndExtractZip(extractZipUrl);
+        console.log(`[process:${parseId}] ✓ Extracted ${criticalPagesHighRes.length} critical pages @ 300 DPI`);
 
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // PHASE 5: BUILD PAGE LABELS (MAINTAINS ORIGINAL PDF PAGE NUMBERS)
+        // PHASE 1E: BUILD PAGE LABELS (CALIFORNIA-SPECIFIC)
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         
-        console.log(`[process:${parseId}] PHASE 5: Building page labels for extraction`);
+        console.log(`[process:${parseId}] PHASE 1E: Building page labels for extraction`);
         
         const pageLabels: Record<number, string> = {};
 
@@ -218,28 +229,22 @@ export async function GET(
           if (d.page17) pageLabels[d.page17] = "RPA PAGE 17 OF 17 (BROKER INFO)";
         }
 
-        // Mark remaining critical pages as counters/addenda
         criticalPageNumbers.forEach(pdfPage => {
           if (!pageLabels[pdfPage]) {
             pageLabels[pdfPage] = "COUNTER OFFER OR ADDENDUM";
           }
         });
 
-        // CRITICAL: Map extracted PDF image index to ORIGINAL PDF page number
-        const labeledCriticalImages = criticalPagesHighRes.map((img, index) => {
-          const originalPdfPage = criticalPageNumbers[index]; // Position → Original page
-          const label = pageLabels[originalPdfPage] || `PDF PAGE ${originalPdfPage}`;
-
-          console.log(`[process:${parseId}] Image ${index + 1} = PDF Page ${originalPdfPage} → ${label}`);
-
+        const labeledCriticalImages = criticalPagesHighRes.map((img) => {
+          const label = pageLabels[img.pageNumber] || `PDF PAGE ${img.pageNumber}`;
           return {
-            pageNumber: originalPdfPage, // Use ORIGINAL page number
+            pageNumber: img.pageNumber,
             base64: img.base64,
             label: label,
           };
         });
 
-        console.log(`[process:${parseId}] ✓ Page mapping preserved: ${labeledCriticalImages.length} images labeled\n`);
+        console.log(`[process:${parseId}] ✓ Page mapping complete: ${labeledCriticalImages.length} images labeled`);
 
         emit(controller, {
           type: "progress",
@@ -248,10 +253,10 @@ export async function GET(
         });
 
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // PHASE 6: AI EXTRACTION (WITH SCHEMA VALIDATION HANDLING)
+        // PHASE 1F: AI EXTRACTION (CALIFORNIA SCHEMA)
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         
-        console.log(`[process:${parseId}] PHASE 6: AI extraction (first pass)`);
+        console.log(`[process:${parseId}] PHASE 1F: AI extraction (California schema)`);
         
         let finalResult;
         let schemaValidationFailed = false;
@@ -264,13 +269,11 @@ export async function GET(
           console.log(`[process:${parseId}] Property: ${firstPass.data.propertyAddress}`);
           console.log(`[process:${parseId}] Price: $${firstPass.data.purchasePrice.toLocaleString()}`);
 
-          // Check if schema validation failed
           if (firstPass.needsReview) {
             schemaValidationFailed = true;
             console.warn(`[process:${parseId}] ⚠️ First pass flagged for review`);
           }
 
-          // Determine if second pass needed
           const needsSecondPass = firstPass.needsReview;
 
           if (needsSecondPass) {
@@ -290,45 +293,36 @@ export async function GET(
               finalResult = secondPass;
               console.log(`[process:${parseId}] ✓ Second pass complete`);
 
-              // Check if second pass resolved issues
               if (!secondPass.needsReview) {
                 schemaValidationFailed = false;
                 console.log(`[process:${parseId}] ✓ Second pass resolved validation issues`);
               }
             } catch (secondPassError: any) {
               console.warn(`[process:${parseId}] Second pass failed, keeping first pass:`, secondPassError.message);
-              // Keep first pass result
             }
           }
 
         } catch (extractionError: any) {
-          // Complete extraction failure
           throw extractionError;
         }
 
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // PHASE 7: DETERMINE FINAL STATUS
+        // PHASE 1G: FINALIZE & CLEANUP
         // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         
         const needsReview = finalResult.needsReview;
         const finalStatus = needsReview ? "NEEDS_REVIEW" : "COMPLETED";
 
-        console.log(`\n[process:${parseId}] PHASE 7: Finalizing extraction`);
+        console.log(`\n[process:${parseId}] PHASE 1G: Finalizing extraction`);
         console.log(`[process:${parseId}] Final status: ${finalStatus}`);
         if (schemaValidationFailed) {
           console.warn(`[process:${parseId}] ⚠️ Marked as NEEDS_REVIEW due to validation issues`);
         }
 
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        // PHASE 8: SAVE RESULTS TO DATABASE
-        // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        
         await db.parse.update({
           where: { id: parseId },
           data: {
             status: finalStatus,
-            state: state || "Unknown",
-            criticalPageNumbers,
             rawJson: {
               ...finalResult.raw,
               _classification_meta: {
@@ -340,34 +334,44 @@ export async function GET(
                 })),
                 pdfLibWorked: !pdfLibFailed,
                 actualPageCount: pageCount,
+                phase1_selective_extraction: {
+                  totalPages: pageCount,
+                  criticalPages: criticalPageNumbers.length,
+                  extractionRatio: `${((criticalPageNumbers.length / pageCount) * 100).toFixed(1)}%`,
+                },
               },
             },
             formatted: finalResult.data as any,
-            renderZipUrl: extractZipUrl,
-            renderZipKey: extractZipKey,
+            highResZipUrl: null, // Delete high-res ZIP - extraction complete
+            highResZipKey: null,
             finalizedAt: new Date(),
           },
         });
 
         console.log(`[process:${parseId}] ✓ Results saved to database`);
-        if (rpaBlocksDetected.length > 1) {
-          console.log(`[process:${parseId}] ✓ Stored ${rpaBlocksDetected.length} RPA block metadata for review`);
-        }
+        console.log(`[process:${parseId}] ✓ All temporary files marked for deletion`);
 
         console.log(`\n${"=".repeat(80)}`);
-        console.log(`[process:${parseId}] ✅ EXTRACTION COMPLETE`);
+        console.log(`[process:${parseId}] ✅ PHASE 1 EXTRACTION COMPLETE`);
         console.log(`[process:${parseId}] Status: ${finalStatus}`);
-        console.log(`[process:${parseId}] Critical pages: ${criticalPageNumbers.length}`);
+        console.log(`[process:${parseId}] Total pages: ${pageCount}`);
+        console.log(`[process:${parseId}] Critical pages extracted: ${criticalPageNumbers.length} (${((criticalPageNumbers.length / pageCount) * 100).toFixed(1)}%)`);
         console.log(`[process:${parseId}] RPA blocks: ${rpaBlocksDetected.length}`);
+        console.log(`[process:${parseId}] Cost savings: ${((1 - criticalPageNumbers.length / pageCount) * 100).toFixed(1)}% reduction in high-res processing`);
         console.log(`${"=".repeat(80)}\n`);
 
         emit(controller, {
           type: "complete",
           extracted: finalResult.data,
           criticalPageNumbers,
-          zipUrl: extractZipUrl,
           needsReview,
           rpaBlocksDetected: rpaBlocksDetected.length,
+          phase1Stats: {
+            totalPages: pageCount,
+            criticalPages: criticalPageNumbers.length,
+            extractionRatio: `${((criticalPageNumbers.length / pageCount) * 100).toFixed(1)}%`,
+            costSavings: `${((1 - criticalPageNumbers.length / pageCount) * 100).toFixed(1)}%`,
+          },
         });
 
         controller.close();
@@ -376,13 +380,15 @@ export async function GET(
         console.error(`\n[process:${parseId}] ❌ EXTRACTION FAILED:`, error);
         console.error(`[process:${parseId}] Stack trace:`, error.stack);
 
-        // Determine error message based on error type
         let errorMessage = error.message || "Extraction failed - please try again";
         let errorDetails = null;
 
         if (error.message?.includes("PDF_PASSWORD_PROTECTED")) {
           errorMessage = "This PDF is password-protected";
           errorDetails = "Please provide an unlocked version or remove the password before uploading.";
+        } else if (error.message?.includes("exceeds 100-page limit")) {
+          errorMessage = "Document too large";
+          errorDetails = error.message;
         } else if (error.message?.includes("schema validation")) {
           errorMessage = "Data format validation failed";
           errorDetails = "Document may have unusual formatting. Please review manually or contact support.";
