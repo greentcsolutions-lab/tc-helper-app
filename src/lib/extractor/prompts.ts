@@ -4,7 +4,7 @@
 //        No more fs.readFileSync or __dirname issues
 
 // Static imports — Next.js bundles these correctly at build time
-import classifierSchema from '@/forms/california/classifier.schema.json';
+import classifierSchema from '@/forms/classifier.schema.json';
 import extractorSchema from '@/forms/california/extractor.schema.json';
 
 // Prettify for clean prompt insertion
@@ -20,43 +20,37 @@ import { RPA_FORM, COUNTER_OFFERS, KEY_ADDENDA } from './form-definitions';
 export function buildClassifierPrompt(
   batchStart: number,
   batchEnd: number,
-  batchSize: number
+  batchSize: number,
 ): string {
-  return `You are examining exactly ${batchSize} full-page images from a California real estate transaction PDF.
+  return `
+You are examining exactly ${batchSize} full-page images from a complete U.S. real estate transaction packet (1–100+ pages total).
 
-These images are PDF pages ${batchStart} to ${batchEnd} ONLY. You cannot see any pages outside this range.
+These images are PDF pages ${batchStart}–${batchEnd} ONLY.
 
-For EACH image independently, focus ONLY on the bottom 8% of the page — the single centered footer line directly above the thin rectangular broker information box (the box that contains agent name, Lone Wolf/zipForm credit, etc.). This line usually has the small CAR house icon to its right.
+Your job: For EACH page independently, identify if it belongs to a known standard real estate form by looking at headers, footers, layout, title, revision date, and form code.
 
-Your task per image:
-- If the footer clearly contains one of these exact patterns inside parentheses:
-  (RPA PAGE X OF 17)
-  (SCO PAGE X OF 2)
-  (SMCO PAGE X OF 2)
-  (BCO PAGE 1 OF 1)
+Focus on:
+- Top header (form title, revision date like "06/25", "1/2024", association name)
+- Bottom footer (form code, page X of Y, copyright)
+- Overall layout (sections, checkboxes, signature blocks)
 
-  → report the form code, the internal page number X, and the exact footer text you read.
+Known major forms (common examples):
+- California: RPA (6/25), PRBS, AD, SCO/SMCO/BCO, ZIPFORMS footers
+- Texas: TREC contracts (1-10, One to Four Family), Promulgated forms, revision date in header
+- Florida: FAR/BAR contracts (AS-IS or standard), revision date top-right
+- New York: NY State Bar forms, disclosure packets
+- Generic/National: HUD, RESPA, CFPB forms, Fannie/Freddie addenda
+- Common addenda: Lead-Based Paint, HOA, Contingency, Counter Offer, Amendment
 
-- Otherwise → return null for that image.
+For every page, return ONE of:
+- If it's a known standard form page → form details
+- If it's a cover letter, title page, email, blank → "other"
+- If it's a non-standard disclosure or local addendum → "local_addendum"
 
-Valid examples you may see:
-- "RPA REVISED 6/25 (PAGE 1 OF 17)"
-- "SELLER COUNTER OFFER (SCO PAGE 1 OF 2)"
-- "(RPA PAGE 16 OF 17)"
-- "SCO REVISED 12/24 (PAGE 2 OF 2)"
-- "CALIFORNIA RESIDENTIAL PURCHASE AGREEMENT AND JOINT ESCROW INSTRUCTIONS (RPA PAGE 3 OF 17)"
+Return ONLY valid JSON matching the schema below. No explanations.
 
-Required for a match:
-- One of RPA / SCO / SMCO / BCO inside the parentheses
-- "PAGE X OF Y" inside parentheses with correct total pages (17 for RPA, 2 for SCO/SMCO, 1 for BCO)
-
-If the footer is missing, blurry, cut off, or does not contain one of these exact patterns → return null.
-
-Do not guess, assume, or invent any footer text or page numbers.
-
-Return ONLY valid JSON — no explanations, no markdown.
-
-${classifierSchemaString}`.trim();
+${classifierSchemaString}
+`.trim();
 }
 
 export const EXTRACTOR_PROMPT = `
