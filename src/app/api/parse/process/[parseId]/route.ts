@@ -11,8 +11,8 @@ import {
   downloadAndExtractZip,
   extractSpecificPagesFromZip 
 } from "@/lib/pdf/renderer";
-import { classifyCriticalPages } from "@/lib/extractor/classifier";
-import { extractFromCriticalPages } from "@/lib/extractor/extractor";
+import { classifyCriticalPages } from "@/lib/extraction/classify/classifier";
+import { extractFromCriticalPages } from "@/lib/extraction/extract/california";
 import { PDFDocument } from "pdf-lib";
 
 export const runtime = "nodejs";

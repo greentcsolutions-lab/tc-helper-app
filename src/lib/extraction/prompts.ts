@@ -1,4 +1,4 @@
-// src/lib/extractor/prompts.ts
+// src/lib/extraction/prompts.ts
 // Version: 3.2.1 - 2025-12-20
 // FIXED: Now uses static JSON imports — safe for Next.js/Vercel builds
 //        No more fs.readFileSync or __dirname issues
@@ -11,7 +11,7 @@ import extractorSchema from '@/forms/california/extractor.schema.json';
 const classifierSchemaString = JSON.stringify(classifierSchema, null, 2);
 const extractorSchemaString = JSON.stringify(extractorSchema, null, 2);
 
-import { RPA_FORM, COUNTER_OFFERS, KEY_ADDENDA } from './form-definitions';
+import { RPA_FORM, COUNTER_OFFERS, KEY_ADDENDA } from './extract/form-definitions';
 
 /**
  * Builds the classifier prompt dynamically based on total pages
@@ -23,7 +23,7 @@ export function buildClassifierPrompt(
   batchSize: number,
 ): string {
   return `
-You are examining exactly ${batchSize} full-page images from a complete U.S. real estate transaction packet (1–100+ pages total).
+You are examining exactly ${batchSize} full-page images from a complete U.S. real estate transaction packet (1–100 pages total).
 
 These images are PDF pages ${batchStart}–${batchEnd} ONLY.
 
@@ -33,6 +33,13 @@ Focus on:
 - Top header (form title, revision date like "06/25", "1/2024", association name)
 - Bottom footer (form code, page X of Y, copyright)
 - Overall layout (sections, checkboxes, signature blocks)
+
+🚨 ABSOLUTE PAGE NUMBER RULES — FOLLOW EXACTLY 🚨
+- The images are sent in strict sequential order: first image = PDF page ${batchStart}, second image = PDF page ${batchStart + 1}, ..., last image = PDF page ${batchEnd}.
+- You MUST use these exact PDF page numbers in your JSON output.
+- NEVER use the internal form page number (e.g., "PAGE 3 OF 17") as the pdfPage value.
+- NEVER re-order or re-number pages based on what you read in footers or headers.
+- The batch position = absolute truth. If you detect a form footer, assign pdfPage based on its position in this batch only.
 
 Known major forms (common examples):
 - California: RPA (6/25), PRBS, AD, SCO/SMCO/BCO, ZIPFORMS footers

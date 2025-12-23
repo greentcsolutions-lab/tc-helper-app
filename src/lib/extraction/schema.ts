@@ -1,4 +1,4 @@
-// src/lib/extractor/schema.ts
+// src/lib/extraction/schema.ts
 // Version 1.0.0 2025-12-20
 // NEW: Zod schema for extraction results validation
 import { z } from "zod";

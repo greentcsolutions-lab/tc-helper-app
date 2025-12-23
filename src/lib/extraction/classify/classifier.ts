@@ -1,10 +1,10 @@
-// src/lib/extractor/classifier.ts
+// src/lib/extractor/classify/classifier.ts
 // Version: 5.3.0 - 2025-12-22
 // UPDATED: Two-phase architecture - simple Grok sweep + rich post-processing
 //          Schema now matches actual Grok output (simple per-page array)
 //          Post-processing builds detectedForms and labels for extractor
 
-import { buildClassifierPrompt } from "./prompts";
+import { buildClassifierPrompt } from "../prompts";
 
 console.log("[classifier] XAI_API_KEY present:", !!process.env.XAI_API_KEY);
 

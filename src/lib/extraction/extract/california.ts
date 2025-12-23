@@ -4,7 +4,7 @@
 //          Returns clean, normalized extraction matching the exact schema
 
 import OpenAI from "openai";
-import { EXTRACTOR_PROMPT, SECOND_TURN_PROMPT } from "./prompts";
+import { EXTRACTOR_PROMPT, SECOND_TURN_PROMPT } from "@lib/extraction/prompts";
 
 interface LabeledImage {
   pageNumber: number;

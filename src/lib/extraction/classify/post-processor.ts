@@ -1,4 +1,4 @@
-// src/lib/extractor/counter-merger.ts
+// src/lib/extraction/classify/post-processor.ts
 // Version: 2.0.0 - 2025-01-09
 // Signature-aware counter offer merge logic
 

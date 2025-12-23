@@ -1,4 +1,4 @@
-// src/lib/extractor/field-locator.ts
+// src/lib/extraction/extract/field-locator.ts
 // Version: 2.0.0 - 2025-01-09
 // Field location metadata for 5-column table structure (RPA Pages 1-3)
 

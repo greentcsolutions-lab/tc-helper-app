@@ -1,4 +1,4 @@
-// src/lib/extractor/sequential-validator.ts
+// src/lib/extraction/extract/california-sequences.ts
 // Version: 2.0.0 - 2025-01-09
 // Validates RPA pages are in correct sequential order
 

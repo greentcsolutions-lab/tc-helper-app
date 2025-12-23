@@ -1,4 +1,4 @@
-// src/lib/extractor/form-definitions.ts
+// src/lib/extraction/extract/form-definitions.ts
 // Version: 1.0.0 - 2025-12-18
 // California real estate form specifications
 
