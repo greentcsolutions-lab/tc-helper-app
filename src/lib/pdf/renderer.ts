@@ -1,7 +1,7 @@
 // src/lib/pdf/renderer.ts
-// Version: 3.7.0 - 2025-12-22
-// MAJOR UPDATE: Made totalPages optional - Nutrient auto-detects if not provided
-// MAINTAINED: Multi-page ZIP output guaranteed, sequential page mapping preserved
+// Version: 4.0.0 - 2025-12-23
+// PHASE 1: Parallel dual-DPI rendering (150 DPI + 300 DPI upfront)
+// MAINTAINED: All existing functions for backward compatibility
 
 import { bufferToBlob } from "@/lib/utils";
 import { put } from "@vercel/blob";
@@ -21,16 +21,211 @@ export interface RenderOptions {
   maxPages?: number;
   pages?: number[];
   dpi?: number;
-  totalPages?: number; // Now optional - undefined = Nutrient auto-detects
+  totalPages?: number;
 }
 
 /**
- * Renders PDF to PNG ZIP and uploads to Vercel Blob
+ * PHASE 1: Parallel dual-DPI render
+ * Renders both classification (150 DPI) and extraction (300 DPI) sets upfront
  * 
- * IMPORTANT: Always returns multi-page ZIP format when rendering multiple pages
- * - If totalPages provided: Uses it for output.pages configuration
- * - If totalPages undefined: Nutrient auto-detects all pages
- * - Result: ZIP with sequentially numbered PNGs (1.png, 2.png, ..., N.png)
+ * Returns:
+ * - lowRes: Full document @ 150 DPI for classification sweep
+ * - highRes: Full document @ 300 DPI stored for selective extraction later
+ * 
+ * Cost impact: ~2x Nutrient API calls upfront, but:
+ * - Eliminates sequential wait time (renders in parallel)
+ * - Enables selective high-res extraction (only critical pages)
+ * - Net savings: ~60-70% on large packets (e.g., 60-page doc → extract 20 pages)
+ */
+export async function renderPdfParallel(
+  buffer: Buffer,
+  totalPages?: number
+): Promise<{
+  lowRes: RenderResult;
+  highRes: RenderResult;
+  pageCount: number;
+}> {
+  const startTime = Date.now();
+
+  console.log("\n" + "━".repeat(80));
+  console.log("[Nutrient:Parallel] 🚀 DUAL-DPI PARALLEL RENDER");
+  console.log("━".repeat(80));
+  console.log(`[Nutrient:Parallel] PDF size: ${(buffer.length / 1024).toFixed(2)} KB`);
+  console.log(`[Nutrient:Parallel] Total pages: ${totalPages ?? "auto-detect"}`);
+  console.log(`[Nutrient:Parallel] Strategy: 150 DPI (classify) + 300 DPI (extract) in parallel`);
+  console.log("━".repeat(80) + "\n");
+
+  // Validate PDF
+  if (!buffer.subarray(0, 8).toString().includes("%PDF")) {
+    throw new Error("Invalid PDF");
+  }
+
+  // Execute both renders in parallel
+  const [lowResResult, highResResult] = await Promise.all([
+    renderSingleDpi(buffer, 150, totalPages, "classify"),
+    renderSingleDpi(buffer, 300, totalPages, "extract"),
+  ]);
+
+  const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+
+  // Verify page counts match
+  if (lowResResult.pageCount !== highResResult.pageCount) {
+    console.warn(`[Nutrient:Parallel] ⚠️ Page count mismatch: 150 DPI returned ${lowResResult.pageCount}, 300 DPI returned ${highResResult.pageCount}`);
+  }
+
+  const pageCount = Math.max(lowResResult.pageCount, highResResult.pageCount);
+
+  console.log("\n" + "━".repeat(80));
+  console.log("[Nutrient:Parallel] ✅ PARALLEL RENDER COMPLETE");
+  console.log("━".repeat(80));
+  console.log(`[Nutrient:Parallel] Total time: ${elapsed}s (parallel execution)`);
+  console.log(`[Nutrient:Parallel] Pages rendered: ${pageCount}`);
+  console.log(`[Nutrient:Parallel] Low-res (150 DPI): ${lowResResult.result.key}`);
+  console.log(`[Nutrient:Parallel] High-res (300 DPI): ${highResResult.result.key}`);
+  console.log("━".repeat(80) + "\n");
+
+  return {
+    lowRes: lowResResult.result,
+    highRes: highResResult.result,
+    pageCount,
+  };
+}
+
+/**
+ * Internal: Single DPI render with error handling
+ */
+async function renderSingleDpi(
+  buffer: Buffer,
+  dpi: number,
+  totalPages: number | undefined,
+  purpose: "classify" | "extract"
+): Promise<{ result: RenderResult; pageCount: number }> {
+  const key = `renders/${Date.now()}-${crypto.randomUUID()}-${dpi}dpi.zip`;
+
+  console.log(`[Nutrient:${dpi}dpi:${purpose}] Starting render...`);
+
+  const instructions: any = {
+    parts: [{ file: "document" }],
+    actions: [{ type: "flatten" }],
+    output: {
+      type: "image",
+      format: "png",
+      dpi,
+    },
+  };
+
+  // Configure page range
+  if (totalPages && totalPages > 1) {
+    instructions.output.pages = {
+      start: 0,
+      end: totalPages - 1,
+    };
+    console.log(`[Nutrient:${dpi}dpi:${purpose}] Rendering pages 0-${totalPages - 1}`);
+  } else if (totalPages === null) {
+    console.log(`[Nutrient:${dpi}dpi:${purpose}] Auto-detect mode`);
+  }
+
+  const form = new FormData();
+  form.append("document", bufferToBlob(buffer, "application/pdf"), "document.pdf");
+  form.append("instructions", JSON.stringify(instructions));
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 90_000);
+
+  try {
+    const res = await fetch(NUTRIENT_ENDPOINT, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.NUTRIENT_API_KEY!}`,
+      },
+      body: form,
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!res.ok) {
+      const text = await res.text();
+
+      if (
+        text.toLowerCase().includes("password") ||
+        text.toLowerCase().includes("encrypted document")
+      ) {
+        console.error(`[Nutrient:${dpi}dpi:${purpose}] Password-protected PDF detected`);
+        throw new Error("PDF_PASSWORD_PROTECTED");
+      }
+
+      console.error(`[Nutrient:${dpi}dpi:${purpose}] API error:`, res.status, text);
+      throw new Error(`Nutrient failed: ${res.status} ${text}`);
+    }
+
+    const arrayBuffer = await res.arrayBuffer();
+    const responseBuffer = Buffer.from(arrayBuffer);
+
+    // Validate response format
+    const magicBytes = responseBuffer.subarray(0, 4);
+    const isZip =
+      magicBytes[0] === 0x50 &&
+      magicBytes[1] === 0x4b &&
+      (magicBytes[2] === 0x03 || magicBytes[2] === 0x05) &&
+      (magicBytes[3] === 0x04 || magicBytes[3] === 0x06);
+
+    const isPng =
+      magicBytes[0] === 0x89 &&
+      magicBytes[1] === 0x50 &&
+      magicBytes[2] === 0x4e &&
+      magicBytes[3] === 0x47;
+
+    if (!isZip && !isPng) {
+      console.error(`[Nutrient:${dpi}dpi:${purpose}] Invalid response format`);
+      throw new Error("Nutrient returned invalid format (expected ZIP or PNG)");
+    }
+
+    const formatType = isZip ? "ZIP" : "PNG";
+    console.log(`[Nutrient:${dpi}dpi:${purpose}] ✓ Valid ${formatType} received`);
+
+    // Quick page count detection (without full extraction)
+    let detectedPageCount = 1;
+    if (isZip) {
+      const JSZip = (await import("jszip")).default;
+      const zip = await JSZip.loadAsync(arrayBuffer);
+      const pngFiles = Object.keys(zip.files).filter((name) => name.match(/\.png$/i));
+      detectedPageCount = pngFiles.length;
+    }
+
+    console.log(`[Nutrient:${dpi}dpi:${purpose}] ✓ Detected ${detectedPageCount} pages`);
+
+    // Upload to Blob
+    console.log(`[Nutrient:${dpi}dpi:${purpose}] Uploading to Blob...`);
+    const { url } = await put(key, responseBuffer, {
+      access: "public",
+      multipart: true,
+      addRandomSuffix: false,
+    });
+
+    console.log(`[Nutrient:${dpi}dpi:${purpose}] ✓ Complete: ${key}`);
+
+    return {
+      result: { url, key },
+      pageCount: detectedPageCount,
+    };
+  } catch (error: any) {
+    clearTimeout(timeoutId);
+
+    if (error.message === "PDF_PASSWORD_PROTECTED") {
+      throw new Error(
+        "This PDF is password-protected. Please provide an unlocked version or remove the password."
+      );
+    }
+
+    console.error(`[Nutrient:${dpi}dpi:${purpose}] FAILED:`, error.message);
+    throw error;
+  }
+}
+
+/**
+ * LEGACY: Original single-DPI render (kept for backward compatibility)
+ * Use renderPdfParallel() for new implementations
  */
 export async function renderPdfToPngZipUrl(
   buffer: Buffer,
@@ -39,7 +234,8 @@ export async function renderPdfToPngZipUrl(
   const { maxPages, pages, dpi = 300, totalPages } = options;
   const key = `renders/${Date.now()}-${crypto.randomUUID()}.zip`;
 
-  console.log("[Nutrient] Render config:", {
+  console.log("[Nutrient:Legacy] Single-DPI render (consider using renderPdfParallel)");
+  console.log("[Nutrient:Legacy] Config:", {
     fileSizeBytes: buffer.length,
     dpi,
     maxPages,
@@ -65,9 +261,8 @@ export async function renderPdfToPngZipUrl(
     },
   };
 
-  // SPECIFIC PAGES MODE (e.g., extracting only critical pages)
   if (pages && pages.length > 0) {
-    console.log(`[Nutrient] Specific pages mode: extracting ${pages.length} pages`);
+    console.log(`[Nutrient:Legacy] Specific pages mode: extracting ${pages.length} pages`);
     instructions.parts = pages.map((pageNum) => ({
       file: "document",
       pages: {
@@ -75,35 +270,24 @@ export async function renderPdfToPngZipUrl(
         end: pageNum - 1,
       },
     }));
-    // Note: This mode forces per-page output (ZIP) automatically
-  } 
-  // ALL PAGES OR SUBSET MODE
-  else {
-    // Determine how many pages to render
+  } else {
     let renderPageCount: number | null = null;
-    
+
     if (maxPages) {
-      // User wants first N pages only
       renderPageCount = maxPages;
     } else if (totalPages) {
-      // We know total, render all
       renderPageCount = totalPages;
     }
-    // else: renderPageCount = null → Nutrient auto-detects all pages
 
-    // CRITICAL: Only specify output.pages if we have a count AND need multiple pages
     if (renderPageCount && renderPageCount > 1) {
       instructions.output.pages = {
         start: 0,
         end: renderPageCount - 1,
       };
-      console.log(`[Nutrient] Forcing multi-page ZIP: pages 0-${renderPageCount - 1}`);
+      console.log(`[Nutrient:Legacy] Multi-page ZIP: pages 0-${renderPageCount - 1}`);
     } else if (renderPageCount === null) {
-      // Auto-detect mode - Nutrient will return ZIP with all pages
-      console.log(`[Nutrient] Auto-detect mode: Nutrient will determine page count`);
+      console.log(`[Nutrient:Legacy] Auto-detect mode`);
     }
-    // Note: If renderPageCount === 1, Nutrient returns single PNG (not ZIP)
-    // This is fine - our extractor handles it
   }
 
   form.append("instructions", JSON.stringify(instructions));
@@ -125,44 +309,42 @@ export async function renderPdfToPngZipUrl(
 
     if (!res.ok) {
       const text = await res.text();
-      
-      // Special handling for password-protected PDFs
-      if (text.toLowerCase().includes("password") || 
-          text.toLowerCase().includes("encrypted document")) {
-        console.error("[Nutrient] Password-protected PDF detected");
+
+      if (
+        text.toLowerCase().includes("password") ||
+        text.toLowerCase().includes("encrypted document")
+      ) {
+        console.error("[Nutrient:Legacy] Password-protected PDF detected");
         throw new Error("PDF_PASSWORD_PROTECTED");
       }
-      
-      console.error("[Nutrient] API error:", res.status, text);
+
+      console.error("[Nutrient:Legacy] API error:", res.status, text);
       throw new Error(`Nutrient failed: ${res.status} ${text}`);
     }
-
-    console.log("[Nutrient] Success → buffering response");
 
     const arrayBuffer = await res.arrayBuffer();
     const responseBuffer = Buffer.from(arrayBuffer);
 
-    // Check if response is ZIP or single PNG
     const magicBytes = responseBuffer.subarray(0, 4);
     const isZip =
       magicBytes[0] === 0x50 &&
-      magicBytes[1] === 0x4B &&
+      magicBytes[1] === 0x4b &&
       (magicBytes[2] === 0x03 || magicBytes[2] === 0x05) &&
       (magicBytes[3] === 0x04 || magicBytes[3] === 0x06);
 
-    const isPng = 
+    const isPng =
       magicBytes[0] === 0x89 &&
       magicBytes[1] === 0x50 &&
-      magicBytes[2] === 0x4E &&
+      magicBytes[2] === 0x4e &&
       magicBytes[3] === 0x47;
 
     if (!isZip && !isPng) {
-      console.error("[Nutrient] Invalid response format - not ZIP or PNG");
+      console.error("[Nutrient:Legacy] Invalid response format");
       throw new Error("Nutrient returned invalid format (expected ZIP or PNG)");
     }
 
     const formatType = isZip ? "ZIP" : "PNG";
-    console.log(`[Nutrient] ✓ Valid ${formatType} → uploading to Blob`);
+    console.log(`[Nutrient:Legacy] ✓ Valid ${formatType} → uploading to Blob`);
 
     const { url } = await put(key, responseBuffer, {
       access: "public",
@@ -170,32 +352,35 @@ export async function renderPdfToPngZipUrl(
       addRandomSuffix: false,
     });
 
-    const modeDesc = pages ? `pages [${pages.join(", ")}]` :
-                     maxPages ? `first ${maxPages} pages` :
-                     totalPages ? `all ${totalPages} pages` :
-                     "all pages (auto-detected)";
-    
-    console.log(`[Nutrient] Complete: ${modeDesc} @ ${dpi} DPI → ${formatType} → ${key}`);
+    const modeDesc = pages
+      ? `pages [${pages.join(", ")}]`
+      : maxPages
+      ? `first ${maxPages} pages`
+      : totalPages
+      ? `all ${totalPages} pages`
+      : "all pages (auto-detected)";
+
+    console.log(`[Nutrient:Legacy] Complete: ${modeDesc} @ ${dpi} DPI → ${formatType} → ${key}`);
     return { url, key };
   } catch (error: any) {
     clearTimeout(timeoutId);
-    
-    // Re-throw password-protected errors with user-friendly message
+
     if (error.message === "PDF_PASSWORD_PROTECTED") {
-      throw new Error("This PDF is password-protected. Please provide an unlocked version or remove the password.");
+      throw new Error(
+        "This PDF is password-protected. Please provide an unlocked version or remove the password."
+      );
     }
-    
-    console.error("[Nutrient] FAILED:", error.message);
+
+    console.error("[Nutrient:Legacy] FAILED:", error.message);
     throw error;
   }
 }
 
 /**
- * Download ZIP (or single PNG) from Blob and extract as base64 data URLs
+ * Download and extract images from Blob storage
+ * Handles both ZIP (multi-page) and single PNG formats
  * 
- * MAINTAINS: Sequential page mapping (pageNumber: 1, 2, 3, ...)
- * - ZIP files: Extracts PNGs in numerical order
- * - Single PNG: Returns as page 1
+ * MAINTAINED: Sequential page mapping (pageNumber: 1, 2, 3, ...)
  */
 export async function downloadAndExtractZip(
   zipUrl: string
@@ -209,41 +394,39 @@ export async function downloadAndExtractZip(
   const arrayBuffer = await res.arrayBuffer();
   const downloadedBuffer = Buffer.from(arrayBuffer);
 
-  // Check format
   const magicBytes = downloadedBuffer.subarray(0, 4);
   const isZip =
     magicBytes[0] === 0x50 &&
-    magicBytes[1] === 0x4B &&
+    magicBytes[1] === 0x4b &&
     (magicBytes[2] === 0x03 || magicBytes[2] === 0x05) &&
     (magicBytes[3] === 0x04 || magicBytes[3] === 0x06);
 
-  const isPng = 
+  const isPng =
     magicBytes[0] === 0x89 &&
     magicBytes[1] === 0x50 &&
-    magicBytes[2] === 0x4E &&
+    magicBytes[2] === 0x4e &&
     magicBytes[3] === 0x47;
 
-  // Handle single PNG (edge case: 1-page PDF)
   if (isPng) {
     console.log("[ZIP Download] Single PNG detected (1-page document)");
-    return [{
-      pageNumber: 1,
-      base64: `data:image/png;base64,${downloadedBuffer.toString("base64")}`,
-    }];
+    return [
+      {
+        pageNumber: 1,
+        base64: `data:image/png;base64,${downloadedBuffer.toString("base64")}`,
+      },
+    ];
   }
 
   if (!isZip) {
     throw new Error("Downloaded file is neither ZIP nor PNG");
   }
 
-  // Handle ZIP (standard multi-page case)
   console.log("[ZIP Download] ZIP detected - extracting PNGs");
   const zip = await JSZip.loadAsync(arrayBuffer);
 
   const pngFiles = Object.keys(zip.files)
     .filter((name) => name.match(/\.png$/i))
     .sort((a, b) => {
-      // Extract numeric part from filename (handles "1.png", "page-1.png", etc.)
       const aNum = parseInt(a.match(/(\d+)\.png$/i)?.[1] || "0");
       const bNum = parseInt(b.match(/(\d+)\.png$/i)?.[1] || "0");
       return aNum - bNum;
@@ -253,7 +436,7 @@ export async function downloadAndExtractZip(
     throw new Error("No PNG files found in ZIP");
   }
 
-  console.log(`[ZIP Download] Found ${pngFiles.length} PNGs in ZIP:`, pngFiles.slice(0, 5));
+  console.log(`[ZIP Download] Found ${pngFiles.length} PNGs:`, pngFiles.slice(0, 5));
 
   const pages = await Promise.all(
     pngFiles.map(async (name, index) => {
@@ -261,14 +444,45 @@ export async function downloadAndExtractZip(
       const buffer = await file.async("nodebuffer");
 
       return {
-        pageNumber: index + 1, // Sequential: 1, 2, 3, ...
+        pageNumber: index + 1,
         base64: `data:image/png;base64,${buffer.toString("base64")}`,
       };
     })
   );
 
-  console.log(`[ZIP Download] ✓ Extracted ${pages.length} sequential pages from ${zipUrl}`);
-  console.log(`[ZIP Download] Page mapping: [${pages.map(p => p.pageNumber).join(", ")}]`);
-  
+  console.log(`[ZIP Download] ✓ Extracted ${pages.length} sequential pages`);
   return pages;
+}
+
+/**
+ * PHASE 1 HELPER: Extract specific pages from high-res ZIP
+ * Used after classification identifies critical pages (e.g., pages [1, 2, 15, 16, 20])
+ * 
+ * Returns only the requested pages, maintaining original page numbers
+ */
+export async function extractSpecificPagesFromZip(
+  zipUrl: string,
+  pageNumbers: number[]
+): Promise<{ pageNumber: number; base64: string }[]> {
+  console.log(`[Selective Extract] Fetching specific pages from high-res ZIP: [${pageNumbers.join(", ")}]`);
+
+  // Download all pages first
+  const allPages = await downloadAndExtractZip(zipUrl);
+
+  // Filter to only requested pages
+  const selectedPages = allPages.filter((page) => pageNumbers.includes(page.pageNumber));
+
+  if (selectedPages.length === 0) {
+    throw new Error(`None of the requested pages [${pageNumbers.join(", ")}] found in ZIP`);
+  }
+
+  if (selectedPages.length < pageNumbers.length) {
+    const missing = pageNumbers.filter(
+      (num) => !selectedPages.some((p) => p.pageNumber === num)
+    );
+    console.warn(`[Selective Extract] ⚠️ Missing pages: [${missing.join(", ")}]`);
+  }
+
+  console.log(`[Selective Extract] ✓ Extracted ${selectedPages.length}/${pageNumbers.length} requested pages`);
+  return selectedPages;
 }

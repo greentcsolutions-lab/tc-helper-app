@@ -52,19 +52,28 @@ model Parse {
   missingSCOs          Boolean   @default(false)           
   counterInfo          Json?                               
 
-  // Status tracking (updated throughout pipeline)
+  // Status tracking
   // PROCESSING → RENDERED → READY_FOR_EXTRACT → COMPLETED/NEEDS_REVIEW
   // Error states: RENDER_FAILED, EXTRACTION_FAILED
   status               String    @default("PROCESSING")
 
-  // Temporary storage (deleted after extraction completes)
-  pdfBuffer            Bytes?                              
-  renderZipUrl         String?                             
-  renderZipKey         String?                             
+  // PHASE 1: Dual-DPI storage
+  // Low-res (150 DPI) used for classification sweep - deleted after classification
+  lowResZipUrl         String?   // Temporary - deleted after classification
+  lowResZipKey         String?   // Blob key for cleanup
+  
+  // High-res (300 DPI) stored for selective extraction - deleted after extraction
+  highResZipUrl        String?   // Full document @ 300 DPI
+  highResZipKey        String?   // Blob key for cleanup
+  
+  // DEPRECATED: Legacy single render storage (keep for backward compatibility)
+  pdfBuffer            Bytes?    // Original PDF - deleted after render                              
+  renderZipUrl         String?   // Legacy field - replaced by lowResZipUrl/highResZipUrl                             
+  renderZipKey         String?   // Legacy field - replaced by lowResZipKey/highResZipKey                             
 
-  // Classification results (saved after preview/classification pass)
-  criticalPageNumbers  Int[]     @default([])              
-  pageCount            Int?                                
+  // Classification results
+  criticalPageNumbers  Int[]     @default([])   // Pages to extract from high-res
+  pageCount            Int?      // Total pages in document
   
   // Error tracking
   errorMessage         String?                             
@@ -77,4 +86,3 @@ model Parse {
   @@index([userId, createdAt])
   @@map("parses")
 }
-
