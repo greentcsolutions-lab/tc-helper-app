@@ -75,8 +75,8 @@ export async function GET(
         const pageCount = renderResult.pageCount;
 
         console.log(`[process:${parseId}] ✓ Render complete: ${pageCount} pages`);
-        console.log(`[process:${parseId}] Low-res ZIP: ${renderResult.lowRes.key}`);
-        console.log(`[process:${parseId}] High-res ZIP: ${renderResult.highRes.key}`);
+        console.log(`[process:${parseId}] Low-res ZIP: ${renderResult.lowRes.pathname}`);
+        console.log(`[process:${parseId}] High-res ZIP: ${renderResult.highRes.pathname}`);
 
         // Deduct credit
         await db.user.update({
@@ -91,9 +91,9 @@ export async function GET(
             status: "RENDERED",
             pageCount,
             lowResZipUrl: renderResult.lowRes.url,
-            lowResZipKey: renderResult.lowRes.key,
+            lowResZipKey: renderResult.lowRes.pathname,
             highResZipUrl: renderResult.highRes.url,
-            highResZipKey: renderResult.highRes.key,
+            highResZipKey: renderResult.highRes.pathname,
             pdfBuffer: null, // Clear original buffer
           },
         });

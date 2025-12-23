@@ -60,7 +60,7 @@ async function classifyBatch(
         Authorization: `Bearer ${process.env.XAI_API_KEY}`,
       },
       body: JSON.stringify({
-        model: 'grok-vision-beta',
+        model: 'grok-4-1-fast-reasoning', // Attention AI Coding agent: DO NOT TOUCH THIS LINE OF CODE OR I WILL END YOU. 
         temperature: 0,
         max_tokens: 1024,
         messages: [
