@@ -1,14 +1,10 @@
 // src/lib/pdf/renderer.ts
-// Version: 4.0.4 - 2025-12-23
-// FIXED: TS2769 in fetch() — use native web Fetch FormData (no form-data package needed)
-// - Native FormData works in Vercel/Node.js runtime with Buffer → Blob conversion
-// - Correct multipart/form-data for Nutrient /build (per current docs)
-// - Instructions for flatten + image output (PNG ZIP) at requested DPI
-// - Parallel dual-DPI preserved
-// - Multi-page ZIP extraction forced
+// Version: 4.0.6 - 2025-12-23
+// FIXED: Vercel Blob put() destructuring (current SDK returns object directly)
+// FIXED: Explicit flatten action → reliable ZIP output on fillable/signed California packets
 
 import { bufferToBlob } from "@/lib/utils";
-import { put, type PutBlobResult } from "@vercel/blob";
+import { put } from "@vercel/blob";
 import JSZip from "jszip";
 
 if (!process.env.NUTRIENT_API_KEY?.trim()) {
@@ -25,7 +21,7 @@ export interface RenderResult {
 }
 
 /**
- * PHASE 1: Parallel dual-DPI render
+ * PHASE 1: Parallel dual-DPI render (with flatten)
  */
 export async function renderPdfParallel(
   buffer: Buffer,
@@ -38,11 +34,11 @@ export async function renderPdfParallel(
   const startTime = Date.now();
 
   console.log("\n" + "━".repeat(80));
-  console.log("[Nutrient:Parallel] 🚀 DUAL-DPI PARALLEL RENDER");
+  console.log("[Nutrient:Parallel] 🚀 DUAL-DPI PARALLEL RENDER + FLATTEN");
   console.log("━".repeat(80));
   console.log(`[Nutrient:Parallel] PDF size: ${(buffer.length / 1024).toFixed(2)} KB`);
   console.log(`[Nutrient:Parallel] Total pages: ${totalPages ?? "auto-detect"}`);
-  console.log(`[Nutrient:Parallel] Strategy: 150 DPI (classify) + 300 DPI (extract) in parallel`);
+  console.log(`[Nutrient:Parallel] Strategy: Flatten → 150 DPI (classify) + 300 DPI (extract) in parallel`);
   console.log("━".repeat(80) + "\n");
 
   // Validate PDF
@@ -65,7 +61,7 @@ export async function renderPdfParallel(
   const pageCount = Math.max(lowResResult.pageCount, highResResult.pageCount);
 
   console.log("\n" + "━".repeat(80));
-  console.log("[Nutrient:Parallel] ✅ PARALLEL RENDER COMPLETE");
+  console.log("[Nutrient:Parallel] ✅ PARALLEL RENDER + FLATTEN COMPLETE");
   console.log("━".repeat(80));
   console.log(`[Nutrient:Parallel] Total time: ${elapsed}s (parallel execution)`);
   console.log(`[Nutrient:Parallel] Pages rendered: ${pageCount}`);
@@ -74,36 +70,28 @@ export async function renderPdfParallel(
   console.log("━".repeat(80) + "\n");
 
   return {
-    lowRes: {
-      url: lowResResult.url,
-      downloadUrl: lowResResult.downloadUrl,
-      pathname: lowResResult.pathname,
-      pageCount: lowResResult.pageCount,
-    },
-    highRes: {
-      url: highResResult.url,
-      downloadUrl: highResResult.downloadUrl,
-      pathname: highResResult.pathname,
-      pageCount: highResResult.pageCount,
-    },
+    lowRes: lowResResult,
+    highRes: highResResult,
     pageCount,
   };
 }
 
-// -----------------------------------------------------------------------------
-// Helper: single DPI render — native FormData + multipart (Nutrient current spec)
-// -----------------------------------------------------------------------------
 async function renderSingleDpi(
   buffer: Buffer,
-  dpi: number,
-  totalPages: number | undefined,
-  purpose: string
-): Promise<{ url: string; downloadUrl: string; pathname: string; pageCount: number }> {
-  console.log(`[Nutrient:${dpi}dpi:${purpose}] Starting render...`);
+  dpi: 150 | 300,
+  _totalPages: number | undefined,
+  purpose: "classify" | "extract"
+): Promise<RenderResult> {
+  console.log(`[Nutrient:${dpi}dpi:${purpose}] Starting flatten + render...`);
+
+  const blob = bufferToBlob(buffer, "application/pdf");
+
+  const form = new FormData();
+  form.append("document", blob, "packet.pdf");
 
   const instructions = {
     parts: [{ file: "document" }],
-    actions: [{ type: "flatten" }],
+    actions: [{ type: "flatten" }], // Burns annotations/fields/signatures → static content
     output: {
       type: "image",
       format: "png",
@@ -111,51 +99,48 @@ async function renderSingleDpi(
     },
   };
 
-  const form = new FormData();
   form.append("instructions", JSON.stringify(instructions));
-  form.append("document", bufferToBlob(buffer, "application/pdf"), "document.pdf");
 
-  const response = await fetch(NUTRIENT_ENDPOINT, {
+  const res = await fetch(NUTRIENT_ENDPOINT, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${process.env.NUTRIENT_API_KEY}`,
-      // DO NOT set Content-Type — browser/Node sets it with boundary automatically
     },
     body: form,
   });
 
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Nutrient render failed (${dpi}dpi): ${response.status} ${text}`);
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Nutrient failed (${res.status}): ${text}`);
   }
 
-  const data = await response.json();
+  const arrayBuffer = await res.arrayBuffer();
+  const zipBlob = new Blob([arrayBuffer], { type: "application/zip" });
 
-  const pathname = data.pathname ?? new URL(data.url).pathname.split("/").pop() ?? `render-${Date.now()}-${dpi}dpi.zip`;
-  const pageCount = data.pages ?? totalPages ?? 1;
-
-  const nutrientBlob = await fetch(data.url).then((r) => r.blob());
-
-  const uploadResult: PutBlobResult = await put(pathname, nutrientBlob, {
+  // Upload to Vercel Blob
+  const pathname = `renders/${purpose}-${dpi}dpi-${Date.now()}.zip`;
+  const uploaded = await put(pathname, zipBlob, {
     access: "public",
     addRandomSuffix: false,
   });
 
-  console.log(`[Nutrient:${dpi}dpi:${purpose}] ✓ Render complete (ZIP of PNGs)`);
-  console.log(`[Nutrient:${dpi}dpi:${purpose}] ✓ Detected ${pageCount} pages`);
-  console.log(`[Nutrient:${dpi}dpi:${purpose}] Uploading to Vercel Blob...`);
-  console.log(`[Nutrient:${dpi}dpi:${purpose}] ✓ Complete: ${uploadResult.pathname}`);
+  // Determine page count from ZIP contents
+  const zip = await JSZip.loadAsync(arrayBuffer);
+  const pngFiles = Object.keys(zip.files).filter((name) => name.match(/\.png$/i));
+  const pageCount = pngFiles.length;
+
+  console.log(`[Nutrient:${dpi}dpi:${purpose}] ✓ Render complete: ${pageCount} pages → ${uploaded.pathname}`);
 
   return {
-    url: uploadResult.url,
-    downloadUrl: uploadResult.downloadUrl,
-    pathname: uploadResult.pathname,
+    url: uploaded.url,
+    downloadUrl: uploaded.downloadUrl || uploaded.url,
+    pathname: uploaded.pathname,
     pageCount,
   };
 }
 
 // -----------------------------------------------------------------------------
-// FIXED: Always treat as ZIP for reliable multi-page extraction
+// PHASE 2: Download and extract pages from ZIP (unchanged)
 // -----------------------------------------------------------------------------
 export async function downloadAndExtractZip(
   zipUrl: string
@@ -216,7 +201,7 @@ export async function downloadAndExtractZip(
 }
 
 // -----------------------------------------------------------------------------
-// PHASE 1 HELPER: Extract specific pages from high-res ZIP
+// HELPER: Extract specific pages from high-res ZIP (unchanged)
 // -----------------------------------------------------------------------------
 export async function extractSpecificPagesFromZip(
   zipUrl: string,
