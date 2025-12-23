@@ -25,38 +25,39 @@ export function buildClassifierPrompt(
   batchSize: number,
 ): string {
   return `
-You are examining exactly ${batchSize} full-page images from a complete U.S. real estate transaction packet (1–100 pages total).
+You are a document page classifier. You will examine exactly ${batchSize} separate, independent page images from a U.S. real estate transaction packet.
 
-These images are PDF pages ${batchStart}–${batchEnd} ONLY.
+IMPORTANT: Treat every page as completely isolated. DO NOT maintain any context or assumptions about order, document flow, or relationships between pages. DO NOT try to determine which form came first, what overrides what, or where the "main contract" should appear. Classify each page based solely on its own visible content.
 
-Your job: For EACH page independently, identify if it belongs to a known standard real estate form by looking at headers, footers, layout, title, revision date, and form code.
+The images are provided in strict document order:
+- Image 1 = absolute PDF page ${batchStart}
+- Image 2 = absolute PDF page ${batchStart + 1}
+- ...
+- Image ${batchSize} = absolute PDF page ${batchEnd}
 
-Focus on:
-- Top header (form title, revision date like "06/25", "1/2024", association name)
-- Bottom footer (form code, page X of Y, copyright)
-- Overall layout (sections, checkboxes, signature blocks)
+For EACH page independently, identify whether it belongs to a known standard real estate form by examining:
+- Top header / title (this is usually the most reliable indicator of form type)
+- Bottom footer (form code, revision date, "Page X of Y", copyright)
+- Overall layout, section headings, and signature blocks
 
-🚨 ABSOLUTE PAGE NUMBER RULES — FOLLOW EXACTLY 🚨
-- The images are sent in strict sequential order: first image = PDF page ${batchStart}, second image = PDF page ${batchStart + 1}, ..., last image = PDF page ${batchEnd}.
-- You MUST use these exact PDF page numbers in your JSON output.
-- NEVER use the internal form page number (e.g., "PAGE 3 OF 17") as the pdfPage value.
-- NEVER re-order or re-number pages based on what you read in footers or headers.
-- The batch position = absolute truth. If you detect a form footer, assign pdfPage based on its position in this batch only.
+Common indicators (examples only — match any similar pattern nationwide):
+- Title contains "Residential Purchase Agreement", "Purchase and Sale Agreement", "Contract of Sale", "One to Four Family Residential Contract" → role "main_contract"
+- Title contains "Counter Offer", "Buyer Counter", "Seller Counter", "Amendment to Contract" → role "counter_offer" or "addendum"
+- Title contains "Agency Disclosure", "Property Condition Disclosure", "Lead-Based Paint Disclosure" → role "disclosure"
+- Underwriting reports, loan approvals, appraisals, title reports → role "financing"
+- Cover letters, emails, blank pages, miscellaneous attachments → role "other"
 
-Known major forms (common examples):
-- California: RPA (6/25), PRBS, AD, SCO/SMCO/BCO, ZIPFORMS footers
-- Texas: TREC contracts (1-10, One to Four Family), Promulgated forms, revision date in header
-- Florida: FAR/BAR contracts (AS-IS or standard), revision date top-right
-- New York: NY State Bar forms, disclosure packets
-- Generic/National: HUD, RESPA, CFPB forms, Fannie/Freddie addenda
-- Common addenda: Lead-Based Paint, HOA, Contingency, Counter Offer, Amendment
+Always:
+- Use the exact batch position as pdfPage (1st image = page ${batchStart}, etc.)
+- Extract formPage and totalPagesInForm ONLY from footer text like "Page X of Y"
+- Set formCode to the detected abbreviation or short code (e.g., "RPA", "SCO", "TREC 20-16", "FAR/BAR-6", "AD") — use any string you see or leave empty if none
+- Set formRevision to the detected revision date if visible (e.g., "6/25", "12/24", "11/2023")
+- Capture the most prominent header/title text in titleSnippet (max 120 characters)
+- Assign the role based purely on this page's content — ignore its position in the document
+- Set confidence 0–100 based on how clearly the form is identifiable
+- If no standard form is detected → use null for non-required fields and role "other"
 
-For every page, return ONE of:
-- If it's a known standard form page → form details
-- If it's a cover letter, title page, email, blank → "other"
-- If it's a non-standard disclosure or local addendum → "local_addendum"
-
-Return ONLY valid JSON matching the schema below. No explanations.
+Return ONLY valid JSON exactly matching the schema below. No explanations, no markdown.
 
 ${classifierSchemaString}
 `.trim();

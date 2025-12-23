@@ -175,16 +175,6 @@ emit(controller, {
   pageCount,
   criticalPages: metadata.criticalPageNumbers,
 });
-        console.log(`[process:${parseId}] ✅ Extraction complete & saved to DB`);
-
-        emit(controller, {
-          type: "complete",
-          extracted: universal,
-          needsReview,
-          route,
-          pageCount,
-          criticalPages: metadata.criticalPageNumbers.length,
-        });
 
         controller.close();
 
