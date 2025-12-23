@@ -1,10 +1,11 @@
 // src/lib/pdf/renderer.ts
-// Version: 4.0.2 - 2025-12-23
-// FIXED: TS errors from previous patch
-// - Corrected renderSingleDpi parameter order (optional totalPages first)
-// - Awaited the fetch().blob() before passing to put()
-// - Updated return types to match current @vercel/blob PutBlobResult (url, downloadUrl, pathname, etc. — no .key)
-// - Kept forced ZIP extraction for reliable multi-page handling
+// Version: 4.0.4 - 2025-12-23
+// FIXED: TS2769 in fetch() — use native web Fetch FormData (no form-data package needed)
+// - Native FormData works in Vercel/Node.js runtime with Buffer → Blob conversion
+// - Correct multipart/form-data for Nutrient /build (per current docs)
+// - Instructions for flatten + image output (PNG ZIP) at requested DPI
+// - Parallel dual-DPI preserved
+// - Multi-page ZIP extraction forced
 
 import { bufferToBlob } from "@/lib/utils";
 import { put, type PutBlobResult } from "@vercel/blob";
@@ -21,13 +22,6 @@ export interface RenderResult {
   downloadUrl: string;
   pathname: string;
   pageCount: number;
-}
-
-export interface RenderOptions {
-  maxPages?: number;
-  pages?: number[];
-  dpi?: number;
-  totalPages?: number;
 }
 
 /**
@@ -97,7 +91,7 @@ export async function renderPdfParallel(
 }
 
 // -----------------------------------------------------------------------------
-// Helper: single DPI render — fixed parameter order and put() usage
+// Helper: single DPI render — native FormData + multipart (Nutrient current spec)
 // -----------------------------------------------------------------------------
 async function renderSingleDpi(
   buffer: Buffer,
@@ -107,15 +101,27 @@ async function renderSingleDpi(
 ): Promise<{ url: string; downloadUrl: string; pathname: string; pageCount: number }> {
   console.log(`[Nutrient:${dpi}dpi:${purpose}] Starting render...`);
 
-  const blob = bufferToBlob(buffer, "application/pdf");
+  const instructions = {
+    parts: [{ file: "document" }],
+    actions: [{ type: "flatten" }],
+    output: {
+      type: "image",
+      format: "png",
+      dpi: dpi,
+    },
+  };
+
+  const form = new FormData();
+  form.append("instructions", JSON.stringify(instructions));
+  form.append("document", bufferToBlob(buffer, "application/pdf"), "document.pdf");
 
   const response = await fetch(NUTRIENT_ENDPOINT, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${process.env.NUTRIENT_API_KEY}`,
-      "Content-Type": "application/pdf",
+      // DO NOT set Content-Type — browser/Node sets it with boundary automatically
     },
-    body: blob,
+    body: form,
   });
 
   if (!response.ok) {
@@ -125,8 +131,7 @@ async function renderSingleDpi(
 
   const data = await response.json();
 
-  // Nutrient returns { url: string; pages: number } — pathname is derived from data.url or provided
-  const pathname = data.key ?? new URL(data.url).pathname.split('/').pop();
+  const pathname = data.pathname ?? new URL(data.url).pathname.split("/").pop() ?? `render-${Date.now()}-${dpi}dpi.zip`;
   const pageCount = data.pages ?? totalPages ?? 1;
 
   const nutrientBlob = await fetch(data.url).then((r) => r.blob());
@@ -136,7 +141,7 @@ async function renderSingleDpi(
     addRandomSuffix: false,
   });
 
-  console.log(`[Nutrient:${dpi}dpi:${purpose}] ✓ Valid PNG/ZIP received`);
+  console.log(`[Nutrient:${dpi}dpi:${purpose}] ✓ Render complete (ZIP of PNGs)`);
   console.log(`[Nutrient:${dpi}dpi:${purpose}] ✓ Detected ${pageCount} pages`);
   console.log(`[Nutrient:${dpi}dpi:${purpose}] Uploading to Vercel Blob...`);
   console.log(`[Nutrient:${dpi}dpi:${purpose}] ✓ Complete: ${uploadResult.pathname}`);
