@@ -1,6 +1,6 @@
 // src/app/api/parse/process/[parseId]/route.ts
-// Version: 5.1.1 - 2025-12-23
-// Fixed: Prisma Json? field handling for timelineEvents (omit when empty → DB null)
+// Version: 5.1.2 - 2025-12-23
+// Fixed: Added zipUrl to SSE complete event (was missing, causing client crash)
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
@@ -49,7 +49,7 @@ export async function GET(
         console.log(`\n${"=".repeat(80)}`);
         console.log(`[process:${parseId}] 🚀 EXTRACTION PIPELINE STARTED`);
         console.log(`[process:${parseId}] File: ${parse.fileName}`);
-        // Line 50-55: Add runtime validation
+        
         if (!parse.pdfBuffer) {
           return Response.json({ error: "PDF not found" }, { status: 500 });
         }
@@ -131,50 +131,52 @@ export async function GET(
         console.log(`[process:${parseId}] Final status: ${finalStatus}`);
 
         // === Save results to DB ===
-await db.parse.update({
-  where: { id: parseId },
-  data: {
-    status: finalStatus,
-    // === Universal core fields ===
-    buyerNames: universal.buyerNames,
-    sellerNames: universal.sellerNames,
-    propertyAddress: universal.propertyAddress || null,
-    purchasePrice: universal.purchasePrice || null,
-    earnestMoneyAmount: universal.earnestMoneyDeposit.amount,
-    earnestMoneyHolder: universal.earnestMoneyDeposit.holder,
-    closingDate: universal.closingDate
-      ? typeof universal.closingDate === "string"
-        ? universal.closingDate
-        : null
-      : null,
-    effectiveDate: universal.effectiveDate,
-    isAllCash: universal.financing.isAllCash,
-    loanType: universal.financing.loanType,
-    // === Rich data ===
-    extractionDetails: details ? { route, ...details } : { route },
-    // Only include timelineEvents if it has entries → Prisma Json? handles omitted → DB null
-    ...(timelineEvents.length > 0 ? { timelineEvents } : {}),
-    // === Debug/metadata ===
-    rawJson: {
-      _extraction_route: route,
-      _classifier_metadata: metadata.packageMetadata,
-      _critical_pages: metadata.criticalPageNumbers,
-      _critical_page_count: metadata.criticalPageNumbers.length,
-    },
-    finalizedAt: new Date(),
-  },
-});
+        await db.parse.update({
+          where: { id: parseId },
+          data: {
+            status: finalStatus,
+            // === Universal core fields ===
+            buyerNames: universal.buyerNames,
+            sellerNames: universal.sellerNames,
+            propertyAddress: universal.propertyAddress || null,
+            purchasePrice: universal.purchasePrice || null,
+            earnestMoneyAmount: universal.earnestMoneyDeposit.amount,
+            earnestMoneyHolder: universal.earnestMoneyDeposit.holder,
+            closingDate: universal.closingDate
+              ? typeof universal.closingDate === "string"
+                ? universal.closingDate
+                : null
+              : null,
+            effectiveDate: universal.effectiveDate,
+            isAllCash: universal.financing.isAllCash,
+            loanType: universal.financing.loanType,
+            // === Rich data ===
+            extractionDetails: details ? { route, ...details } : { route },
+            // Only include timelineEvents if it has entries → Prisma Json? handles omitted → DB null
+            ...(timelineEvents.length > 0 ? { timelineEvents } : {}),
+            // === Debug/metadata ===
+            rawJson: {
+              _extraction_route: route,
+              _classifier_metadata: metadata.packageMetadata,
+              _critical_pages: metadata.criticalPageNumbers,
+              _critical_page_count: metadata.criticalPageNumbers.length,
+            },
+            finalizedAt: new Date(),
+          },
+        });
 
-console.log(`[process:${parseId}] ✅ Extraction complete & saved to DB`);
+        console.log(`[process:${parseId}] ✅ Extraction complete & saved to DB`);
 
-emit(controller, {
-  type: "complete",
-  extracted: universal,
-  needsReview,
-  route,
-  pageCount,
-  criticalPages: metadata.criticalPageNumbers,
-});
+        // FIXED: Added zipUrl to complete event
+        emit(controller, {
+          type: "complete",
+          extracted: universal,
+          zipUrl: renderResult.lowRes.url, // ← ADDED THIS LINE
+          needsReview,
+          route,
+          pageCount,
+          criticalPageNumbers: metadata.criticalPageNumbers, // ← Also renamed from criticalPages
+        });
 
         controller.close();
 
