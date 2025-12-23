@@ -1,14 +1,13 @@
 // src/lib/extraction/extract/universal/index.ts
-// Version: 2.0.0 - 2025-12-23
-// Real Grok-powered universal extractor (fallback path)
+// Version 3.0.0 - 2025-12-23
+// Real Grok-powered universal extractor with full resilience
 
 import { LabeledCriticalImage } from '../../classify/classifier';
 import { UniversalExtractionResult } from './types';
 import { UNIVERSAL_EXTRACTOR_PROMPT } from '../../prompts';
 
-// Define the timeline event shape (shared with router.ts)
 type TimelineEvent = {
-  date: string; // YYYY-MM-DD
+  date: string;
   title: string;
   type: 'info' | 'warning' | 'critical';
   description?: string;
@@ -32,16 +31,10 @@ export async function universalExtractor(
   console.log('[universalExtractor] Starting Grok extraction on', criticalImages.length, 'critical pages');
 
   if (criticalImages.length === 0) {
-    console.warn('[universalExtractor] No critical images → returning defaults');
-    return {
-      universal: getEmptyUniversalResult(),
-      details: null,
-      timelineEvents: [],
-      needsReview: true,
-    };
+    console.warn('[universalExtractor] No critical images → returning safe defaults');
+    return fallbackResult();
   }
 
-  // Build dynamic image list for prompt
   const imageDescriptions = criticalImages
     .map((img) => `• Page ${img.pageNumber}: "${img.label}"`)
     .join('\n');
@@ -81,12 +74,11 @@ export async function universalExtractor(
     }
 
     const data = await res.json();
-    const content = data.choices[0].message.content;
+    const content = data.choices[0].message.content.trim();
 
-    // Extract JSON block
     const jsonMatch = content.match(/{[\s\S]*}/);
     if (!jsonMatch) {
-      console.error('[universalExtractor] No JSON found in response');
+      console.error('[universalExtractor] No JSON block found in response');
       return fallbackResult();
     }
 
@@ -94,33 +86,40 @@ export async function universalExtractor(
     try {
       parsed = JSON.parse(jsonMatch[0]);
     } catch (e) {
-      console.error('[universalExtractor] JSON parse failed', e);
+      console.error('[universalExtractor] Failed to parse JSON from Grok response', e);
       return fallbackResult();
     }
 
-    // Confidence + handwriting gate
+    // Validate required structure before accessing confidence
+    if (
+      !parsed.extracted ||
+      typeof parsed.confidence !== 'object' ||
+      typeof parsed.confidence.overall_confidence !== 'number'
+    ) {
+      console.warn('[universalExtractor] Invalid response structure → forcing review');
+      return fallbackResult();
+    }
+
     const needsReview =
       parsed.confidence.overall_confidence < 80 ||
-      parsed.confidence.purchasePrice < 90 ||
+      (parsed.confidence.purchasePrice ?? 100) < 90 ||
       (parsed.confidence.buyerNames ?? 100) < 90 ||
       parsed.handwriting_detected === true;
 
-    console.log(`[universalExtractor] Extraction complete. Needs review: ${needsReview}`);
-    console.log(`[universalExtractor] Overall confidence: ${parsed.confidence.overall_confidence}%`);
+    console.log(`[universalExtractor] Success. Needs review: ${needsReview} | Overall confidence: ${parsed.confidence.overall_confidence}%`);
 
     return {
       universal: parsed.extracted,
       details: null,
-      timelineEvents: [], // empty for universal path
+      timelineEvents: [],
       needsReview,
     };
   } catch (error: any) {
-    console.error('[universalExtractor] Unexpected error:', error);
+    console.error('[universalExtractor] Unexpected error during extraction:', error);
     return fallbackResult();
   }
 }
 
-// Helper: safe defaults on failure
 function getEmptyUniversalResult(): UniversalExtractionResult {
   return {
     buyerNames: [],

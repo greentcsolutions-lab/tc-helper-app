@@ -87,11 +87,16 @@ export function buildLabeledCriticalImages(
  */
 export function extractPackageMetadata(detectedPages: GrokPageResult[]) {
   const formCodes = Array.from(new Set(detectedPages.map((p) => p.formCode)));
-  const footerSamples = detectedPages.slice(0, 5).map((p) => p.footerText);
+
+  // FIXED: Clean sampleFooters — filter out undefined/null/empty strings
+  const sampleFooters = detectedPages
+    .map((p) => p.footerText)
+    .filter((text): text is string => typeof text === 'string' && text.trim() !== '')
+    .slice(0, 5); // limit to first 5 for safety
 
   return {
     detectedFormCodes: formCodes,
-    sampleFooters: footerSamples,
+    sampleFooters,
     totalDetectedPages: detectedPages.length,
     hasMultipleForms: formCodes.length > 1,
   };

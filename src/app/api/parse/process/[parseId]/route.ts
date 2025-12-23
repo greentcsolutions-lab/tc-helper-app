@@ -1,7 +1,6 @@
 // src/app/api/parse/process/[parseId]/route.ts
-// Version: 5.1.0 - 2025-12-23
-// Fixed: No longer assumes .pages on renderResult
-// Uses downloadAndExtractZip for low-res classification pages
+// Version: 5.1.1 - 2025-12-23
+// Fixed: Prisma Json? field handling for timelineEvents (omit when empty → DB null)
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
@@ -99,7 +98,6 @@ export async function GET(
         });
 
         // Phase 2: Download + extract low-res ZIP for classification
-        // This gives us { pageNumber: number; base64: string }[]
         const lowResPages = await downloadAndExtractZip(renderResult.lowRes.url);
 
         console.log(`[process:${parseId}] ✓ Low-res pages extracted: ${lowResPages.length}`);
@@ -111,11 +109,9 @@ export async function GET(
         });
 
         // Phase 3: Run full extraction pipeline (classifier → router → universal)
-        // Note: We pass empty highResPages array for now — universal uses low-res for extraction
-        // Later, when we build selective high-res extraction, we'll download high-res ZIP selectively
         const extractionResult = await routeAndExtract(
           lowResPages,
-          lowResPages, // fallback: use low-res for extraction (still good enough for Grok)
+          lowResPages, // fallback: use low-res for extraction
           pageCount
         );
 
@@ -132,7 +128,7 @@ export async function GET(
           where: { id: parseId },
           data: {
             status: finalStatus,
-            // === Universal core fields (add these to your Prisma model first!) ===
+            // === Universal core fields ===
             buyerNames: universal.buyerNames,
             sellerNames: universal.sellerNames,
             propertyAddress: universal.propertyAddress || null,
@@ -142,14 +138,15 @@ export async function GET(
             closingDate: universal.closingDate
               ? typeof universal.closingDate === "string"
                 ? universal.closingDate
-                : null // handle "X days" later when needed
+                : null
               : null,
             effectiveDate: universal.effectiveDate,
             isAllCash: universal.financing.isAllCash,
             loanType: universal.financing.loanType,
             // === Rich data ===
             extractionDetails: details ? { route, ...details } : { route },
-            timelineEvents: timelineEvents.length > 0 ? timelineEvents : null,
+            // Only include timelineEvents if it has entries → Prisma Json? handles omitted → DB null
+            ...(timelineEvents.length > 0 ? { timelineEvents } : {}),
             // === Debug/metadata ===
             rawJson: {
               _extraction_route: route,
