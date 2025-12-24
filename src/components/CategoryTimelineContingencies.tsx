@@ -1,18 +1,46 @@
+// src/components/CategoryTimelineContingencies.tsx
+// Version: 1.0.0-initial - 2025-12-24
 import CategorySection from "./CategorySection";
 import { Calendar } from "lucide-react";
+import { ParseResult } from "@/types/parse";
 
-export default function CategoryTimelineContingencies({ data }: { data: Record<string, any> }) {
+export default function CategoryTimelineContingencies({
+  data,
+}: {
+  data: ParseResult;
+}) {
+  const cont = data.extractionDetails?.contingencies;
+
   const fields = [
-    { label: "COP Contingency", value: data.cop_contingency ? "Active" : "Waived" },
-    { label: "Final Acceptance Date", value: data.final_acceptance_date },
-    { label: "Initial Deposit Due", value: data.initial_deposit?.due },
-    { label: "Seller Delivery of Documents", value: `${data.seller_delivery_of_documents_days || 7} days after acceptance` },
-    { label: "CR-B Attached & Signed", value: data.crb_attached_and_signed ? "Yes" : "No" },
-    { label: "Inspection Contingency", value: data.inspection_contingency ? "Active" : "Waived" },
-    { label: "Appraisal Contingency", value: data.appraisal_contingency ? "Active" : "Waived" },
-    { label: "Loan Contingency", value: data.loan_contingency ? "Active" : "Waived" },
-    { label: "Close of Escrow", value: data.close_of_escrow },
-  ].filter(f => f.value !== undefined);
+    { label: "Close of Escrow", value: data.closingDate },
+    {
+      label: "Inspection Contingency",
+      value: cont?.inspectionDays
+        ? `${cont.inspectionDays} days`
+        : null,
+    },
+    {
+      label: "Appraisal Contingency",
+      value: cont?.appraisalDays
+        ? `${cont.appraisalDays} days`
+        : null,
+    },
+    {
+      label: "Loan Contingency",
+      value: cont?.loanDays ? `${cont.loanDays} days` : null,
+    },
+    {
+      label: "COP Contingency",
+      value:
+        cont?.copContingency !== undefined
+          ? cont.copContingency
+            ? "Active"
+            : "Waived"
+          : null,
+    },
+  ].filter((f) => f.value !== null && f.value !== undefined);
+
+  if (fields.length === 0) return null;
 
   return (
     <CategorySection

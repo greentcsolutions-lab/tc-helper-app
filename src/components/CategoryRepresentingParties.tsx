@@ -1,22 +1,24 @@
+// src/components/CategoryRepresentingParties.tsx
+// Version: 1.0.0-initial - 2025-12-24
 import CategorySection from "./CategorySection";
 import { Users } from "lucide-react";
+import { ParseResult } from "@/types/parse";
 
-function formatAgent(agent: any) {
-  if (!agent) return "Not Provided";
-  const parts = [];
-  if (agent.agent_name_1) parts.push(agent.agent_name_1);
-  if (agent.email) parts.push(agent.email);
-  if (agent.phone) parts.push(agent.phone);
-  return parts.join(" • ") || "Not Provided";
-}
+export default function CategoryRepresentingParties({
+  data,
+}: {
+  data: ParseResult;
+}) {
+  const brokers = data.extractionDetails?.brokers;
 
-export default function CategoryRepresentingParties({ data }: { data: Record<string, any> }) {
   const fields = [
-    { label: "Buyer's Brokerage", value: data.buyers_broker?.brokerage_name },
-    { label: "Buyer's Agent", value: formatAgent(data.buyers_broker) },
-    { label: "Seller's Brokerage", value: data.sellers_broker?.brokerage_name },
-    { label: "Listing Agent", value: formatAgent(data.sellers_broker) },
-  ].filter(f => f.value);
+    { label: "Listing Brokerage", value: brokers?.listingBrokerage },
+    { label: "Listing Agent", value: brokers?.listingAgent },
+    { label: "Selling Brokerage", value: brokers?.sellingBrokerage },
+    { label: "Selling Agent", value: brokers?.sellingAgent },
+  ].filter((f) => f.value);
+
+  if (fields.length === 0) return null;
 
   return (
     <CategorySection

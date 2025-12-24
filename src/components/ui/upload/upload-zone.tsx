@@ -10,9 +10,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { CheckCircle, ArrowRight } from "lucide-react";
 import { useRouter } from "next/navigation";
-import CategoryPurchaseTerms from "@/components/CategoryPurchaseTerms";
-import CategoryTimelineContingencies from "@/components/CategoryTimelineContingencies";
-import CategoryRepresentingParties from "@/components/CategoryRepresentingParties";
+
+import ExtractionCategories from "@/components/ExtractionCategories";
 
 const JOKES = [
   "Don't trust AI to identify mushrooms...",
@@ -87,87 +86,51 @@ export default function UploadZone() {
     formData.append("file", file);
 
     try {
-      const res = await fetch("/api/parse/upload", {
+      const uploadRes = await fetch("/api/parse/upload", {
         method: "POST",
         body: formData,
       });
 
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || `Upload failed: ${res.status}`);
-      }
+      if (!uploadRes.ok) throw new Error("Upload failed");
 
-      const data = await res.json();
-      console.log("[Upload] Success:", data);
+      const { parseId } = await uploadRes.json();
+      setParseId(parseId);
 
-      if (!data.parseId) {
-        throw new Error("No parseId returned from upload");
-      }
+      const evtSource = new EventSource(`/api/parse/process/${parseId}`);
 
-      setParseId(data.parseId);
-      setView("processing");
-      setLiveMessage("Starting AI analysis...");
-      lastActivity.current = Date.now();
-
-      // Connect to SSE processing endpoint
-      console.log("[SSE] Connecting to:", `/api/parse/process/${data.parseId}`);
-      const eventSource = new EventSource(`/api/parse/process/${data.parseId}`);
-
-      eventSource.onmessage = (event) => {
-        console.log("[SSE] Message received:", event.data);
+      evtSource.onmessage = (event) => {
         const data = JSON.parse(event.data);
-        lastActivity.current = Date.now();
 
         if (data.type === "progress") {
-          setLiveMessage(data.message);
-          console.log(`[SSE] ${data.stage}: ${data.message}`);
-
-          if (data.criticalPageNumbers) {
-            setCriticalPageNumbers(data.criticalPageNumbers);
-          }
+          setLiveMessage(data.message ?? "Processing...");
+          lastActivity.current = Date.now();
         } else if (data.type === "complete") {
-          console.log("[SSE] Extraction complete!", data);
           setExtractedData(data.extracted);
           setZipUrl(data.zipUrl);
-          setCriticalPageNumbers(data.criticalPageNumbers);
+          setCriticalPageNumbers(data.criticalPageNumbers ?? []);
           setView("done");
-          eventSource.close();
+          evtSource.close();
         } else if (data.type === "error") {
-          console.error("[SSE] Error received:", data);
-          toast.error("Extraction failed", { description: data.message });
+          toast.error("Processing failed", { description: data.message });
           setView("idle");
-          setCurrentFile(null);
-          eventSource.close();
+          evtSource.close();
         }
       };
 
-      eventSource.onerror = (err) => {
-        console.error("[SSE] Connection error:", err);
-        console.error("[SSE] ReadyState:", eventSource.readyState);
-        toast.error("Connection lost", { description: "Please try again" });
+      evtSource.onerror = () => {
+        toast.error("Connection lost");
+        evtSource.close();
         setView("idle");
-        setCurrentFile(null);
-        eventSource.close();
       };
-    } catch (err: any) {
-      console.error("[Upload] Failed:", err);
-      toast.error("Upload failed", { description: err.message });
-      setView("idle");
-      setCurrentFile(null);
-    }
-  };
-
-  const handleConfirmAndContinue = async () => {
-    // Delete critical page images
-    if (zipUrl) {
-      try {
-        await fetch(`/api/parse/cleanup/${parseId}`, { method: "POST" });
-      } catch (err) {
-        console.warn("Cleanup failed:", err);
-      }
+    } catch (err) {
+      console.warn("Cleanup failed:", err);
     }
 
     // Redirect to dashboard
+    router.push("/dashboard");
+  };
+
+  const handleConfirmAndContinue = () => {
     router.push("/dashboard");
   };
 
@@ -199,17 +162,13 @@ export default function UploadZone() {
               <CheckCircle className="h-16 w-16 text-green-600 mx-auto mb-4" />
               <h2 className="text-3xl font-bold mb-2">Extraction Complete!</h2>
               <p className="text-muted-foreground mb-6">
-                Found {criticalPageNumbers.length} critical pages • Extracted {Object.keys(extractedData).length} fields
+                Found {criticalPageNumbers.length} critical pages • Extracted fields ready
               </p>
             </CardContent>
           </Card>
 
-          {/* Display extracted data */}
-          <div className="space-y-6">
-            <CategoryPurchaseTerms data={extractedData} />
-            <CategoryTimelineContingencies data={extractedData} />
-            <CategoryRepresentingParties data={extractedData} />
-          </div>
+          {/* REPLACED three separate components with the wrapper */}
+          <ExtractionCategories data={extractedData} />
 
           {/* Show critical page thumbnails */}
           {zipUrl && (

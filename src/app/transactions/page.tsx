@@ -1,11 +1,8 @@
 // src/app/transactions/page.tsx
-// Version: 1.0.0
-// Server component that fetches completed parses and renders TransactionsClient
-
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
 import { redirect } from "next/navigation";
-import TransactionsClient from "./TransactionsClient";
+import TransactionsClient from "@/components/transactions/TransactionsClient";
 
 export const dynamic = "force-dynamic";
 
@@ -28,13 +25,33 @@ export default async function TransactionsPage() {
     },
     orderBy: { createdAt: "desc" },
     select: {
+      // === CORE METADATA ===
       id: true,
       fileName: true,
-      formatted: true,
+      status: true,
       createdAt: true,
       finalizedAt: true,
-      status: true,
       missingSCOs: true,
+
+      // === UNIVERSAL CORE FIELDS ===
+      buyerNames: true,
+      sellerNames: true,
+      propertyAddress: true,
+      purchasePrice: true,
+      earnestMoneyAmount: true,
+      earnestMoneyHolder: true,
+      closingDate: true,
+      effectiveDate: true,
+      isAllCash: true,
+      loanType: true,
+
+      // === RICH DATA ===
+      extractionDetails: true,
+      timelineEvents: true,
+
+      // === THUMBNAILS (optional but useful) ===
+      lowResZipUrl: true,
+      criticalPageNumbers: true,
     },
   });
 
