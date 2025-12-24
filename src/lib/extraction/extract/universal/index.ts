@@ -1,6 +1,6 @@
 // src/lib/extraction/extract/universal/index.ts
-// Version 3.0.0 - 2025-12-23
-// Real Grok-powered universal extractor with full resilience
+// Version: 3.1.0-debug - 2025-12-24
+// Added extensive logging to debug blank extraction results
 
 import { LabeledCriticalImage } from '../../classify/classifier';
 import { UniversalExtractionResult } from './types';
@@ -28,7 +28,16 @@ export async function universalExtractor(
   timelineEvents: TimelineEvent[];
   needsReview: boolean;
 }> {
-  console.log('[universalExtractor] Starting Grok extraction on', criticalImages.length, 'critical pages');
+  console.log('[universalExtractor] Starting Grok extraction');
+  console.log('[universalExtractor] Critical images count:', criticalImages.length);
+  console.log(
+    '[universalExtractor] Critical page numbers:',
+    criticalImages.map((img) => img.pageNumber).sort((a, b) => a - b)
+  );
+  console.log(
+    '[universalExtractor] Labels:',
+    criticalImages.map((img) => `${img.pageNumber}: "${img.label}"`)
+  );
 
   if (criticalImages.length === 0) {
     console.warn('[universalExtractor] No critical images → returning safe defaults');
@@ -51,7 +60,7 @@ export async function universalExtractor(
       body: JSON.stringify({
         model: 'grok-4-1-fast-reasoning',
         temperature: 0,
-        max_tokens: 8192, // Large limit to accommodate detailed responses
+        max_tokens: 8192,
         messages: [
           {
             role: 'user',
@@ -76,27 +85,60 @@ export async function universalExtractor(
     const data = await res.json();
     const content = data.choices[0].message.content.trim();
 
+    // === EXTENSIVE DEBUG LOGGING STARTS HERE ===
+    console.log('[universalExtractor] RAW Grok response length:', content.length);
+    console.log('[universalExtractor] RAW Grok response preview (first 1500 chars):');
+    console.log(content.slice(0, 1500));
+    if (content.length > 1500) {
+      console.log('[universalExtractor] ... (truncated – full length:', content.length, ')');
+    }
+
     const jsonMatch = content.match(/{[\s\S]*}/);
     if (!jsonMatch) {
-      console.error('[universalExtractor] No JSON block found in response');
+      console.error('[universalExtractor] NO JSON BLOCK FOUND in Grok response');
+      console.log('[universalExtractor] Full raw content for manual inspection:');
+      console.log(content);
       return fallbackResult();
     }
+
+    console.log('[universalExtractor] Extracted JSON block length:', jsonMatch[0].length);
+    console.log('[universalExtractor] Extracted JSON preview (first 1000 chars):');
+    console.log(jsonMatch[0].slice(0, 1000));
 
     let parsed: GrokExtractionResponse;
     try {
       parsed = JSON.parse(jsonMatch[0]);
+
+      console.log('[universalExtractor] ✅ Successfully parsed JSON from Grok');
+      console.log('[universalExtractor] Extracted core fields:');
+      console.log('  buyerNames:', parsed.extracted.buyerNames);
+      console.log('  sellerNames:', parsed.extracted.sellerNames);
+      console.log('  propertyAddress:', parsed.extracted.propertyAddress);
+      console.log('  purchasePrice:', parsed.extracted.purchasePrice);
+      console.log('  earnestMoneyDeposit:', parsed.extracted.earnestMoneyDeposit);
+      console.log('  closingDate:', parsed.extracted.closingDate);
+      console.log('  isAllCash:', parsed.extracted.financing.isAllCash);
+      console.log('  loanType:', parsed.extracted.financing.loanType);
+      console.log('  effectiveDate:', parsed.extracted.effectiveDate);
+
+      console.log('[universalExtractor] Confidence scores:', parsed.confidence);
+      console.log('[universalExtractor] handwriting_detected:', parsed.handwriting_detected);
+
     } catch (e) {
-      console.error('[universalExtractor] Failed to parse JSON from Grok response', e);
+      console.error('[universalExtractor] ❌ Failed to parse JSON from Grok response', e);
+      console.log('[universalExtractor] Problematic JSON string:');
+      console.log(jsonMatch[0]);
       return fallbackResult();
     }
 
-    // Validate required structure before accessing confidence
+    // Validate required structure
     if (
       !parsed.extracted ||
       typeof parsed.confidence !== 'object' ||
       typeof parsed.confidence.overall_confidence !== 'number'
     ) {
       console.warn('[universalExtractor] Invalid response structure → forcing review');
+      console.log('[universalExtractor] Parsed object:', parsed);
       return fallbackResult();
     }
 
@@ -106,7 +148,9 @@ export async function universalExtractor(
       (parsed.confidence.buyerNames ?? 100) < 90 ||
       parsed.handwriting_detected === true;
 
-    console.log(`[universalExtractor] Success. Needs review: ${needsReview} | Overall confidence: ${parsed.confidence.overall_confidence}%`);
+    console.log(`[universalExtractor] Extraction complete`);
+    console.log(`[universalExtractor] Needs human review: ${needsReview}`);
+    console.log(`[universalExtractor] Overall confidence: ${parsed.confidence.overall_confidence}%`);
 
     return {
       universal: parsed.extracted,
@@ -149,6 +193,7 @@ function getEmptyUniversalResult(): UniversalExtractionResult {
 }
 
 function fallbackResult() {
+  console.warn('[universalExtractor] Returning fallback empty result');
   return {
     universal: getEmptyUniversalResult(),
     details: null,

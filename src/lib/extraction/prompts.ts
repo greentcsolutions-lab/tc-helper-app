@@ -47,6 +47,29 @@ Common indicators (examples only — match any similar pattern nationwide):
 - Underwriting reports, loan approvals, appraisals, title reports → role "financing"
 - Cover letters, emails, blank pages, miscellaneous attachments → role "other"
 
+CRITICAL DISTINCTION — LENDER UNDERWRITING REPORTS ARE NOT REAL ESTATE FORMS:
+Pages from lender automated underwriting systems are COMMON attachments in U.S. transaction packets, especially VA loans.
+Typical titles/headers:
+- "DU Underwriting Findings"
+- "Desktop Underwriter Findings"
+- "Underwriting Findings"
+- "Loan Analysis"
+- "Credit and Liabilities"
+- "Risk/Eligibility"
+- "Verification Messages/Approval Conditions"
+
+These pages contain numbered conditions, credit/income analysis, ratios, residual income, and lender recommendations.
+They are produced by Fannie Mae Desktop Underwriter (DU), Freddie Mac LP, or similar AUS tools.
+
+RULE: If the page matches ANY of the above patterns → 
+- Set role = "financing" 
+- Set formCode = "" (empty string)
+- Set confidence ≤ 50
+- DO NOT treat as main_contract, counter_offer, addendum, or disclosure
+- These pages are lender-side only and contain NO purchase agreement terms
+
+Similar rule for title reports, appraisals, credit reports, bank statements → role = "financing" or "other", empty formCode.
+
 Always:
 - Use the exact batch position as pdfPage (1st image = page ${batchStart}, etc.)
 - Extract formPage and totalPagesInForm ONLY from footer text like "Page X of Y"
@@ -62,6 +85,7 @@ Never:
 - Assume any page is part of a multi-page form unless explicitly indicated in footer
 - Infer relationships between pages or try to group them into sets
 - Hallucinate form codes, revision dates, or page numbers that aren't clearly visible  
+- Assign a real estate form code (RPA, SCO, AD, etc.) to lender underwriting reports, credit reports, or bank statements
 
 Return ONLY valid JSON exactly matching the schema below. No explanations, no markdown.
 

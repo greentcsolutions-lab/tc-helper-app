@@ -32,8 +32,20 @@ export function mergeDetectedPages(
  * (main agreement, counters, addenda, disclosures all have footers)
  */
 export function getCriticalPageNumbers(detectedPages: GrokPageResult[]): number[] {
-  const pages = detectedPages.map((p) => p.pdfPage);
-  return Array.from(new Set(pages)).sort((a, b) => a - b);
+  return detectedPages
+    .filter(page => {
+      // Require a meaningful formCode (at least 2 chars, common patterns)
+      if (!page.formCode || page.formCode.trim().length < 2) return false;
+      
+      // Optional: whitelist known good prefixes to be extra safe
+      const goodPrefixes = ['RPA', 'SCO', 'AD', 'TREC', 'FAR', 'BAR', 'OREF', 'PAR'];
+      if (goodPrefixes.some(p => page.formCode.startsWith(p))) return true;
+      
+      // Or just length check + form code
+      return ['main_contract', 'counter_offer', 'addendum', 'disclosure'].includes(page.formCode);
+    })
+    .map(p => p.pdfPage)
+    .sort((a, b) => a - b);
 }
 
 /**
