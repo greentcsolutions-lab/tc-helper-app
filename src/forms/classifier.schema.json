@@ -68,9 +68,27 @@
                 "type": "integer",
                 "minimum": 0,
                 "maximum": 100
+              },
+              "contentCategory": {
+                "type": "string",
+                "enum": [
+                  "core_terms",
+                  "contingencies",
+                  "financing_details",
+                  "signatures",
+                  "counter_or_addendum",
+                  "disclosures",
+                  "boilerplate",
+                  "other"
+                ],
+                "description": "Primary content type of this page based on visible filled fields and section headings"
+              },
+              "hasFilledFields": {
+                "type": "boolean",
+                "description": "True if page shows visible filled text, checkboxes, or handwriting"
               }
             },
-            "required": ["pdfPage", "formCode", "role", "confidence"],
+            "required": ["pdfPage", "formCode", "role", "confidence", "contentCategory", "hasFilledFields"],
             "additionalProperties": false
           }
         ]

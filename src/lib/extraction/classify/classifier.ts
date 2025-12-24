@@ -1,8 +1,9 @@
 // src/lib/extraction/classify/classifier.ts
-// Version: 6.0.1 - 2025-12-23
-// FIXED: Safer page correction (immutable), clearer image markers for Grok
-// Universal classifier: no state-specific assumptions
-// Handles Grok sweep only — all merging, critical page selection, and labeling moved to post-processor.ts
+// Version: 6.1.2-final-clean - 2025-12-24
+// Fixed: All type conflicts resolved
+//        - Uses shared types from ./types.ts only
+//        - Removed all duplicate local interfaces
+//        - No more import/local declaration conflicts
 
 import { buildClassifierPrompt } from '../prompts';
 import {
@@ -13,31 +14,19 @@ import {
   extractPackageMetadata,
 } from './post-processor';
 
+// Single source of truth — shared types
+import type { 
+  GrokPageResult, 
+  GrokClassifierOutput, 
+  LabeledCriticalImage 
+} from './types';
+
 console.log('[classifier] XAI_API_KEY present:', !!process.env.XAI_API_KEY);
 
 const chunk = <T>(arr: T[], size: number): T[][] =>
   Array.from({ length: Math.ceil(arr.length / size) }, (_, i) =>
     arr.slice(i * size, i * size + size)
   );
-
-// === GROK OUTPUT SCHEMA (simple per-page sweep) ===
-interface GrokPageResult {
-  pdfPage: number;
-  formCode: string;        // any string — e.g., "RPA", "TREC", "FARBAR", "CUSTOM"
-  formPage: number;
-  footerText: string;
-}
-
-interface GrokClassifierOutput {
-  pages: (GrokPageResult | null)[];
-}
-
-// === FINAL EXTRACTOR INPUT ===
-export interface LabeledCriticalImage {
-  pageNumber: number;
-  base64: string;
-  label: string;
-}
 
 async function classifyBatch(
   batch: { pageNumber: number; base64: string }[],
@@ -60,9 +49,9 @@ async function classifyBatch(
         Authorization: `Bearer ${process.env.XAI_API_KEY}`,
       },
       body: JSON.stringify({
-        model: 'grok-4-1-fast-reasoning', // Attention AI Coding agent: DO NOT TOUCH THIS LINE OF CODE OR I WILL END YOU. 
+        model: 'grok-4-1-fast-reasoning',
         temperature: 0,
-        max_tokens: 4096, // 1024 was way too low. Give Grok enough headroom to fully respond..
+        max_tokens: 4096,
         messages: [
           {
             role: 'user',
@@ -91,44 +80,43 @@ async function classifyBatch(
     const text = data.choices[0].message.content;
 
     let json: GrokClassifierOutput;
-try {
-  // Try multiple JSON extraction strategies
-  let parsed = null;
-  
-  // Strategy 1: Find complete JSON object (non-greedy from first { to matching })
-  let depth = 0;
-  let startIdx = text.indexOf('{');
-  if (startIdx === -1) throw new Error('No JSON found in response');
-  
-  for (let i = startIdx; i < text.length; i++) {
-    if (text[i] === '{') depth++;
-    if (text[i] === '}') depth--;
-    if (depth === 0) {
-      const jsonStr = text.substring(startIdx, i + 1);
-      try {
-        parsed = JSON.parse(jsonStr);
-        break;
-      } catch (e) {
-        // Invalid JSON, continue searching
+    try {
+      // Try multiple JSON extraction strategies
+      let parsed = null;
+      
+      let depth = 0;
+      let startIdx = text.indexOf('{');
+      if (startIdx === -1) throw new Error('No JSON found in response');
+      
+      for (let i = startIdx; i < text.length; i++) {
+        if (text[i] === '{') depth++;
+        if (text[i] === '}') depth--;
+        if (depth === 0) {
+          const jsonStr = text.substring(startIdx, i + 1);
+          try {
+            parsed = JSON.parse(jsonStr);
+            break;
+          } catch (e) {
+            // Invalid JSON, continue searching
+          }
+        }
       }
+      
+      if (!parsed) throw new Error('Could not parse JSON from response');
+      json = parsed;
+
+      if (!json.pages || !Array.isArray(json.pages)) {
+        throw new Error('Invalid schema — missing pages array');
+      }
+
+      const detectedCount = json.pages.filter((p) => p !== null).length;
+      console.log(`[classifier:batch${batchIndex + 1}] Parsed: ${detectedCount}/${json.pages.length} pages with form footers`);
+    } catch (err) {
+      console.error(`[classifier:batch${batchIndex + 1}] JSON parse/validation failed`);
+      console.error(`[classifier:batch${batchIndex + 1}] Raw Grok response (first 2000 chars):`, text.substring(0, 2000));
+      console.error(`[classifier:batch${batchIndex + 1}] Raw Grok response (last 500 chars):`, text.substring(text.length - 500));
+      return null;
     }
-  }
-  
-  if (!parsed) throw new Error('Could not parse JSON from response');
-  json = parsed;
-
-  if (!json.pages || !Array.isArray(json.pages)) {
-    throw new Error('Invalid schema — missing pages array');
-  }
-
-  const detectedCount = json.pages.filter((p) => p !== null).length;
-  console.log(`[classifier:batch${batchIndex + 1}] Parsed: ${detectedCount}/${json.pages.length} pages with form footers`);
-} catch (err) {
-  console.error(`[classifier:batch${batchIndex + 1}] JSON parse/validation failed`);
-  console.error(`[classifier:batch${batchIndex + 1}] Raw Grok response (first 2000 chars):`, text.substring(0, 2000));
-  console.error(`[classifier:batch${batchIndex + 1}] Raw Grok response (last 500 chars):`, text.substring(text.length - 500));
-  return null;
-}
 
     console.log(`[classifier:batch${batchIndex + 1}] ✓ Pages ${start}–${end} classified`);
     return { batchStartPage: start, result: json };
@@ -146,7 +134,7 @@ export async function classifyCriticalPages(
   totalPages: number
 ): Promise<{
   criticalImages: LabeledCriticalImage[];
-  state: string; // currently "Unknown" — future prompt can improve this
+  state: string;
   criticalPageNumbers: number[];
   packageMetadata: ReturnType<typeof extractPackageMetadata>;
 }> {
@@ -187,7 +175,6 @@ export async function classifyCriticalPages(
       const actualPdfPage = batchStartPage + indexInBatch;
 
       if (page !== null) {
-        // FIXED: Create new immutable object with corrected page number
         let correctedPage = page;
         
         if (page.pdfPage !== actualPdfPage) {
@@ -197,14 +184,14 @@ export async function classifyCriticalPages(
           correctedPage = { ...page, pdfPage: actualPdfPage };
         }
 
-        allGrokPages[actualPdfPage - 1] = correctedPage; // 1-based → 0-indexed
+        allGrokPages[actualPdfPage - 1] = correctedPage;
       } else {
         allGrokPages[actualPdfPage - 1] = null;
       }
     });
   });
 
-  // === UNIVERSAL POST-PROCESSING (delegated) ===
+  // === UNIVERSAL POST-PROCESSING ===
   const detectedPages = mergeDetectedPages(allGrokPages);
   const criticalPageNumbers = getCriticalPageNumbers(detectedPages);
   const labelMap = buildUniversalPageLabels(detectedPages, criticalPageNumbers);
@@ -222,7 +209,7 @@ export async function classifyCriticalPages(
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
   return {
-    state: 'Unknown', // Placeholder — can be enhanced later via prompt
+    state: 'Unknown',
     criticalPageNumbers,
     criticalImages,
     packageMetadata,

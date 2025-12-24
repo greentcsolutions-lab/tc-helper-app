@@ -1,19 +1,13 @@
 // src/lib/extraction/classify/post-processor.ts
-// Version: 2.1.0-enhanced-labels - 2025-12-24
-// Enhanced: Labels now show formCode + formPage clearly
+// Version: 2.2.0-content-category - 2025-12-24
+// Enhanced: Smart critical page selection using Grok's contentCategory + hasFilledFields
+//           Replaces crude blacklist with priority scoring for universal relevance
 
-import type { LabeledCriticalImage } from './classifier';
-
-interface GrokPageResult {
-  pdfPage: number;
-  formCode: string;
-  formPage: number;
-  footerText: string;
-}
-
-interface GrokClassifierOutput {
-  pages: (GrokPageResult | null)[];
-}
+import type { 
+  LabeledCriticalImage, 
+  GrokPageResult, 
+  GrokClassifierOutput 
+} from './types';
 
 export function mergeDetectedPages(
   allGrokPages: (GrokPageResult | null)[]
@@ -21,35 +15,46 @@ export function mergeDetectedPages(
   return allGrokPages.filter((p): p is GrokPageResult => p !== null);
 }
 
+// NEW: Priority scoring based on content relevance to our 12 core fields
+const CATEGORY_PRIORITY: Record<string, number> = {
+  core_terms: 10,
+  counter_or_addendum: 9,    // overrides are king
+  contingencies: 8,
+  financing_details: 7,
+  signatures: 6,
+  disclosures: 3,
+  boilerplate: 1,
+  other: 2,
+};
+
 export function getCriticalPageNumbers(detectedPages: GrokPageResult[]): number[] {
-  // Blacklist known lender/underwriting form codes (common noise in packets)
-  const lenderNoisePrefixes = [
-    'DU', 'LP', 'FINDINGS', 'UNDERWRITING', 'FHA', 'VA', 'PRMBS', 
-    'BPIA', 'FVAC', 'CPD', 'WFA', 'FMPA', 'BHIA', 'PDR' // from your logs
-  ];
+  // Score each detected page
+  const scored = detectedPages.map(page => ({
+    page,
+    score:
+      (CATEGORY_PRIORITY[page.contentCategory || 'other'] || 0) +
+      (page.hasFilledFields ? 5 : 0) +   // massive boost for actual filled data
+      (page.confidence ?? 0) / 20        // minor confidence tie-breaker
+  }));
 
-  return detectedPages
-    .filter((page) => {
-      const code = (page.formCode || '').trim().toUpperCase();
+  // Sort highest score first
+  scored.sort((a, b) => b.score - a.score);
 
-      // Exclude obvious lender/underwriting noise
-      if (lenderNoisePrefixes.some(prefix => code.startsWith(prefix))) {
-        return false;
-      }
+  // Always force-include any counter/addendum pages (they override everything)
+  const counters = scored.filter(s => s.page.contentCategory === 'counter_or_addendum');
+  const topNonCounters = scored
+    .filter(s => s.page.contentCategory !== 'counter_or_addendum')
+    .slice(0, 12); // safe cap even without counters
 
-      // Optional: Boost confidence for known contract roles
-      // (Grok assigns role in classifier schema — main_contract, counter_offer, addendum, disclosure)
-      // If we add role to GrokPageResult, prefer those
-      // For now, just exclude empty/noisy codes
-      if (!code || code.length < 2) {
-        return false; // Drop UNKNOWN or single-letter junk
-      }
+  // Combine, dedupe, and sort by PDF order
+  const selectedPages = Array.from(
+    new Set([
+      ...counters.map(s => s.page.pdfPage),
+      ...topNonCounters.map(s => s.page.pdfPage)
+    ])
+  );
 
-      return true;
-    })
-    .map(p => p.pdfPage)
-    .filter((value, index, self) => self.indexOf(value) === index)
-    .sort((a, b) => a - b);
+  return selectedPages.sort((a, b) => a - b);
 }
 
 export function buildUniversalPageLabels(
@@ -61,13 +66,18 @@ export function buildUniversalPageLabels(
   detectedPages.forEach((page) => {
     const code = page.formCode?.trim() || 'UNKNOWN';
     const formPage = page.formPage ?? '?';
+    const category = page.contentCategory 
+      ? page.contentCategory.toUpperCase().replace('_', ' ')
+      : 'UNKNOWN';
+    const filled = page.hasFilledFields ? ' (FILLED)' : '';
+
     labelMap.set(
       page.pdfPage,
-      `${code} PAGE ${formPage} – POSSIBLE KEY TERMS OR SIGNATURES`
+      `${code} PAGE ${formPage} – ${category}${filled}`
     );
   });
 
-  // Fallback for any undetected critical pages
+  // Fallback for any undetected critical pages (should be rare now)
   criticalPageNumbers.forEach((pdfPage) => {
     if (!labelMap.has(pdfPage)) {
       labelMap.set(pdfPage, `PAGE ${pdfPage} – POSSIBLE KEY TERMS`);

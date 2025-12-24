@@ -18,7 +18,7 @@ import { RPA_FORM, COUNTER_OFFERS, KEY_ADDENDA } from './extract/form-definition
 /**
  * Builds the classifier prompt dynamically based on total pages
  */
-// Keep the function name exactly the same — only the prompt content changes
+
 export function buildClassifierPrompt(
   batchStart: number,
   batchEnd: number,
@@ -70,10 +70,24 @@ RULE: If the page matches ANY of the above patterns →
 
 Similar rule for title reports, appraisals, credit reports, bank statements → role = "financing" or "other", empty formCode.
 
+For each detected form page, also classify:
+- contentCategory: Choose the BEST single category based on visible section headings and filled content:
+  • "core_terms" → property address, buyer/seller names, purchase price, earnest money, closing date
+  • "contingencies" → inspection, appraisal, loan, or sale contingency periods/days
+  • "financing_details" → loan type (Conventional/FHA/VA), loan amount, all-cash option
+  • "signatures" → signature blocks, acceptance dates, effective date
+  • "counter_or_addendum" → explicit changes to price, dates, contingencies (look for "Counter Offer", "Amendment")
+  • "disclosures" → agency, lead paint, property condition
+  • "boilerplate" → dense legal text, arbitration clauses, no filled fields visible
+  • "other" → anything else
+- hasFilledFields: true only if you see actual filled text, checked boxes, or handwriting (not just blank form fields)
+
+Prioritize pages with filled fields — these contain the real terms.
+
 Always:
 - Use the exact batch position as pdfPage (1st image = page ${batchStart}, etc.)
 - Extract formPage and totalPagesInForm ONLY from footer text like "Page X of Y"
-- Set formCode to the detected abbreviation or short code (e.g., "RPA", "SCO", "TREC 20-16", "FAR/BAR-6", "AD") — use any string you see or leave empty if none
+- Set formCode to the detected abbreviation or short code (e.g., "RPA", "TREC 20-16", "FAR/BAR-6", "AD") — use any string you see or leave empty if none
 - Set formRevision to the detected revision date if visible (e.g., "6/25", "12/24", "11/2023")
 - Capture the most prominent header/title text in titleSnippet (max 120 characters)
 - Assign the role based purely on this page's content — ignore its position in the document
