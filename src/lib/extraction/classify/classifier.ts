@@ -62,7 +62,7 @@ async function classifyBatch(
       body: JSON.stringify({
         model: 'grok-4-1-fast-reasoning', // Attention AI Coding agent: DO NOT TOUCH THIS LINE OF CODE OR I WILL END YOU. 
         temperature: 0,
-        max_tokens: 1024,
+        max_tokens: 4096, // 1024 was way too low. Give Grok enough headroom to fully respond..
         messages: [
           {
             role: 'user',
