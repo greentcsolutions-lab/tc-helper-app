@@ -51,7 +51,7 @@ export async function universalExtractor(
       body: JSON.stringify({
         model: 'grok-4-1-fast-reasoning',
         temperature: 0,
-        max_tokens: 2048,
+        max_tokens: 8192, // Large limit to accommodate detailed responses
         messages: [
           {
             role: 'user',
