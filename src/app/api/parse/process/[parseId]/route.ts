@@ -132,39 +132,46 @@ export async function GET(
 
         // === Save results to DB ===
         await db.parse.update({
-          where: { id: parseId },
-          data: {
-            status: finalStatus,
-            // === Universal core fields ===
-            buyerNames: universal.buyerNames,
-            sellerNames: universal.sellerNames,
-            propertyAddress: universal.propertyAddress || null,
-            purchasePrice: universal.purchasePrice || null,
-            earnestMoneyAmount: universal.earnestMoneyDeposit.amount,
-            earnestMoneyHolder: universal.earnestMoneyDeposit.holder,
-            closingDate: universal.closingDate
-              ? typeof universal.closingDate === "string"
-                ? universal.closingDate
-                : null
-              : null,
-            effectiveDate: universal.effectiveDate,
-            isAllCash: universal.financing.isAllCash,
-            loanType: universal.financing.loanType,
-            // === Rich data ===
-            extractionDetails: details ? { route, ...details } : { route },
-            // Only include timelineEvents if it has entries → Prisma Json? handles omitted → DB null
-            ...(timelineEvents.length > 0 ? { timelineEvents } : {}),
-            // === Debug/metadata ===
-            rawJson: {
-              _extraction_route: route,
-              _classifier_metadata: metadata.packageMetadata,
-              _critical_pages: metadata.criticalPageNumbers,
-              _critical_page_count: metadata.criticalPageNumbers.length,
-            },
-            finalizedAt: new Date(),
-          },
-        });
+  where: { id: parseId },
+  data: {
+    status: finalStatus,
+    // === UNIVERSAL CORE FIELDS (safe optional chaining) ===
+    buyerNames: universal.buyerNames ?? [],
+    sellerNames: universal.sellerNames ?? [],
+    propertyAddress: universal.propertyAddress ?? null,
+    purchasePrice: universal.purchasePrice ?? null,
+    earnestMoneyAmount: universal.earnestMoneyDeposit?.amount ?? null,
+    earnestMoneyHolder: universal.earnestMoneyDeposit?.holder ?? null,
+    closingDate: 
+  universal.closingDate == null 
+    ? null 
+    : typeof universal.closingDate === 'string' 
+      ? universal.closingDate 
+      : null, // drop numbers — we only store YYYY-MM-DD string format
 
+effectiveDate: 
+  universal.effectiveDate == null 
+    ? null 
+    : typeof universal.effectiveDate === 'string' 
+      ? universal.effectiveDate 
+      : null, // same — only accept strings
+    isAllCash: universal.financing?.isAllCash ?? null,
+    loanType: universal.financing?.loanType ?? null,
+
+    // === RICH DATA (preserve as-is) ===
+    extractionDetails: details ? { route, ...details } : { route },
+    ...(timelineEvents.length > 0 ? { timelineEvents } : {}),
+
+    // === DEBUG / METADATA ===
+    rawJson: {
+      _extraction_route: route,
+      _classifier_metadata: metadata.packageMetadata,
+      _critical_pages: metadata.criticalPageNumbers,
+      _critical_page_count: metadata.criticalPageNumbers.length,
+    },
+    finalizedAt: new Date(),
+  },
+});
         console.log(`[process:${parseId}] ✅ Extraction complete & saved to DB`);
 
         // FIXED: Added zipUrl to complete event

@@ -22,8 +22,34 @@ export function mergeDetectedPages(
 }
 
 export function getCriticalPageNumbers(detectedPages: GrokPageResult[]): number[] {
-  const pages = detectedPages.map((p) => p.pdfPage);
-  return Array.from(new Set(pages)).sort((a, b) => a - b);
+  // Blacklist known lender/underwriting form codes (common noise in packets)
+  const lenderNoisePrefixes = [
+    'DU', 'LP', 'FINDINGS', 'UNDERWRITING', 'FHA', 'VA', 'PRMBS', 
+    'BPIA', 'FVAC', 'CPD', 'WFA', 'FMPA', 'BHIA', 'PDR' // from your logs
+  ];
+
+  return detectedPages
+    .filter((page) => {
+      const code = (page.formCode || '').trim().toUpperCase();
+
+      // Exclude obvious lender/underwriting noise
+      if (lenderNoisePrefixes.some(prefix => code.startsWith(prefix))) {
+        return false;
+      }
+
+      // Optional: Boost confidence for known contract roles
+      // (Grok assigns role in classifier schema — main_contract, counter_offer, addendum, disclosure)
+      // If we add role to GrokPageResult, prefer those
+      // For now, just exclude empty/noisy codes
+      if (!code || code.length < 2) {
+        return false; // Drop UNKNOWN or single-letter junk
+      }
+
+      return true;
+    })
+    .map(p => p.pdfPage)
+    .filter((value, index, self) => self.indexOf(value) === index)
+    .sort((a, b) => a - b);
 }
 
 export function buildUniversalPageLabels(
