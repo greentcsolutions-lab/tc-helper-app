@@ -57,6 +57,12 @@ Always:
 - Set confidence 0–100 based on how clearly the form is identifiable
 - If no standard form is detected → use null for non-required fields and role "other"
 
+Never:
+- Identify lending or title company documents as real estate contract forms
+- Assume any page is part of a multi-page form unless explicitly indicated in footer
+- Infer relationships between pages or try to group them into sets
+- Hallucinate form codes, revision dates, or page numbers that aren't clearly visible  
+
 Return ONLY valid JSON exactly matching the schema below. No explanations, no markdown.
 
 ${classifierSchemaString}

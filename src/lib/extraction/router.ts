@@ -44,7 +44,7 @@ export async function routeAndExtract(
 
   const californiaFormCodes = ['RPA', 'SCO', 'SMCO', 'BCO', 'ADM', 'PRBS', 'AD', 'ZIP'];
   const isCalifornia = detectedFormCodes.some((code) => californiaFormCodes.includes(code));
-
+/*
   if (isCalifornia && highResCriticalImages.length > 0) {
     console.log('[router] Attempting California extractor...');
     try {
@@ -63,6 +63,9 @@ export async function routeAndExtract(
       // Fall through to universal path
     }
   }
+*/
+  console.log('[router] California route DISABLED - forcing universal extractor');
+
 
   // Universal path (either intentional or fallback)
   console.log('[router] Running universal extractor');
