@@ -1,4 +1,6 @@
 // src/lib/extraction/classify/types.ts
+// Updated to include broker_info in enum
+
 export interface GrokPageResult {
   pdfPage: number;
   formCode: string;
@@ -9,13 +11,13 @@ export interface GrokPageResult {
   totalPagesInForm?: number | null;
   role: string;
   titleSnippet?: string;
-  confidence: number;                // required
+  confidence: number;
   contentCategory?: string;
   hasFilledFields?: boolean;
 }
 
 export interface GrokClassifierOutput {
-  pages: (GrokPageResult)[];
+  pages: (GrokPageResult | null)[];
 }
 
 export interface LabeledCriticalImage {

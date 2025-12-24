@@ -1,13 +1,13 @@
 // src/lib/extraction/classify/post-processor.ts
-// Version: 2.2.0-content-category - 2025-12-24
-// Enhanced: Smart critical page selection using Grok's contentCategory + hasFilledFields
-//           Replaces crude blacklist with priority scoring for universal relevance
+// Version: 2.3.0-broker-signatures-boost - 2025-12-24
+// Enhanced: Boosted priority for signatures and broker_info (critical for agency contacts)
+//           Aligns with current C.A.R. RPA 6/25 format (17-page form)
 
-import type { 
-  LabeledCriticalImage, 
-  GrokPageResult, 
-  GrokClassifierOutput 
-} from './types';
+import type { LabeledCriticalImage, GrokPageResult } from './types';
+
+interface GrokClassifierOutput {
+  pages: (GrokPageResult | null)[];
+}
 
 export function mergeDetectedPages(
   allGrokPages: (GrokPageResult | null)[]
@@ -15,13 +15,14 @@ export function mergeDetectedPages(
   return allGrokPages.filter((p): p is GrokPageResult => p !== null);
 }
 
-// NEW: Priority scoring based on content relevance to our 12 core fields
+// UPDATED: Priority scoring — signatures and broker_info now high priority
 const CATEGORY_PRIORITY: Record<string, number> = {
   core_terms: 10,
   counter_or_addendum: 9,    // overrides are king
   contingencies: 8,
   financing_details: 7,
-  signatures: 6,
+  signatures: 9,             // BOOSTED — acceptance, effective date, always needed
+  broker_info: 9,            // NEW + BOOSTED — agency contacts critical for workflow
   disclosures: 3,
   boilerplate: 1,
   other: 2,
@@ -40,17 +41,25 @@ export function getCriticalPageNumbers(detectedPages: GrokPageResult[]): number[
   // Sort highest score first
   scored.sort((a, b) => b.score - a.score);
 
-  // Always force-include any counter/addendum pages (they override everything)
-  const counters = scored.filter(s => s.page.contentCategory === 'counter_or_addendum');
-  const topNonCounters = scored
-    .filter(s => s.page.contentCategory !== 'counter_or_addendum')
-    .slice(0, 12); // safe cap even without counters
+  // Always force-include any counter/addendum, signatures, or broker_info pages
+  const highPriority = scored.filter(s => 
+    s.page.contentCategory === 'counter_or_addendum' ||
+    s.page.contentCategory === 'signatures' ||
+    s.page.contentCategory === 'broker_info'
+  );
+  const topNonPriority = scored
+    .filter(s => 
+      s.page.contentCategory !== 'counter_or_addendum' &&
+      s.page.contentCategory !== 'signatures' &&
+      s.page.contentCategory !== 'broker_info'
+    )
+    .slice(0, 10); // tighter cap now that high-priority are force-included
 
   // Combine, dedupe, and sort by PDF order
   const selectedPages = Array.from(
     new Set([
-      ...counters.map(s => s.page.pdfPage),
-      ...topNonCounters.map(s => s.page.pdfPage)
+      ...highPriority.map(s => s.page.pdfPage),
+      ...topNonPriority.map(s => s.page.pdfPage)
     ])
   );
 
@@ -66,14 +75,15 @@ export function buildUniversalPageLabels(
   detectedPages.forEach((page) => {
     const code = page.formCode?.trim() || 'UNKNOWN';
     const formPage = page.formPage ?? '?';
-    const category = page.contentCategory 
-      ? page.contentCategory.toUpperCase().replace('_', ' ')
-      : 'UNKNOWN';
+    const rawCategory = page.contentCategory || 'UNKNOWN';
+    const categoryDisplay = rawCategory === 'broker_info'
+      ? 'BROKER/AGENCY INFO'
+      : rawCategory.toUpperCase().replace('_', ' ');
     const filled = page.hasFilledFields ? ' (FILLED)' : '';
 
     labelMap.set(
       page.pdfPage,
-      `${code} PAGE ${formPage} – ${category}${filled}`
+      `${code} PAGE ${formPage} – ${categoryDisplay}${filled}`
     );
   });
 
@@ -87,6 +97,7 @@ export function buildUniversalPageLabels(
   return labelMap;
 }
 
+// Rest of file unchanged: buildLabeledCriticalImages, extractPackageMetadata
 export function buildLabeledCriticalImages(
   pages: { pageNumber: number; base64: string }[],
   criticalPageNumbers: number[],

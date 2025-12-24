@@ -44,6 +44,7 @@ Common indicators (examples only — match any similar pattern nationwide):
 - Title contains "Residential Purchase Agreement", "Purchase and Sale Agreement", "Contract of Sale", "One to Four Family Residential Contract" → role "main_contract"
 - Title contains "Counter Offer", "Buyer Counter", "Seller Counter", "Amendment to Contract" → role "counter_offer" or "addendum"
 - Title contains "Agency Disclosure", "Property Condition Disclosure", "Lead-Based Paint Disclosure" → role "disclosure"
+- Title or section contains "Broker Compensation", "Confirmation of Agency Relationships", "Listing Agent", "Selling Agent" → contentCategory "broker_info"
 - Underwriting reports, loan approvals, appraisals, title reports → role "financing"
 - Cover letters, emails, blank pages, miscellaneous attachments → role "other"
 
@@ -75,7 +76,8 @@ For each detected form page, also classify:
   • "core_terms" → property address, buyer/seller names, purchase price, earnest money, closing date
   • "contingencies" → inspection, appraisal, loan, or sale contingency periods/days
   • "financing_details" → loan type (Conventional/FHA/VA), loan amount, all-cash option
-  • "signatures" → signature blocks, acceptance dates, effective date
+  • "signatures" → signature blocks, acceptance dates, effective date (usually near end of main contract)
+  • "broker_info" → listing/selling brokerage names, agent names, phone/email, compensation confirmation (typically on final page of main RPA)
   • "counter_or_addendum" → explicit changes to price, dates, contingencies (look for "Counter Offer", "Amendment")
   • "disclosures" → agency, lead paint, property condition
   • "boilerplate" → dense legal text, arbitration clauses, no filled fields visible
