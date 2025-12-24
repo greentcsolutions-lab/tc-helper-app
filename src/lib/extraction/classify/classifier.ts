@@ -91,20 +91,42 @@ async function classifyBatch(
     const text = data.choices[0].message.content;
 
     let json: GrokClassifierOutput;
-    try {
-      const jsonMatch = text.match(/{[\s\S]*}/)?.[0];
-      if (!jsonMatch) throw new Error('No JSON found in response');
-      json = JSON.parse(jsonMatch);
-
-      if (!json.pages || !Array.isArray(json.pages)) {
-        throw new Error('Invalid schema — missing pages array');
+try {
+  // Try multiple JSON extraction strategies
+  let parsed = null;
+  
+  // Strategy 1: Find complete JSON object (non-greedy from first { to matching })
+  let depth = 0;
+  let startIdx = text.indexOf('{');
+  if (startIdx === -1) throw new Error('No JSON found in response');
+  
+  for (let i = startIdx; i < text.length; i++) {
+    if (text[i] === '{') depth++;
+    if (text[i] === '}') depth--;
+    if (depth === 0) {
+      const jsonStr = text.substring(startIdx, i + 1);
+      try {
+        parsed = JSON.parse(jsonStr);
+        break;
+      } catch (e) {
+        // Invalid JSON, continue searching
       }
+    }
+  }
+  
+  if (!parsed) throw new Error('Could not parse JSON from response');
+  json = parsed;
 
-      const detectedCount = json.pages.filter((p) => p !== null).length;
-      console.log(`[classifier:batch${batchIndex + 1}] Parsed: ${detectedCount}/${json.pages.length} pages with form footers`);
-    } catch (err) {
+  if (!json.pages || !Array.isArray(json.pages)) {
+    throw new Error('Invalid schema — missing pages array');
+  }
+
+  const detectedCount = json.pages.filter((p) => p !== null).length;
+  console.log(`[classifier:batch${batchIndex + 1}] Parsed: ${detectedCount}/${json.pages.length} pages with form footers`);
+} catch (err) {
   console.error(`[classifier:batch${batchIndex + 1}] JSON parse/validation failed`);
-  console.error(`[classifier:batch${batchIndex + 1}] Raw Grok response:`, text.substring(0, 2000)); // ← ADD THIS
+  console.error(`[classifier:batch${batchIndex + 1}] Raw Grok response (first 2000 chars):`, text.substring(0, 2000));
+  console.error(`[classifier:batch${batchIndex + 1}] Raw Grok response (last 500 chars):`, text.substring(text.length - 500));
   return null;
 }
 
