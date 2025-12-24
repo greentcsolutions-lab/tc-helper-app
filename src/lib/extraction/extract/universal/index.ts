@@ -1,6 +1,7 @@
 // src/lib/extraction/extract/universal/index.ts
-// Version: 3.1.0-debug - 2025-12-24
-// Added extensive logging to debug blank extraction results
+// Version: 3.2.0-safe-wrappers - 2025-12-24
+// Fixed: Graceful handling when Grok omits confidence/handwriting_detected
+// Enhanced: Logs raw formPage from classifier for duplicate detection
 
 import { LabeledCriticalImage } from '../../classify/classifier';
 import { UniversalExtractionResult } from './types';
@@ -14,9 +15,9 @@ type TimelineEvent = {
 };
 
 interface GrokExtractionResponse {
-  extracted: UniversalExtractionResult;
-  confidence: Record<keyof UniversalExtractionResult, number> & { overall_confidence: number };
-  handwriting_detected: boolean;
+  extracted?: UniversalExtractionResult;
+  confidence?: Record<string, number> & { overall_confidence?: number };
+  handwriting_detected?: boolean;
 }
 
 export async function universalExtractor(
@@ -31,13 +32,24 @@ export async function universalExtractor(
   console.log('[universalExtractor] Starting Grok extraction');
   console.log('[universalExtractor] Critical images count:', criticalImages.length);
   console.log(
-    '[universalExtractor] Critical page numbers:',
+    '[universalExtractor] Critical page numbers (sorted):',
     criticalImages.map((img) => img.pageNumber).sort((a, b) => a - b)
   );
-  console.log(
-    '[universalExtractor] Labels:',
-    criticalImages.map((img) => `${img.pageNumber}: "${img.label}"`)
-  );
+
+  // NEW: Log exact form pages Grok assigned (helps spot duplicates/missequencing)
+  const formPageMap = new Map<number, number | null>();
+  criticalImages.forEach((img) => {
+    // Parse formPage from label if available (fallback from post-processor)
+    const match = img.label.match(/PAGE (\d+)/i);
+    const reportedFormPage = match ? parseInt(match[1], 10) : null;
+    formPageMap.set(img.pageNumber, reportedFormPage);
+  });
+  console.log('[universalExtractor] Reported form pages per PDF page:');
+  Array.from(formPageMap.entries())
+    .sort((a, b) => a[0] - b[0])
+    .forEach(([pdfPage, formPage]) => {
+      console.log(`   PDF Page ${pdfPage} → Form Page ${formPage ?? 'unknown'}`);
+    });
 
   if (criticalImages.length === 0) {
     console.warn('[universalExtractor] No critical images → returning safe defaults');
@@ -85,81 +97,90 @@ export async function universalExtractor(
     const data = await res.json();
     const content = data.choices[0].message.content.trim();
 
-    // === EXTENSIVE DEBUG LOGGING STARTS HERE ===
-    console.log('[universalExtractor] RAW Grok response length:', content.length);
-    console.log('[universalExtractor] RAW Grok response preview (first 1500 chars):');
-    console.log(content.slice(0, 1500));
-    if (content.length > 1500) {
-      console.log('[universalExtractor] ... (truncated – full length:', content.length, ')');
+    // === RAW RESPONSE LOGGING ===
+    console.log('[universalExtractor] === RAW GROK RESPONSE START ===');
+    console.log('[universalExtractor] Full length:', content.length, 'characters');
+    const preview500 = content.slice(0, 500);
+    console.log('[universalExtractor] Raw response (first 500 chars):');
+    console.log(preview500);
+    if (content.length > 500) {
+      console.log('[universalExtractor] ... (truncated)');
     }
+    if (content.length <= 2000) {
+      console.log('[universalExtractor] Full raw response:');
+      console.log(content);
+    }
+    console.log('[universalExtractor] === RAW GROK RESPONSE END ===');
 
     const jsonMatch = content.match(/{[\s\S]*}/);
     if (!jsonMatch) {
-      console.error('[universalExtractor] NO JSON BLOCK FOUND in Grok response');
-      console.log('[universalExtractor] Full raw content for manual inspection:');
+      console.error('[universalExtractor] NO JSON BLOCK FOUND');
+      console.log('[universalExtractor] Full raw content:');
       console.log(content);
       return fallbackResult();
     }
-
-    console.log('[universalExtractor] Extracted JSON block length:', jsonMatch[0].length);
-    console.log('[universalExtractor] Extracted JSON preview (first 1000 chars):');
-    console.log(jsonMatch[0].slice(0, 1000));
 
     let parsed: GrokExtractionResponse;
     try {
       parsed = JSON.parse(jsonMatch[0]);
 
-      console.log('[universalExtractor] ✅ Successfully parsed JSON from Grok');
-      console.log('[universalExtractor] Extracted core fields:');
-      console.log('  buyerNames:', parsed.extracted.buyerNames);
-      console.log('  sellerNames:', parsed.extracted.sellerNames);
-      console.log('  propertyAddress:', parsed.extracted.propertyAddress);
-      console.log('  purchasePrice:', parsed.extracted.purchasePrice);
-      console.log('  earnestMoneyDeposit:', parsed.extracted.earnestMoneyDeposit);
-      console.log('  closingDate:', parsed.extracted.closingDate);
-      console.log('  isAllCash:', parsed.extracted.financing.isAllCash);
-      console.log('  loanType:', parsed.extracted.financing.loanType);
-      console.log('  effectiveDate:', parsed.extracted.effectiveDate);
+      console.log('[universalExtractor] ✅ Successfully parsed JSON');
 
-      console.log('[universalExtractor] Confidence scores:', parsed.confidence);
-      console.log('[universalExtractor] handwriting_detected:', parsed.handwriting_detected);
+      if (!parsed.extracted) {
+        console.warn('[universalExtractor] Missing "extracted" field → forcing review');
+        return fallbackResult();
+      }
 
+      // Log key extracted fields
+      console.log('[universalExtractor] Extracted core fields:', {
+        buyerNames: parsed.extracted.buyerNames ?? [],
+        sellerNames: parsed.extracted.sellerNames ?? [],
+        propertyAddress: parsed.extracted.propertyAddress ?? '',
+        purchasePrice: parsed.extracted.purchasePrice ?? 0,
+        earnestMoneyAmount: parsed.extracted.earnestMoneyDeposit?.amount ?? null,
+        closingDate: parsed.extracted.closingDate,
+        isAllCash: parsed.extracted.financing?.isAllCash ?? true,
+        loanType: parsed.extracted.financing?.loanType ?? null,
+        effectiveDate: parsed.extracted.effectiveDate,
+      });
+
+      // === SAFE DEFAULTS FOR OPTIONAL WRAPPERS ===
+      const confidence = parsed.confidence ?? {};
+      const overallConfidence =
+        typeof confidence.overall_confidence === 'number'
+          ? confidence.overall_confidence
+          : 95; // High default if missing
+
+      const handwritingDetected = parsed.handwriting_detected === true;
+
+      console.log('[universalExtractor] Confidence scores (with defaults):', {
+        ...confidence,
+        overall_confidence: overallConfidence,
+      });
+      console.log('[universalExtractor] handwriting_detected:', handwritingDetected);
+
+      const needsReview =
+        overallConfidence < 80 ||
+        (confidence.purchasePrice ?? 100) < 90 ||
+        (confidence.buyerNames ?? 100) < 90 ||
+        handwritingDetected;
+
+      console.log(`[universalExtractor] Needs human review: ${needsReview}`);
+      console.log(`[universalExtractor] Effective overall confidence: ${overallConfidence}%`);
+
+      return {
+        universal: parsed.extracted,
+        details: null,
+        timelineEvents: [],
+        needsReview,
+      };
     } catch (e) {
-      console.error('[universalExtractor] ❌ Failed to parse JSON from Grok response', e);
-      console.log('[universalExtractor] Problematic JSON string:');
-      console.log(jsonMatch[0]);
+      console.error('[universalExtractor] ❌ JSON parse failed', e);
+      console.log('[universalExtractor] Bad JSON:', jsonMatch[0]);
       return fallbackResult();
     }
-
-    // Validate required structure
-    if (
-      !parsed.extracted ||
-      typeof parsed.confidence !== 'object' ||
-      typeof parsed.confidence.overall_confidence !== 'number'
-    ) {
-      console.warn('[universalExtractor] Invalid response structure → forcing review');
-      console.log('[universalExtractor] Parsed object:', parsed);
-      return fallbackResult();
-    }
-
-    const needsReview =
-      parsed.confidence.overall_confidence < 80 ||
-      (parsed.confidence.purchasePrice ?? 100) < 90 ||
-      (parsed.confidence.buyerNames ?? 100) < 90 ||
-      parsed.handwriting_detected === true;
-
-    console.log(`[universalExtractor] Extraction complete`);
-    console.log(`[universalExtractor] Needs human review: ${needsReview}`);
-    console.log(`[universalExtractor] Overall confidence: ${parsed.confidence.overall_confidence}%`);
-
-    return {
-      universal: parsed.extracted,
-      details: null,
-      timelineEvents: [],
-      needsReview,
-    };
   } catch (error: any) {
-    console.error('[universalExtractor] Unexpected error during extraction:', error);
+    console.error('[universalExtractor] Unexpected error:', error);
     return fallbackResult();
   }
 }
