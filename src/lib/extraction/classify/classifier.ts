@@ -103,9 +103,10 @@ async function classifyBatch(
       const detectedCount = json.pages.filter((p) => p !== null).length;
       console.log(`[classifier:batch${batchIndex + 1}] Parsed: ${detectedCount}/${json.pages.length} pages with form footers`);
     } catch (err) {
-      console.error(`[classifier:batch${batchIndex + 1}] JSON parse/validation failed`);
-      return null;
-    }
+  console.error(`[classifier:batch${batchIndex + 1}] JSON parse/validation failed`);
+  console.error(`[classifier:batch${batchIndex + 1}] Raw Grok response:`, text.substring(0, 2000)); // ← ADD THIS
+  return null;
+}
 
     console.log(`[classifier:batch${batchIndex + 1}] ✓ Pages ${start}–${end} classified`);
     return { batchStartPage: start, result: json };
