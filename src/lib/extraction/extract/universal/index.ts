@@ -1,7 +1,7 @@
 // src/lib/extraction/extract/universal/index.ts
-// Version: 3.2.0-safe-wrappers - 2025-12-24
-// Fixed: Graceful handling when Grok omits confidence/handwriting_detected
-// Enhanced: Logs raw formPage from classifier for duplicate detection
+// Version: 3.3.0-resilient - 2025-12-24
+// Fixed: Accepts bare JSON object OR wrapped "extracted"
+// Enhanced: Better form page visibility + safe defaults
 
 import { LabeledCriticalImage } from '../../classify/classifier';
 import { UniversalExtractionResult } from './types';
@@ -13,12 +13,6 @@ type TimelineEvent = {
   type: 'info' | 'warning' | 'critical';
   description?: string;
 };
-
-interface GrokExtractionResponse {
-  extracted?: UniversalExtractionResult;
-  confidence?: Record<string, number> & { overall_confidence?: number };
-  handwriting_detected?: boolean;
-}
 
 export async function universalExtractor(
   criticalImages: LabeledCriticalImage[],
@@ -36,19 +30,15 @@ export async function universalExtractor(
     criticalImages.map((img) => img.pageNumber).sort((a, b) => a - b)
   );
 
-  // NEW: Log exact form pages Grok assigned (helps spot duplicates/missequencing)
-  const formPageMap = new Map<number, number | null>();
-  criticalImages.forEach((img) => {
-    // Parse formPage from label if available (fallback from post-processor)
-    const match = img.label.match(/PAGE (\d+)/i);
-    const reportedFormPage = match ? parseInt(match[1], 10) : null;
-    formPageMap.set(img.pageNumber, reportedFormPage);
-  });
+  // Log reported form pages — helps spot duplicates or counters
   console.log('[universalExtractor] Reported form pages per PDF page:');
-  Array.from(formPageMap.entries())
-    .sort((a, b) => a[0] - b[0])
-    .forEach(([pdfPage, formPage]) => {
-      console.log(`   PDF Page ${pdfPage} → Form Page ${formPage ?? 'unknown'}`);
+  criticalImages
+    .sort((a, b) => a.pageNumber - b.pageNumber)
+    .forEach((img) => {
+      const match = img.label.match(/(\w+) PAGE (\d+|\?)/i);
+      const code = match ? match[1] : 'UNKNOWN';
+      const page = match ? match[2] : '?';
+      console.log(`   PDF Page ${img.pageNumber} → ${code} PAGE ${page} ("${img.label}")`);
     });
 
   if (criticalImages.length === 0) {
@@ -97,15 +87,11 @@ export async function universalExtractor(
     const data = await res.json();
     const content = data.choices[0].message.content.trim();
 
-    // === RAW RESPONSE LOGGING ===
     console.log('[universalExtractor] === RAW GROK RESPONSE START ===');
     console.log('[universalExtractor] Full length:', content.length, 'characters');
-    const preview500 = content.slice(0, 500);
     console.log('[universalExtractor] Raw response (first 500 chars):');
-    console.log(preview500);
-    if (content.length > 500) {
-      console.log('[universalExtractor] ... (truncated)');
-    }
+    console.log(content.slice(0, 500));
+    if (content.length > 500) console.log('[universalExtractor] ... (truncated)');
     if (content.length <= 2000) {
       console.log('[universalExtractor] Full raw response:');
       console.log(content);
@@ -120,65 +106,71 @@ export async function universalExtractor(
       return fallbackResult();
     }
 
-    let parsed: GrokExtractionResponse;
+    let parsed: any;
     try {
       parsed = JSON.parse(jsonMatch[0]);
-
       console.log('[universalExtractor] ✅ Successfully parsed JSON');
-
-      if (!parsed.extracted) {
-        console.warn('[universalExtractor] Missing "extracted" field → forcing review');
-        return fallbackResult();
-      }
-
-      // Log key extracted fields
-      console.log('[universalExtractor] Extracted core fields:', {
-        buyerNames: parsed.extracted.buyerNames ?? [],
-        sellerNames: parsed.extracted.sellerNames ?? [],
-        propertyAddress: parsed.extracted.propertyAddress ?? '',
-        purchasePrice: parsed.extracted.purchasePrice ?? 0,
-        earnestMoneyAmount: parsed.extracted.earnestMoneyDeposit?.amount ?? null,
-        closingDate: parsed.extracted.closingDate,
-        isAllCash: parsed.extracted.financing?.isAllCash ?? true,
-        loanType: parsed.extracted.financing?.loanType ?? null,
-        effectiveDate: parsed.extracted.effectiveDate,
-      });
-
-      // === SAFE DEFAULTS FOR OPTIONAL WRAPPERS ===
-      const confidence = parsed.confidence ?? {};
-      const overallConfidence =
-        typeof confidence.overall_confidence === 'number'
-          ? confidence.overall_confidence
-          : 95; // High default if missing
-
-      const handwritingDetected = parsed.handwriting_detected === true;
-
-      console.log('[universalExtractor] Confidence scores (with defaults):', {
-        ...confidence,
-        overall_confidence: overallConfidence,
-      });
-      console.log('[universalExtractor] handwriting_detected:', handwritingDetected);
-
-      const needsReview =
-        overallConfidence < 80 ||
-        (confidence.purchasePrice ?? 100) < 90 ||
-        (confidence.buyerNames ?? 100) < 90 ||
-        handwritingDetected;
-
-      console.log(`[universalExtractor] Needs human review: ${needsReview}`);
-      console.log(`[universalExtractor] Effective overall confidence: ${overallConfidence}%`);
-
-      return {
-        universal: parsed.extracted,
-        details: null,
-        timelineEvents: [],
-        needsReview,
-      };
     } catch (e) {
       console.error('[universalExtractor] ❌ JSON parse failed', e);
       console.log('[universalExtractor] Bad JSON:', jsonMatch[0]);
       return fallbackResult();
     }
+
+    let extractionData: UniversalExtractionResult;
+
+    // FLEXIBLE: Accept bare object OR wrapped in "extracted"
+    if (parsed.extracted) {
+      console.log('[universalExtractor] Response wrapped in "extracted" key');
+      extractionData = parsed.extracted;
+    } else if (parsed.buyerNames !== undefined || parsed.purchasePrice !== undefined) {
+      console.log('[universalExtractor] Bare object response – using directly');
+      extractionData = parsed as UniversalExtractionResult;
+    } else {
+      console.warn('[universalExtractor] No recognizable data → forcing review');
+      return fallbackResult();
+    }
+
+    // Log key extracted fields
+    console.log('[universalExtractor] Final extracted core fields:', {
+      buyerNames: extractionData.buyerNames ?? [],
+      sellerNames: extractionData.sellerNames ?? [],
+      propertyAddress: extractionData.propertyAddress ?? '',
+      purchasePrice: extractionData.purchasePrice ?? 0,
+      earnestMoneyAmount: extractionData.earnestMoneyDeposit?.amount ?? null,
+      closingDate: extractionData.closingDate,
+      isAllCash: extractionData.financing?.isAllCash ?? true,
+      loanType: extractionData.financing?.loanType ?? null,
+      effectiveDate: extractionData.effectiveDate,
+    });
+
+    // Safe confidence & handwriting defaults
+    const confidence = parsed.confidence ?? {};
+    const overallConfidence =
+      typeof confidence.overall_confidence === 'number' ? confidence.overall_confidence : 95;
+
+    const handwritingDetected = parsed.handwriting_detected === true;
+
+    console.log('[universalExtractor] Confidence (with defaults):', {
+      ...confidence,
+      overall_confidence: overallConfidence,
+    });
+    console.log('[universalExtractor] handwriting_detected:', handwritingDetected);
+
+    const needsReview =
+      overallConfidence < 80 ||
+      (confidence.purchasePrice ?? 100) < 90 ||
+      (confidence.buyerNames ?? 100) < 90 ||
+      handwritingDetected;
+
+    console.log(`[universalExtractor] Needs human review: ${needsReview}`);
+    console.log(`[universalExtractor] Effective overall confidence: ${overallConfidence}%`);
+
+    return {
+      universal: extractionData,
+      details: null,
+      timelineEvents: [],
+      needsReview,
+    };
   } catch (error: any) {
     console.error('[universalExtractor] Unexpected error:', error);
     return fallbackResult();

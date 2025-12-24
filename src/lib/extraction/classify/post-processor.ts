@@ -1,13 +1,12 @@
 // src/lib/extraction/classify/post-processor.ts
-// Version: 2.0.0 - 2025-12-23
-// Universal post-processor: no state-specific assumptions
-// Merges batch data, identifies any form-footer pages as critical, builds generic labels
+// Version: 2.1.0-enhanced-labels - 2025-12-24
+// Enhanced: Labels now show formCode + formPage clearly
 
 import type { LabeledCriticalImage } from './classifier';
 
 interface GrokPageResult {
   pdfPage: number;
-  formCode: string;        // e.g., "RPA", "SCO", "TREC", "FARBAR", or any string
+  formCode: string;
   formPage: number;
   footerText: string;
 }
@@ -16,42 +15,17 @@ interface GrokClassifierOutput {
   pages: (GrokPageResult | null)[];
 }
 
-/**
- * Merge all batch results into a single flat array of detected form pages
- * Keeps original Grok output intact — no assumptions about form codes
- */
 export function mergeDetectedPages(
   allGrokPages: (GrokPageResult | null)[]
 ): GrokPageResult[] {
   return allGrokPages.filter((p): p is GrokPageResult => p !== null);
 }
 
-/**
- * Identify critical pages for universal extraction
- * Strategy: Any page with a detected form footer is potentially critical
- * (main agreement, counters, addenda, disclosures all have footers)
- */
 export function getCriticalPageNumbers(detectedPages: GrokPageResult[]): number[] {
-  return detectedPages
-    .filter(page => {
-      // Require a meaningful formCode (at least 2 chars, common patterns)
-      if (!page.formCode || page.formCode.trim().length < 2) return false;
-      
-      // Optional: whitelist known good prefixes to be extra safe
-      const goodPrefixes = ['RPA', 'SCO', 'AD', 'TREC', 'FAR', 'BAR', 'OREF', 'PAR'];
-      if (goodPrefixes.some(p => page.formCode.startsWith(p))) return true;
-      
-      // Or just length check + form code
-      return ['main_contract', 'counter_offer', 'addendum', 'disclosure'].includes(page.formCode);
-    })
-    .map(p => p.pdfPage)
-    .sort((a, b) => a - b);
+  const pages = detectedPages.map((p) => p.pdfPage);
+  return Array.from(new Set(pages)).sort((a, b) => a - b);
 }
 
-/**
- * Build generic, safe labels for the universal extractor prompt
- * Avoids state-specific phrasing — works nationwide
- */
 export function buildUniversalPageLabels(
   detectedPages: GrokPageResult[],
   criticalPageNumbers: number[]
@@ -59,27 +33,24 @@ export function buildUniversalPageLabels(
   const labelMap = new Map<number, string>();
 
   detectedPages.forEach((page) => {
-    const code = page.formCode || 'FORM';
-    const formPage = page.formPage || '?';
+    const code = page.formCode?.trim() || 'UNKNOWN';
+    const formPage = page.formPage ?? '?';
     labelMap.set(
       page.pdfPage,
       `${code} PAGE ${formPage} – POSSIBLE KEY TERMS OR SIGNATURES`
     );
   });
 
-  // Fallback for any critical pages Grok didn't label (shouldn't happen, but safe)
+  // Fallback for any undetected critical pages
   criticalPageNumbers.forEach((pdfPage) => {
     if (!labelMap.has(pdfPage)) {
-      labelMap.set(pdfPage, `KEY PAGE ${pdfPage} – TERMS, SIGNATURES OR ADDENDUM`);
+      labelMap.set(pdfPage, `PAGE ${pdfPage} – POSSIBLE KEY TERMS`);
     }
   });
 
   return labelMap;
 }
 
-/**
- * Final assembly: labeled critical images ready for universal extraction
- */
 export function buildLabeledCriticalImages(
   pages: { pageNumber: number; base64: string }[],
   criticalPageNumbers: number[],
@@ -94,17 +65,13 @@ export function buildLabeledCriticalImages(
     }));
 }
 
-/**
- * Optional: Extract basic package metadata for routing/logging
- */
 export function extractPackageMetadata(detectedPages: GrokPageResult[]) {
-  const formCodes = Array.from(new Set(detectedPages.map((p) => p.formCode)));
+  const formCodes = Array.from(new Set(detectedPages.map((p) => p.formCode))).filter(Boolean);
 
-  // FIXED: Clean sampleFooters — filter out undefined/null/empty strings
-const sampleFooters = detectedPages
-  .map((p) => p?.footerText)
-  .filter((text): text is string => typeof text === 'string' && text.trim() !== '')
-  .slice(0, 5);// limit to first 5 for safety
+  const sampleFooters = detectedPages
+    .map((p) => p?.footerText)
+    .filter((text): text is string => typeof text === 'string' && text.trim() !== '')
+    .slice(0, 5);
 
   return {
     detectedFormCodes: formCodes,
