@@ -6,8 +6,8 @@ import { classifyCriticalPages } from './classify/classifier';
 import { californiaExtractor } from './extract/california/index';
 import { universalExtractor } from './extract/universal/index';
 
-import type { LabeledCriticalImage } from './classify/classifier';
-import type { UniversalExtractionResult } from './extract/universal/types';
+import type { LabeledCriticalImage } from '@/types/classification';
+import type { UniversalExtractionResult } from '../../types/extraction';
 
 export interface ExtractionRouteResult {
   universal: UniversalExtractionResult;

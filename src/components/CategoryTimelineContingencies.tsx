@@ -1,42 +1,50 @@
 // src/components/CategoryTimelineContingencies.tsx
-// Version: 1.0.0-initial - 2025-12-24
+// Updated to use direct contingencies field from enriched ParseResult
+
 import CategorySection from "./CategorySection";
 import { Calendar } from "lucide-react";
-import { ParseResult } from "@/types/parse";
+import { ParseResult } from "@/types";
 
 export default function CategoryTimelineContingencies({
   data,
 }: {
   data: ParseResult;
 }) {
-  const cont = data.extractionDetails?.contingencies;
+  const cont = data.contingencies;
 
   const fields = [
     { label: "Close of Escrow", value: data.closingDate },
     {
       label: "Inspection Contingency",
       value: cont?.inspectionDays
-        ? `${cont.inspectionDays} days`
+        ? typeof cont.inspectionDays === "string"
+          ? cont.inspectionDays
+          : `${cont.inspectionDays} days`
         : null,
     },
     {
       label: "Appraisal Contingency",
       value: cont?.appraisalDays
-        ? `${cont.appraisalDays} days`
+        ? typeof cont.appraisalDays === "string"
+          ? cont.appraisalDays
+          : `${cont.appraisalDays} days`
         : null,
     },
     {
       label: "Loan Contingency",
-      value: cont?.loanDays ? `${cont.loanDays} days` : null,
+      value: cont?.loanDays
+        ? typeof cont.loanDays === "string"
+          ? cont.loanDays
+          : `${cont.loanDays} days`
+        : null,
     },
     {
-      label: "COP Contingency",
-      value:
-        cont?.copContingency !== undefined
-          ? cont.copContingency
-            ? "Active"
-            : "Waived"
-          : null,
+      label: "Sale of Buyer Property Contingency",
+      value: cont?.saleOfBuyerProperty !== undefined
+        ? cont.saleOfBuyerProperty
+          ? "Active"
+          : "Waived"
+        : null,
     },
   ].filter((f) => f.value !== null && f.value !== undefined);
 

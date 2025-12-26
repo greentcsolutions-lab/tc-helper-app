@@ -1,15 +1,16 @@
 // src/components/CategoryRepresentingParties.tsx
-// Version: 1.0.0-initial - 2025-12-24
+// Updated to use direct brokers field from enriched ParseResult
+
 import CategorySection from "./CategorySection";
 import { Users } from "lucide-react";
-import { ParseResult } from "@/types/parse";
+import { ParseResult } from "@/types";
 
 export default function CategoryRepresentingParties({
   data,
 }: {
   data: ParseResult;
 }) {
-  const brokers = data.extractionDetails?.brokers;
+  const brokers = data.brokers;
 
   const fields = [
     { label: "Listing Brokerage", value: brokers?.listingBrokerage },

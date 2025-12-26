@@ -3,7 +3,7 @@
 // Enhanced: Boosted priority for signatures and broker_info (critical for agency contacts)
 //           Aligns with current C.A.R. RPA 6/25 format (17-page form)
 
-import type { LabeledCriticalImage, GrokPageResult } from './types';
+import type { LabeledCriticalImage, GrokPageResult } from '../../../types/classification';
 
 interface GrokClassifierOutput {
   pages: (GrokPageResult | null)[];

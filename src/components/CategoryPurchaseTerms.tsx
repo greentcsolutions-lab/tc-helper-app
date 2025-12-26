@@ -1,8 +1,9 @@
 // src/components/CategoryPurchaseTerms.tsx
-// Version: 1.0.0-initial - 2025-12-24
+// Updated to use enriched ParseResult direct fields (no extractionDetails)
+
 import CategorySection from "./CategorySection";
 import { DollarSign } from "lucide-react";
-import { ParseResult } from "@/types/parse";
+import { ParseResult } from "@/types";
 
 export default function CategoryPurchaseTerms({ data }: { data: ParseResult }) {
   const fields = [
@@ -25,19 +26,18 @@ export default function CategoryPurchaseTerms({ data }: { data: ParseResult }) {
     },
     {
       label: "Initial Deposit Amount",
-      value: data.earnestMoneyAmount
-        ? `$${data.earnestMoneyAmount.toLocaleString()}`
+      value: data.earnestMoneyDeposit?.amount
+        ? `$${data.earnestMoneyDeposit.amount.toLocaleString()}`
         : null,
     },
-    { label: "Deposit Holder", value: data.earnestMoneyHolder },
+    { label: "Deposit Holder", value: data.earnestMoneyDeposit?.holder },
     { label: "Loan Type", value: data.loanType },
     { label: "Close of Escrow", value: data.closingDate },
     { label: "Effective Date", value: data.effectiveDate },
-    // Future: seller credit when it lands in extractionDetails
     {
       label: "Seller Credit to Buyer",
-      value: data.extractionDetails?.sellerCredit
-        ? `$${data.extractionDetails.sellerCredit.toLocaleString()}`
+      value: data.closingCosts?.sellerCreditAmount
+        ? `$${data.closingCosts.sellerCreditAmount.toLocaleString()}`
         : null,
     },
   ].filter((f) => f.value !== null && f.value !== undefined);

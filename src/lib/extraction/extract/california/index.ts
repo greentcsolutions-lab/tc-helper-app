@@ -4,7 +4,7 @@
 // This prevents the "californiaExtractor is not a function" crash when router tries California route
 
 import { LabeledCriticalImage } from '../../classify/classifier';
-import { UniversalExtractionResult } from '../universal/types';
+import { UniversalExtractionResult } from '../../../../types/extraction';
 
 type TimelineEvent = {
   date: string;

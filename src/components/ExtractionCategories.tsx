@@ -5,7 +5,7 @@
 import CategoryPurchaseTerms from "./CategoryPurchaseTerms";
 import CategoryRepresentingParties from "./CategoryRepresentingParties";
 import CategoryTimelineContingencies from "./CategoryTimelineContingencies";
-import { ParseResult } from "@/types/parse";
+import { ParseResult } from "@/types";
 
 export default function ExtractionCategories({ data }: { data: ParseResult }) {
   return (

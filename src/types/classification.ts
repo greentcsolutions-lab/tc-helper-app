@@ -1,4 +1,6 @@
-// src/lib/extraction/classify/types.ts
+// src/types/classification.ts
+// Version 2.0.0 - 2024-12-24
+// Types related to document classification and page analysis
 // Updated to include broker_info in enum
 
 export interface GrokPageResult {

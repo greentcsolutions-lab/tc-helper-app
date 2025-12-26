@@ -15,7 +15,7 @@ import {
 import { Search, FileText, Home } from "lucide-react";
 import Link from "next/link";
 import TransactionCard from "@/components/transactions/TransactionCard";
-import { ParseResult } from "@/types/parse";
+import { ParseResult } from "@/types";
 import { toast } from "sonner";
 
 type SortOption = "date" | "address" | "closing" | "price";

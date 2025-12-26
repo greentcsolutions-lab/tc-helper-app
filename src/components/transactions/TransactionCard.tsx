@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { ChevronDown, Trash2, AlertCircle, FileText } from "lucide-react";
 import { format } from "date-fns";
 import ExtractionCategories from "@/components/ExtractionCategories";
-import { ParseResult } from "@/types/parse";
+import { ParseResult } from "@/types";
 
 interface TransactionCardProps {
   parse: ParseResult;

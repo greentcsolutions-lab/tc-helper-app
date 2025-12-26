@@ -1,5 +1,5 @@
-// src/lib/extraction/extract/universal/types.ts
-// Version: 1.0.0 - 2025-12-23
+// src/types/extraction.ts
+// Version: 2.0.0 - 2025-12-24
 // Universal extraction result types for real estate offers
 
 export interface UniversalExtractionResult {
