@@ -1,15 +1,15 @@
 // src/app/api/parse/extract/[parseId]/route.ts
-// Version: 2.0.0 - 2025-12-27
-// Extracts transaction data via router, NO base64 in request body (reads from cache + DB)
+// Version: 2.1.2-db-only-prisma-fix - 2025-12-27
+// Fixed Prisma Json null assignment error
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
 import { route } from "@/lib/extraction/router";
 import { mapExtractionToParseResult } from "@/lib/parse/map-to-parse-result";
-import { getClassification, deleteClassification } from "@/lib/cache/classification-cache";
 import { downloadAndExtractZip } from "@/lib/pdf/renderer";
 import { logDataShape, logStep, logSuccess, logError } from "@/lib/debug/parse-logger";
+import { Prisma } from "@prisma/client"; // <-- ADD THIS IMPORT
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -30,8 +30,8 @@ export async function POST(
   console.log(`${"═".repeat(80)}\n`);
 
   try {
-    // STEP 1: VALIDATE PARSE OWNERSHIP & FETCH DB DATA
-    logStep("EXTRACT:1", "🔍 Validating parse and fetching ZIP URLs...");
+    // STEP 1: VALIDATE + FETCH CLASSIFICATION FROM DB
+    logStep("EXTRACT:1", "🔍 Validating parse and loading classification from DB...");
 
     const parse = await db.parse.findUnique({
       where: { id: parseId },
@@ -40,6 +40,7 @@ export async function POST(
         userId: true,
         status: true,
         highResZipUrl: true,
+        classificationCache: true,
         user: { select: { clerkId: true } },
       },
     });
@@ -64,32 +65,34 @@ export async function POST(
       return Response.json({ error: "High-res rendering not complete" }, { status: 400 });
     }
 
-    logSuccess("EXTRACT:1", "Parse validated, high-res ZIP URL found");
-
-    // STEP 2: GET CLASSIFICATION FROM CACHE
-    logStep("EXTRACT:2", "📦 Loading classification results from cache...");
-
-    const classification = getClassification(parseId);
-
-    if (!classification) {
-      logError("EXTRACT:2", "Classification not found in cache (expired or missing)");
+    if (!parse.classificationCache) {
+      logError("EXTRACT:1", "Classification not found in database");
       return Response.json({ 
         error: "Classification not found. Please re-run classification." 
       }, { status: 404 });
     }
 
-    logDataShape("EXTRACT:2 Classification Cache", classification);
-    logSuccess("EXTRACT:2", `Loaded ${classification.criticalImages.length} critical images from cache`);
+    logSuccess("EXTRACT:1", "Parse validated + classification loaded from DB");
 
-    // STEP 3: DOWNLOAD HIGH-DPI ZIP
-    logStep("EXTRACT:3", "📥 Downloading high-DPI ZIP from Blob storage...");
+    const classification = parse.classificationCache as {
+      criticalImages: Array<{ pageNumber: number; base64: string; label: string }>;
+      packageMetadata: any;
+      criticalPageNumbers: number[];
+      state: string;
+    };
+
+    logDataShape("EXTRACT:1 Classification from DB", classification);
+    logSuccess("EXTRACT:1", `Loaded ${classification.criticalImages.length} critical images`);
+
+    // STEP 2: DOWNLOAD HIGH-DPI ZIP
+    logStep("EXTRACT:2", "📥 Downloading high-DPI ZIP from Blob storage...");
 
     const highDpiPages = await downloadAndExtractZip(parse.highResZipUrl);
 
-    logSuccess("EXTRACT:3", `Downloaded ${highDpiPages.length} high-DPI pages`);
+    logSuccess("EXTRACT:2", `Downloaded ${highDpiPages.length} high-DPI pages`);
 
-    // STEP 4: ROUTE TO APPROPRIATE EXTRACTOR
-    logStep("EXTRACT:4", "🧠 Routing to appropriate extractor...");
+    // STEP 3: ROUTE TO APPROPRIATE EXTRACTOR
+    logStep("EXTRACT:3", "🧠 Routing to appropriate extractor...");
 
     const {
       universal,
@@ -103,7 +106,7 @@ export async function POST(
       highDpiPages,
     });
 
-    logDataShape("EXTRACT:4 Extraction Result", {
+    logDataShape("EXTRACT:3 Extraction Result", {
       universal,
       needsReview,
       route: extractionRoute,
@@ -111,17 +114,23 @@ export async function POST(
       timelineEventsCount: timelineEvents?.length || 0,
     });
 
-    logSuccess("EXTRACT:4", `Extraction complete via ${extractionRoute} route — needsReview: ${needsReview}`);
+    logSuccess("EXTRACT:3", `Extraction complete via ${extractionRoute} route — needsReview: ${needsReview}`);
 
-    // STEP 5: DELETE CLASSIFICATION FROM CACHE
-    logStep("EXTRACT:5", "🗑️ Deleting classification from cache...");
-    
-    deleteClassification(parseId);
-    
-    logSuccess("EXTRACT:5", "Cache cleared");
+    // STEP 4: CLEAR CLASSIFICATION FROM DB (temporary data)
+    logStep("EXTRACT:4", "🗑️ Clearing classificationCache from database...");
 
-    // STEP 6: MAP TO DB FIELDS
-    logStep("EXTRACT:6", "🗺️ Mapping extraction to DB fields...");
+    await db.parse.update({
+      where: { id: parseId },
+      data: {
+        // FIX: Use Prisma.JsonNull to explicitly allow null for Json? fields
+        classificationCache: Prisma.JsonNull,
+      },
+    });
+
+    logSuccess("EXTRACT:4", "Temporary classification cleared");
+
+    // STEP 5: MAP TO DB FIELDS
+    logStep("EXTRACT:5", "🗺️ Mapping extraction to DB fields...");
 
     const mappedFields = mapExtractionToParseResult({
       universal,
@@ -130,18 +139,16 @@ export async function POST(
       timelineEvents,
     });
 
-    logDataShape("EXTRACT:6 Mapped Fields", mappedFields);
+    logDataShape("EXTRACT:5 Mapped Fields", mappedFields);
 
-    // STEP 7: SAVE TO DATABASE
-    logStep("EXTRACT:7", "💾 Saving final results to database...");
+    // STEP 6: SAVE FINAL RESULTS
+    logStep("EXTRACT:6", "💾 Saving final results to database...");
 
     const finalStatus = needsReview ? "NEEDS_REVIEW" : "COMPLETED";
 
-    // Prepare nested JSON fields for Prisma (handle null properly)
     const dbUpdateData = {
       status: finalStatus,
       ...mappedFields,
-      // Wrap JSON nulls for Prisma
       earnestMoneyDeposit: mappedFields.earnestMoneyDeposit ?? undefined,
       financing: mappedFields.financing ?? undefined,
       contingencies: mappedFields.contingencies ?? undefined,
@@ -158,14 +165,14 @@ export async function POST(
       finalizedAt: new Date(),
     };
 
-    logDataShape("EXTRACT:7 DB Update", dbUpdateData);
+    logDataShape("EXTRACT:6 DB Update", dbUpdateData);
 
     await db.parse.update({
       where: { id: parseId },
       data: dbUpdateData,
     });
 
-    logSuccess("EXTRACT:7", `Saved — Status: ${finalStatus}`);
+    logSuccess("EXTRACT:6", `Saved — Status: ${finalStatus}`);
 
     console.log(`\n${"═".repeat(80)}`);
     console.log(`║ ✅ EXTRACT ROUTE COMPLETED`);
@@ -186,7 +193,6 @@ export async function POST(
     console.error(`\n[ERROR] ${error.message}`);
     console.error(`[ERROR] Stack:`, error.stack);
 
-    // Update DB with error status
     await db.parse.update({
       where: { id: parseId },
       data: {
@@ -196,8 +202,6 @@ export async function POST(
     }).catch((dbError) => {
       console.error(`[ERROR] Failed to update error status:`, dbError);
     });
-
-    console.error(`${"═".repeat(80)}\n`);
 
     return Response.json(
       { error: error.message || "Extraction failed" },

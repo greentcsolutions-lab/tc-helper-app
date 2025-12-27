@@ -1,6 +1,6 @@
 // src/app/api/parse/classify/[parseId]/route.ts
-// Version: 2.1.0 - 2025-12-27
-// Classifies critical pages via Grok, stores results in DB (not in-memory cache)
+// Version: 2.1.1-db-only - 2025-12-27
+// Classifies critical pages via Grok, stores results ONLY in DB (no in-memory cache)
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
@@ -127,7 +127,7 @@ export async function GET(
 
         logSuccess("CLASSIFY:4", `Extracted ${highDpiPages.length} high-DPI pages`);
 
-        // STEP 5: SAVE TO DATABASE (temporary, deleted after extract)
+        // STEP 5: SAVE TO DATABASE ONLY (no in-memory cache)
         logStep("CLASSIFY:5", "💾 Saving classification results to database...");
 
         const classificationData = {
@@ -145,7 +145,7 @@ export async function GET(
           where: { id: parseId },
           data: {
             classificationCache: classificationData,
-            criticalPageNumbers, // Also store as top-level array for queries
+            criticalPageNumbers,
           },
         });
 
@@ -169,7 +169,7 @@ export async function GET(
         console.log(`\n${"═".repeat(80)}`);
         console.log(`║ ✅ CLASSIFY ROUTE COMPLETED`);
         console.log(`║ ParseID: ${parseId} | Critical Pages: ${criticalPageNumbers.length}`);
-        console.log(`║ Results saved to database (no base64 sent to client)`);
+        console.log(`║ Results saved to database only (no in-memory cache)`);
         console.log(`${"═".repeat(80)}\n`);
 
         controller.close();
@@ -181,7 +181,6 @@ export async function GET(
         console.error(`\n[ERROR] ${error.message}`);
         console.error(`[ERROR] Stack:`, error.stack);
 
-        // Update DB with error status
         await db.parse.update({
           where: { id: parseId },
           data: {
