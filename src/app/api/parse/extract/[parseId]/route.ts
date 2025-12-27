@@ -1,12 +1,14 @@
 // src/app/api/parse/extract/[parseId]/route.ts
-// Version: 1.1.0 - 2025-12-27
-// Extracts transaction data via router, saves final results to DB (pure REST, no SSE)
+// Version: 2.0.0 - 2025-12-27
+// Extracts transaction data via router, NO base64 in request body (reads from cache + DB)
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
 import { route } from "@/lib/extraction/router";
 import { mapExtractionToParseResult } from "@/lib/parse/map-to-parse-result";
+import { getClassification, deleteClassification } from "@/lib/cache/classification-cache";
+import { downloadAndExtractZip } from "@/lib/pdf/renderer";
 import { logDataShape, logStep, logSuccess, logError } from "@/lib/debug/parse-logger";
 
 export const runtime = "nodejs";
@@ -28,8 +30,8 @@ export async function POST(
   console.log(`${"═".repeat(80)}\n`);
 
   try {
-    // STEP 1: VALIDATE PARSE OWNERSHIP
-    logStep("EXTRACT:1", "🔍 Validating parse ownership...");
+    // STEP 1: VALIDATE PARSE OWNERSHIP & FETCH DB DATA
+    logStep("EXTRACT:1", "🔍 Validating parse and fetching ZIP URLs...");
 
     const parse = await db.parse.findUnique({
       where: { id: parseId },
@@ -37,6 +39,7 @@ export async function POST(
         id: true,
         userId: true,
         status: true,
+        highResZipUrl: true,
         user: { select: { clerkId: true } },
       },
     });
@@ -56,34 +59,37 @@ export async function POST(
       return Response.json({ error: `Invalid status: ${parse.status}` }, { status: 400 });
     }
 
-    logSuccess("EXTRACT:1", "Parse validated");
-
-    // STEP 2: PARSE REQUEST BODY
-    logStep("EXTRACT:2", "📦 Parsing classification results from request body...");
-
-    const body = await request.json();
-    const { criticalImages, metadata, highDpiPages } = body;
-
-    if (!criticalImages || !Array.isArray(criticalImages)) {
-      logError("EXTRACT:2", "Missing or invalid criticalImages in request body");
-      return Response.json({ error: "Invalid request body" }, { status: 400 });
+    if (!parse.highResZipUrl) {
+      logError("EXTRACT:1", "Missing high-res ZIP URL");
+      return Response.json({ error: "High-res rendering not complete" }, { status: 400 });
     }
 
-    if (!metadata || typeof metadata !== "object") {
-      logError("EXTRACT:2", "Missing or invalid metadata in request body");
-      return Response.json({ error: "Invalid request body" }, { status: 400 });
+    logSuccess("EXTRACT:1", "Parse validated, high-res ZIP URL found");
+
+    // STEP 2: GET CLASSIFICATION FROM CACHE
+    logStep("EXTRACT:2", "📦 Loading classification results from cache...");
+
+    const classification = getClassification(parseId);
+
+    if (!classification) {
+      logError("EXTRACT:2", "Classification not found in cache (expired or missing)");
+      return Response.json({ 
+        error: "Classification not found. Please re-run classification." 
+      }, { status: 404 });
     }
 
-    if (!highDpiPages || !Array.isArray(highDpiPages)) {
-      logError("EXTRACT:2", "Missing or invalid highDpiPages in request body");
-      return Response.json({ error: "Invalid request body" }, { status: 400 });
-    }
+    logDataShape("EXTRACT:2 Classification Cache", classification);
+    logSuccess("EXTRACT:2", `Loaded ${classification.criticalImages.length} critical images from cache`);
 
-    logDataShape("EXTRACT:2 Classification Input", { criticalImages, metadata, highDpiPages });
-    logSuccess("EXTRACT:2", `Received ${criticalImages.length} critical images`);
+    // STEP 3: DOWNLOAD HIGH-DPI ZIP
+    logStep("EXTRACT:3", "📥 Downloading high-DPI ZIP from Blob storage...");
 
-    // STEP 3: ROUTE TO APPROPRIATE EXTRACTOR
-    logStep("EXTRACT:3", "🧠 Routing to appropriate extractor based on detected forms...");
+    const highDpiPages = await downloadAndExtractZip(parse.highResZipUrl);
+
+    logSuccess("EXTRACT:3", `Downloaded ${highDpiPages.length} high-DPI pages`);
+
+    // STEP 4: ROUTE TO APPROPRIATE EXTRACTOR
+    logStep("EXTRACT:4", "🧠 Routing to appropriate extractor...");
 
     const {
       universal,
@@ -92,12 +98,12 @@ export async function POST(
       needsReview,
       route: extractionRoute,
     } = await route({
-      criticalImages,
-      packageMetadata: metadata,
+      criticalImages: classification.criticalImages,
+      packageMetadata: classification.packageMetadata,
       highDpiPages,
     });
 
-    logDataShape("EXTRACT:3 Extraction Result", {
+    logDataShape("EXTRACT:4 Extraction Result", {
       universal,
       needsReview,
       route: extractionRoute,
@@ -105,10 +111,17 @@ export async function POST(
       timelineEventsCount: timelineEvents?.length || 0,
     });
 
-    logSuccess("EXTRACT:3", `Extraction complete via ${extractionRoute} route — needsReview: ${needsReview}`);
+    logSuccess("EXTRACT:4", `Extraction complete via ${extractionRoute} route — needsReview: ${needsReview}`);
 
-    // STEP 4: MAP TO DB FIELDS
-    logStep("EXTRACT:4", "🗺️ Mapping extraction to DB fields...");
+    // STEP 5: DELETE CLASSIFICATION FROM CACHE
+    logStep("EXTRACT:5", "🗑️ Deleting classification from cache...");
+    
+    deleteClassification(parseId);
+    
+    logSuccess("EXTRACT:5", "Cache cleared");
+
+    // STEP 6: MAP TO DB FIELDS
+    logStep("EXTRACT:6", "🗺️ Mapping extraction to DB fields...");
 
     const mappedFields = mapExtractionToParseResult({
       universal,
@@ -117,32 +130,42 @@ export async function POST(
       timelineEvents,
     });
 
-    logDataShape("EXTRACT:4 Mapped Fields", mappedFields);
+    logDataShape("EXTRACT:6 Mapped Fields", mappedFields);
 
-    // STEP 5: SAVE TO DATABASE
-    logStep("EXTRACT:5", "💾 Saving final results to database...");
+    // STEP 7: SAVE TO DATABASE
+    logStep("EXTRACT:7", "💾 Saving final results to database...");
 
     const finalStatus = needsReview ? "NEEDS_REVIEW" : "COMPLETED";
 
+    // Prepare nested JSON fields for Prisma (handle null properly)
     const dbUpdateData = {
       status: finalStatus,
       ...mappedFields,
+      // Wrap JSON nulls for Prisma
+      earnestMoneyDeposit: mappedFields.earnestMoneyDeposit ?? undefined,
+      financing: mappedFields.financing ?? undefined,
+      contingencies: mappedFields.contingencies ?? undefined,
+      closingCosts: mappedFields.closingCosts ?? undefined,
+      brokers: mappedFields.brokers ?? undefined,
+      personalPropertyIncluded: mappedFields.personalPropertyIncluded ?? undefined,
+      extractionDetails: mappedFields.extractionDetails ?? undefined,
+      timelineEvents: mappedFields.timelineEvents ?? undefined,
       rawJson: {
         _extraction_route: extractionRoute,
-        _classifier_metadata: metadata,
-        _critical_page_count: criticalImages.length,
+        _classifier_metadata: classification.packageMetadata,
+        _critical_page_count: classification.criticalImages.length,
       },
       finalizedAt: new Date(),
     };
 
-    logDataShape("EXTRACT:5 DB Update", dbUpdateData);
+    logDataShape("EXTRACT:7 DB Update", dbUpdateData);
 
     await db.parse.update({
       where: { id: parseId },
       data: dbUpdateData,
     });
 
-    logSuccess("EXTRACT:5", `Saved — Status: ${finalStatus}`);
+    logSuccess("EXTRACT:7", `Saved — Status: ${finalStatus}`);
 
     console.log(`\n${"═".repeat(80)}`);
     console.log(`║ ✅ EXTRACT ROUTE COMPLETED`);

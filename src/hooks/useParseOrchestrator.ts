@@ -1,6 +1,6 @@
 // src/hooks/useParseOrchestrator.ts
-// Version: 1.0.0 - 2025-12-27
-// Client-side orchestration hook for the parse pipeline: render → classify → extract → cleanup
+// Version: 2.0.0 - 2025-12-27
+// Client orchestration: triggers server-side pipeline, receives progress updates only
 
 import { useState, useCallback } from 'react';
 
@@ -11,16 +11,9 @@ interface ParseState {
   message: string;
   pageCount?: number;
   criticalPageCount?: number;
+  detectedForms?: string[];
   needsReview?: boolean;
   error?: string;
-}
-
-interface ClassificationResult {
-  criticalImages: any[];
-  metadata: any;
-  criticalPageNumbers: number[];
-  state: string;
-  highDpiPages: { pageNumber: number; base64: string }[];
 }
 
 export function useParseOrchestrator() {
@@ -55,21 +48,22 @@ export function useParseOrchestrator() {
         setState((prev) => ({ ...prev, phase: 'classify', message: msg }));
       });
 
-      if (!classifyResult.success || !classifyResult.data) {
+      if (!classifyResult.success) {
         throw new Error(classifyResult.error || 'Classification failed');
       }
 
-      console.log('[orchestrator] Classification complete:', classifyResult.data.criticalPageNumbers.length, 'critical pages');
+      console.log('[orchestrator] Classification complete:', classifyResult.criticalPageCount, 'critical pages');
 
-      // PHASE 3: EXTRACT
+      // PHASE 3: EXTRACT (server reads from cache, no data passed)
       setState({
         phase: 'extract',
         message: 'Extracting transaction data...',
         pageCount: renderResult.pageCount,
-        criticalPageCount: classifyResult.data.criticalPageNumbers.length,
+        criticalPageCount: classifyResult.criticalPageCount,
+        detectedForms: classifyResult.detectedForms,
       });
 
-      const extractResult = await runExtract(parseId, classifyResult.data);
+      const extractResult = await runExtract(parseId);
 
       if (!extractResult.success) {
         throw new Error(extractResult.error || 'Extraction failed');
@@ -82,7 +76,8 @@ export function useParseOrchestrator() {
         phase: 'cleanup',
         message: 'Cleaning up temporary files...',
         pageCount: renderResult.pageCount,
-        criticalPageCount: classifyResult.data.criticalPageNumbers.length,
+        criticalPageCount: classifyResult.criticalPageCount,
+        detectedForms: classifyResult.detectedForms,
         needsReview: extractResult.needsReview,
       });
 
@@ -97,7 +92,8 @@ export function useParseOrchestrator() {
           ? 'Extraction complete — review recommended'
           : 'Transaction extracted successfully',
         pageCount: renderResult.pageCount,
-        criticalPageCount: classifyResult.data.criticalPageNumbers.length,
+        criticalPageCount: classifyResult.criticalPageCount,
+        detectedForms: classifyResult.detectedForms,
         needsReview: extractResult.needsReview,
       });
 
@@ -155,7 +151,12 @@ async function runRender(
 async function runClassify(
   parseId: string,
   onProgress: (message: string) => void
-): Promise<{ success: boolean; data?: ClassificationResult; error?: string }> {
+): Promise<{ 
+  success: boolean; 
+  criticalPageCount?: number; 
+  detectedForms?: string[];
+  error?: string;
+}> {
   return new Promise((resolve) => {
     const eventSource = new EventSource(`/api/parse/classify/${parseId}`);
 
@@ -169,13 +170,8 @@ async function runClassify(
           eventSource.close();
           resolve({
             success: true,
-            data: {
-              criticalImages: data.criticalImages,
-              metadata: data.metadata,
-              criticalPageNumbers: data.criticalPageNumbers,
-              state: data.state,
-              highDpiPages: data.highDpiPages,
-            },
+            criticalPageCount: data.criticalPageCount,
+            detectedForms: data.detectedForms || [],
           });
         } else if (data.type === 'error') {
           eventSource.close();
@@ -193,15 +189,15 @@ async function runClassify(
   });
 }
 
-async function runExtract(
-  parseId: string,
-  classificationData: ClassificationResult
-): Promise<{ success: boolean; needsReview?: boolean; error?: string }> {
+async function runExtract(parseId: string): Promise<{ 
+  success: boolean; 
+  needsReview?: boolean; 
+  error?: string;
+}> {
   try {
     const res = await fetch(`/api/parse/extract/${parseId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(classificationData),
     });
 
     if (!res.ok) {
