@@ -82,6 +82,7 @@ For each detected form page, also classify:
   • "disclosures" → agency, lead paint, property condition
   • "boilerplate" → dense legal text, arbitration clauses, no filled fields visible
   • "other" → anything else
+- Set contentCategory to 'boilerplate' ONLY for pages with dense, continuous legal paragraphs lacking any form fields, checkboxes, blanks, tables, or signature lines. For these, set hasFilledFields: false and confidence ≤ 70. Prioritize and elevate confidence (≥90) for pages with structured form elements (tables, checkboxes, blanks for data like prices/dates/names), even if unfilled, as these contain critical transaction terms.
 - hasFilledFields: true only if you see actual filled text, checked boxes, or handwriting (not just blank form fields)
 
 Prioritize pages with filled fields — these contain the real terms.
@@ -93,8 +94,10 @@ Always:
 - Set formRevision to the detected revision date if visible (e.g., "6/25", "12/24", "11/2023")
 - Capture the most prominent header/title text in titleSnippet (max 120 characters)
 - Assign the role based purely on this page's content — ignore its position in the document
+- Do not assign 'main_contract' to boilerplate pages without fields; use 'other' or null for pure legalese.
 - Set confidence 0–100 based on how clearly the form is identifiable
 - If no standard form is detected → use null for non-required fields and role "other"
+- Focus on pages that require user input or contain deal-specific customizations. Ignore or downrank walls of text without interactive elements
 
 Never:
 - Identify lending or title company documents as real estate contract forms
