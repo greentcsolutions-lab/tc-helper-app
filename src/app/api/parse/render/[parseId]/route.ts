@@ -1,6 +1,7 @@
 // src/app/api/parse/render/[parseId]/route.ts
 // Version: 1.0.0 - 2025-12-27
 // Renders PDF to dual-DPI images via Nutrient, stores ZIPs in Vercel Blob + DB
+// UPDATED: Deduct user credits after successful rendering (before emitting complete)
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
@@ -115,6 +116,29 @@ export async function GET(
         });
 
         logSuccess("RENDER:3", "ZIP URLs saved to database");
+
+        // NEW: Deduct credits after successful render
+        logStep("RENDER:3.5", "💳 Deducting user credit for this parse...");
+        const user = await db.user.findUnique({
+          where: { clerkId: clerkUserId },
+          select: { id: true, credits: true },
+        });
+
+        if (!user) {
+          throw new Error("User not found for credit deduction");
+        }
+
+        if (user.credits <= 0) {
+          logError("RENDER:3.5", "Insufficient credits, but allowing pipeline to continue");
+          // Note: We allow continuation as per instructions, but log the issue
+          // In production, you might want to add notifications or restrictions here
+        } else {
+          await db.user.update({
+            where: { id: user.id },
+            data: { credits: { decrement: 1 } },
+          });
+          logSuccess("RENDER:3.5", "Credit deducted successfully");
+        }
 
         // STEP 4: SEND COMPLETION EVENT
         logStep("RENDER:4", "📤 Sending completion event...");
