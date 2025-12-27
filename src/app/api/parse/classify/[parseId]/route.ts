@@ -1,6 +1,6 @@
 // src/app/api/parse/classify/[parseId]/route.ts
-// Version: 3.0.0 - 2025-12-27
-// Classifies critical pages via Grok, returns classification results for extraction
+// Version: 2.1.0 - 2025-12-27
+// Classifies critical pages via Grok, stores results in DB (not in-memory cache)
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
@@ -127,25 +127,49 @@ export async function GET(
 
         logSuccess("CLASSIFY:4", `Extracted ${highDpiPages.length} high-DPI pages`);
 
-        // STEP 5: SEND COMPLETION EVENT (includes highDpiPages for router)
-        logStep("CLASSIFY:5", "📤 Sending classification results...");
+        // STEP 5: SAVE TO DATABASE (temporary, deleted after extract)
+        logStep("CLASSIFY:5", "💾 Saving classification results to database...");
+
+        const classificationData = {
+          criticalImages: criticalImages.map(img => ({
+            pageNumber: img.pageNumber,
+            base64: img.base64,
+            label: img.label,
+          })),
+          packageMetadata,
+          criticalPageNumbers,
+          state,
+        };
+
+        await db.parse.update({
+          where: { id: parseId },
+          data: {
+            classificationCache: classificationData,
+            criticalPageNumbers, // Also store as top-level array for queries
+          },
+        });
+
+        logSuccess("CLASSIFY:5", "Classification saved to database");
+
+        // STEP 6: SEND COMPLETION EVENT (no base64 in response)
+        logStep("CLASSIFY:6", "📤 Sending completion event to client...");
 
         const completeEvent = {
           type: "complete",
-          criticalImages,
-          metadata: packageMetadata,
+          criticalPageCount: criticalImages.length,
           criticalPageNumbers,
           state,
-          highDpiPages,
+          detectedForms: packageMetadata.detectedFormCodes,
           message: "Classification complete",
         };
 
-        logDataShape("CLASSIFY:5 Complete Event", completeEvent);
+        logDataShape("CLASSIFY:6 Complete Event", completeEvent);
         emit(controller, completeEvent);
 
         console.log(`\n${"═".repeat(80)}`);
         console.log(`║ ✅ CLASSIFY ROUTE COMPLETED`);
         console.log(`║ ParseID: ${parseId} | Critical Pages: ${criticalPageNumbers.length}`);
+        console.log(`║ Results saved to database (no base64 sent to client)`);
         console.log(`${"═".repeat(80)}\n`);
 
         controller.close();

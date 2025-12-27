@@ -94,6 +94,9 @@ model Parse {
   // ============================================================================
   criticalPageNumbers  Int[]     @default([])   // Pages used for extraction
   pageCount            Int?                     // Total pages in PDF
+  
+  // TEMPORARY: Classification results (deleted after extraction)
+  classificationCache  Json?     // { criticalImages, packageMetadata } - deleted after extract
 
   // ============================================================================
   // UNIVERSAL CORE FIELDS (top-level for fast queries)
