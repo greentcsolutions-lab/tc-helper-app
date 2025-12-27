@@ -15,62 +15,65 @@ export function mergeDetectedPages(
   return allGrokPages.filter((p): p is GrokPageResult => p !== null);
 }
 
-// UPDATED: Priority scoring — boost only critical types
+// UPDATED: Priority scoring — signatures and broker_info now high priority
 const CATEGORY_PRIORITY: Record<string, number> = {
   core_terms: 10,
-  counter_or_addendum: 9,
+  counter_or_addendum: 9,    // overrides are king
   contingencies: 8,
   financing_details: 7,
-  signatures: 9,
-  broker_info: 9,
-  disclosures: 0,  // Force low
-  boilerplate: 0,
-  other: 0,
+  signatures: 9,             // BOOSTED — acceptance, effective date, always needed
+  broker_info: 9,            // NEW + BOOSTED — agency contacts critical for workflow
+  disclosures: 3,
+  boilerplate: 1,
+  other: 2,
 };
 
-const EXCLUDE_TITLE_PATTERNS = [/Disclosure|Advisory|Questionnaire|Notice|Statement|Guide/i];  // Matches "Seller's Disclosure", etc.
-
 export function getCriticalPageNumbers(detectedPages: GrokPageResult[]): number[] {
+  // Score each detected page
   const scored = detectedPages.map(page => {
-    let score = (CATEGORY_PRIORITY[page.contentCategory || 'other'] || 0) +
-                (page.hasFilledFields ? 5 : 0) +
-                (page.confidence ?? 0) / 20;
+    let score =
+      (CATEGORY_PRIORITY[page.contentCategory || 'other'] || 0) +
+      (page.hasFilledFields ? 5 : 0) +   // massive boost for actual filled data
+      (page.confidence ?? 0) / 20;       // minor confidence tie-breaker
 
-    // NEW: Strict exclusion for non-critical titles (override everything)
-    const isExcluded = EXCLUDE_TITLE_PATTERNS.some(pat => pat.test(page.titleSnippet || ''));
-    if (isExcluded || page.role === 'disclosure' || page.contentCategory === 'boilerplate') {
-      score = 0;  // Force omit, even if filled/high confidence
+    // NEW: Always exclude disclosures and boilerplate (force score to 0)
+    if (page.contentCategory === 'disclosures' || page.contentCategory === 'boilerplate') {
+      score = 0;
     }
 
-    return { page, score };
+    return {
+      page,
+      score
+    };
   });
 
+  // Sort highest score first
   scored.sort((a, b) => b.score - a.score);
 
-  // UPDATED: Force-includes ONLY for critical types
+  // Always force-include any counter/addendum, signatures, or broker_info pages
   const highPriority = scored.filter(s => 
-    s.page.role === 'main_contract' ||
-    s.page.role === 'counter_offer' ||
-    s.page.role === 'addendum' ||
     s.page.contentCategory === 'counter_or_addendum' ||
     s.page.contentCategory === 'signatures' ||
     s.page.contentCategory === 'broker_info'
   );
-
-  // TIGHTEN: Cap non-priority at 6 (focus on essentials; avg critical <10)
   const topNonPriority = scored
-    .filter(s => s.score > 0 && !highPriority.includes(s))  // Exclude zeros
-    .slice(0, 6);
+    .filter(s => 
+      s.page.contentCategory !== 'counter_or_addendum' &&
+      s.page.contentCategory !== 'signatures' &&
+      s.page.contentCategory !== 'broker_info' &&
+      s.score > 0  // Exclude any forced 0 scores
+    )
+    .slice(0, 10); // tighter cap now that high-priority are force-included
 
-  // Combine, dedupe, sort by PDF order
+  // Combine, dedupe, and sort by PDF order
   const selectedPages = Array.from(
     new Set([
       ...highPriority.map(s => s.page.pdfPage),
       ...topNonPriority.map(s => s.page.pdfPage)
     ])
-  ).sort((a, b) => a - b);
+  );
 
-  return selectedPages;
+  return selectedPages.sort((a, b) => a - b);
 }
 
 export function buildUniversalPageLabels(
