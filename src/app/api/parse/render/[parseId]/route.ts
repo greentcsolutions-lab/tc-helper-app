@@ -2,12 +2,13 @@
 // Version: 1.0.0 - 2025-12-27
 // Renders PDF to dual-DPI images via Nutrient, stores ZIPs in Vercel Blob + DB
 // UPDATED: Deduct user credits after successful rendering (before emitting complete)
+// SIMPLIFIED: Logging minimized to success states and errors only
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
 import { renderPdfParallel } from "@/lib/pdf/renderer";
-import { logDataShape, logStep, logSuccess, logError } from "@/lib/debug/parse-logger";
+import { logSuccess, logError } from "@/lib/debug/parse-logger";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -25,18 +26,10 @@ export async function GET(
 
   const { parseId } = await params;
 
-  console.log(`\n${"═".repeat(80)}`);
-  console.log(`║ 🎨 RENDER ROUTE STARTED`);
-  console.log(`║ ParseID: ${parseId}`);
-  console.log(`║ User: ${clerkUserId}`);
-  console.log(`${"═".repeat(80)}\n`);
-
   const stream = new ReadableStream({
     async start(controller) {
       try {
         // STEP 1: FETCH PARSE FROM DB
-        logStep("RENDER:1", "🔍 Fetching parse from database...");
-
         const parse = await db.parse.findUnique({
           where: { id: parseId },
           select: {
@@ -48,8 +41,6 @@ export async function GET(
             user: { select: { clerkId: true } },
           },
         });
-
-        logDataShape("RENDER:1 Database Record", parse);
 
         if (!parse) {
           logError("RENDER:1", "Parse not found in database");
@@ -88,8 +79,6 @@ export async function GET(
         });
 
         // STEP 2: RENDER PDF (PARALLEL DUAL-DPI)
-        logStep("RENDER:2", "🎨 Rendering PDF pages in parallel (Nutrient + Vercel Blob)...");
-
         const renderResult = await renderPdfParallel(parse.pdfBuffer);
 
         logSuccess("RENDER:2", `Rendered ${renderResult.pageCount} pages → ZIPs uploaded`);
@@ -101,8 +90,6 @@ export async function GET(
         });
 
         // STEP 3: SAVE ZIP URLs TO DB (TEMPORARY STORAGE)
-        logStep("RENDER:3", "💾 Saving ZIP URLs to database (temporary)...");
-
         await db.parse.update({
           where: { id: parseId },
           data: {
@@ -118,7 +105,6 @@ export async function GET(
         logSuccess("RENDER:3", "ZIP URLs saved to database");
 
         // NEW: Deduct credits after successful render
-        logStep("RENDER:3.5", "💳 Deducting user credit for this parse...");
         const user = await db.user.findUnique({
           where: { clerkId: clerkUserId },
           select: { id: true, credits: true },
@@ -141,29 +127,17 @@ export async function GET(
         }
 
         // STEP 4: SEND COMPLETION EVENT
-        logStep("RENDER:4", "📤 Sending completion event...");
-
         const completeEvent = {
           type: "complete",
           pageCount: renderResult.pageCount,
           message: "Rendering complete",
         };
 
-        logDataShape("RENDER:4 Complete Event", completeEvent);
         emit(controller, completeEvent);
-
-        console.log(`\n${"═".repeat(80)}`);
-        console.log(`║ ✅ RENDER ROUTE COMPLETED`);
-        console.log(`║ ParseID: ${parseId} | Pages: ${renderResult.pageCount}`);
-        console.log(`${"═".repeat(80)}\n`);
 
         controller.close();
       } catch (error: any) {
-        console.error(`\n${"═".repeat(80)}`);
-        console.error(`║ ❌ RENDER ROUTE FAILED`);
-        console.error(`║ ParseID: ${parseId}`);
-        console.error(`${"═".repeat(80)}`);
-        console.error(`\n[ERROR] ${error.message}`);
+        console.error(`[ERROR] ${error.message}`);
         console.error(`[ERROR] Stack:`, error.stack);
 
         // Update DB with error status
@@ -182,7 +156,6 @@ export async function GET(
           message: error.message || "Rendering failed",
         });
 
-        console.error(`${"═".repeat(80)}\n`);
         controller.close();
       }
     },

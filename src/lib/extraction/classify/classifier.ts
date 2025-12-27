@@ -1,6 +1,7 @@
 // src/lib/extraction/classify/classifier.ts
-// Version: 6.2.0 - 2025-12-24
+// Version: 6.3.0 - 2025-12-27
 // ENHANCED: Deep debugging at every classification step
+// SIMPLIFIED: Reduced logging to summaries, samples, success states and errors; added critical pages list log
 
 import { buildClassifierPrompt } from '../prompts';
 import {
@@ -17,8 +18,6 @@ import type {
   LabeledCriticalImage 
 } from '../../../types/classification';
 
-console.log('[classifier:init] XAI_API_KEY present:', !!process.env.XAI_API_KEY);
-
 function logDataShape(label: string, data: any) {
   console.log(`\n┌─── ${label} ${"─".repeat(Math.max(0, 60 - label.length))}`);
   
@@ -29,10 +28,14 @@ function logDataShape(label: string, data: any) {
   } else if (Array.isArray(data)) {
     console.log(`│ Array[${data.length}]`);
     if (data.length > 0) {
-      console.log(`│ Sample item:`, JSON.stringify(data[0], null, 2).substring(0, 150));
+      console.log(`│ Sample:`, JSON.stringify(data[0], null, 2).substring(0, 150));
     }
   } else if (typeof data === 'object') {
     console.log(`│ Object keys: [${Object.keys(data).join(', ')}]`);
+    Object.entries(data).slice(0, 10).forEach(([key, value]) => {
+      const valueType = Array.isArray(value) ? `Array(${value.length})` : typeof value;
+      console.log(`│   ${key}: ${valueType}`);
+    });
   } else {
     console.log(`│ ${typeof data}: ${String(data).substring(0, 100)}`);
   }
@@ -54,14 +57,7 @@ async function classifyBatch(
   const start = batch[0].pageNumber;
   const end = batch[batch.length - 1].pageNumber;
 
-  console.log(`\n${"═".repeat(80)}`);
-  console.log(`║ BATCH ${batchIndex + 1}/${totalBatches}: Pages ${start}–${end}`);
-  console.log(`${"═".repeat(80)}`);
-
-  console.log(`[batch${batchIndex + 1}:input] Pages in batch: ${batch.length}`);
-  batch.forEach((page, idx) => {
-    console.log(`[batch${batchIndex + 1}:input]   ${idx + 1}. Page ${page.pageNumber} - base64 length: ${page.base64.length}`);
-  });
+  console.log(`\n[batch${batchIndex + 1}] Processing pages ${start}–${end} (${batch.length} pages)`);
 
   const batchPrompt = buildClassifierPrompt(start, end, batch.length);
   console.log(`[batch${batchIndex + 1}:prompt] Prompt length: ${batchPrompt.length} chars`);
@@ -118,7 +114,6 @@ async function classifyBatch(
 
     let json: GrokClassifierOutput;
     try {
-      // Try multiple JSON extraction strategies
       let parsed = null;
       
       let depth = 0;
@@ -155,8 +150,6 @@ async function classifyBatch(
       
       json = parsed;
 
-      logDataShape(`Batch ${batchIndex + 1} Parsed JSON`, json);
-
       if (!json.pages || !Array.isArray(json.pages)) {
         console.error(`[batch${batchIndex + 1}:validate] ❌ Missing or invalid pages array`);
         console.error(`[batch${batchIndex + 1}:validate] Parsed object:`, JSON.stringify(json, null, 2).substring(0, 500));
@@ -165,24 +158,11 @@ async function classifyBatch(
 
       const detectedCount = json.pages.filter((p) => p !== null).length;
       console.log(`[batch${batchIndex + 1}:validate] ✅ Schema valid`);
-      console.log(`[batch${batchIndex + 1}:validate] Pages array length: ${json.pages.length}`);
-      console.log(`[batch${batchIndex + 1}:validate] Non-null pages: ${detectedCount}`);
-      
-      // Log each detected page
-      json.pages.forEach((page, idx) => {
-        if (page !== null) {
-          console.log(`[batch${batchIndex + 1}:page${idx + 1}]`, {
-            pdfPage: page.pdfPage,
-            formCode: page.formCode,
-            role: page.role,
-            contentCategory: page.contentCategory,
-            hasFilledFields: page.hasFilledFields,
-            confidence: page.confidence,
-          });
-        } else {
-          console.log(`[batch${batchIndex + 1}:page${idx + 1}] null (no form detected)`);
-        }
-      });
+      console.log(`[batch${batchIndex + 1}:summary] Detected ${detectedCount} out of ${json.pages.length} pages`);
+
+      if (batchIndex === 0 && json.pages[0] !== null) {
+        console.log(`\n[batch${batchIndex + 1}:sample] Sample first page:\n${JSON.stringify(json.pages[0], null, 2)}`);
+      }
 
     } catch (err: any) {
       console.error(`[batch${batchIndex + 1}:parse] ❌ JSON parse/validation failed:`, err.message);
@@ -210,26 +190,19 @@ export async function classifyCriticalPages(
   criticalPageNumbers: number[];
   packageMetadata: ReturnType<typeof extractPackageMetadata>;
 }> {
-  console.log(`\n${"═".repeat(80)}`);
-  console.log(`║ 🔍 CLASSIFIER STARTED`);
-  console.log(`${"═".repeat(80)}`);
+  console.log(`\n[classifier] Starting classification for ${totalPages} pages`);
 
   if (!pages?.length) {
     console.error(`[classifier] ❌ Invalid pages array`);
     throw new Error('classifyCriticalPages received invalid pages array');
   }
 
-  logDataShape("Input Pages Array", pages);
-  console.log(`[classifier:input] Total pages: ${totalPages}`);
   console.log(`[classifier:input] Pages array length: ${pages.length}`);
 
   const BATCH_SIZE = 15;
   const batches = chunk(pages, BATCH_SIZE);
 
-  console.log(`[classifier:batch] Creating ${batches.length} batches of ≤${BATCH_SIZE} pages`);
-  batches.forEach((batch, idx) => {
-    console.log(`[classifier:batch]   Batch ${idx + 1}: ${batch.length} pages (${batch[0].pageNumber}–${batch[batch.length - 1].pageNumber})`);
-  });
+  console.log(`[classifier:batch] Created ${batches.length} batches`);
 
   const startTime = Date.now();
   console.log(`[classifier:grok] Starting parallel Grok requests...`);
@@ -239,9 +212,8 @@ export async function classifyCriticalPages(
   );
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-  console.log(`[classifier:grok] ✅ All batches complete in ${elapsed}s`);
+  console.log(`[classifier:grok] All batches complete in ${elapsed}s`);
 
-  // Log result status
   results.forEach((result, idx) => {
     if (result.status === 'fulfilled') {
       console.log(`[classifier:results] Batch ${idx + 1}: ${result.value ? '✅ success' : '❌ null result'}`);
@@ -271,7 +243,7 @@ export async function classifyCriticalPages(
 
   validResults.forEach(({ batchStartPage, result }) => {
     console.log(`[classifier:merge] Processing batch starting at page ${batchStartPage}`);
-    
+
     result.pages.forEach((page, indexInBatch) => {
       const actualPdfPage = batchStartPage + indexInBatch;
 
@@ -286,11 +258,7 @@ export async function classifyCriticalPages(
         }
 
         allGrokPages[actualPdfPage - 1] = correctedPage;
-        console.log(`[classifier:merge]   Stored page ${actualPdfPage} (index ${actualPdfPage - 1})`);
-      } else {
-        allGrokPages[actualPdfPage - 1] = null;
-        console.log(`[classifier:merge]   Page ${actualPdfPage} is null`);
-      }
+      } 
     });
   });
 
@@ -302,32 +270,25 @@ export async function classifyCriticalPages(
   console.log(`[classifier:post] Running post-processing...`);
   
   const detectedPages = mergeDetectedPages(allGrokPages);
-  logDataShape("Detected Pages (after merge)", detectedPages);
   console.log(`[classifier:post] Detected pages: ${detectedPages.length}`);
 
   const criticalPageNumbers = getCriticalPageNumbers(detectedPages);
-  logDataShape("Critical Page Numbers", criticalPageNumbers);
   console.log(`[classifier:post] Critical pages selected: ${criticalPageNumbers.length}`);
+  console.log(`[classifier:post] Critical pages: ${criticalPageNumbers.join(', ')}`);
 
   const labelMap = buildUniversalPageLabels(detectedPages, criticalPageNumbers);
   console.log(`[classifier:post] Labels built for ${labelMap.size} pages`);
 
   const criticalImages = buildLabeledCriticalImages(pages, criticalPageNumbers, labelMap);
-  logDataShape("Critical Images (labeled)", criticalImages);
   console.log(`[classifier:post] Critical images ready: ${criticalImages.length}`);
 
   const packageMetadata = extractPackageMetadata(detectedPages);
-  logDataShape("Package Metadata", packageMetadata);
 
-  console.log(`\n${"═".repeat(80)}`);
-  console.log(`║ ✅ CLASSIFICATION COMPLETE`);
-  console.log(`${"═".repeat(80)}`);
+  console.log(`\n[classifier] ✅ Classification complete`);
   console.log(`   Form codes: ${packageMetadata.detectedFormCodes.join(', ') || 'none'}`);
   console.log(`   Pages with footers: ${packageMetadata.totalDetectedPages}`);
   console.log(`   Multiple forms: ${packageMetadata.hasMultipleForms}`);
   console.log(`   Critical pages: ${criticalPageNumbers.length}`);
-  console.log(`   Labeled images: ${criticalImages.length}`);
-  console.log(`${"═".repeat(80)}\n`);
 
   return {
     state: 'Unknown',

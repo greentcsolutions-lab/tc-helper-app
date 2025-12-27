@@ -1,13 +1,14 @@
 // src/app/api/parse/classify/[parseId]/route.ts
 // Version: 2.1.1-db-only - 2025-12-27
 // Classifies critical pages via Grok, stores results ONLY in DB (no in-memory cache)
+// SIMPLIFIED: Logging minimized to success states and errors only
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
 import { downloadAndExtractZip } from "@/lib/pdf/renderer";
 import { classifyCriticalPages } from "@/lib/extraction/classify/classifier";
-import { logDataShape, logStep, logSuccess, logError } from "@/lib/debug/parse-logger";
+import { logStep, logSuccess, logError } from "@/lib/debug/parse-logger";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -24,12 +25,6 @@ export async function GET(
   if (!clerkUserId) return new Response("Unauthorized", { status: 401 });
 
   const { parseId } = await params;
-
-  console.log(`\n${"═".repeat(80)}`);
-  console.log(`║ 🔍 CLASSIFY ROUTE STARTED`);
-  console.log(`║ ParseID: ${parseId}`);
-  console.log(`║ User: ${clerkUserId}`);
-  console.log(`${"═".repeat(80)}\n`);
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -49,8 +44,6 @@ export async function GET(
             user: { select: { clerkId: true } },
           },
         });
-
-        logDataShape("CLASSIFY:1 Database Record", parse);
 
         if (!parse) {
           logError("CLASSIFY:1", "Parse not found");
@@ -111,13 +104,6 @@ export async function GET(
           packageMetadata,
         } = await classifyCriticalPages(lowDpiPages, parse.pageCount);
 
-        logDataShape("CLASSIFY:3 Classification Results", {
-          criticalImagesCount: criticalImages.length,
-          state,
-          criticalPageNumbers,
-          packageMetadata,
-        });
-
         logSuccess("CLASSIFY:3", `Identified ${criticalPageNumbers.length} critical pages`);
 
         // STEP 4: DOWNLOAD HIGH-DPI PAGES
@@ -163,22 +149,11 @@ export async function GET(
           message: "Classification complete",
         };
 
-        logDataShape("CLASSIFY:6 Complete Event", completeEvent);
         emit(controller, completeEvent);
-
-        console.log(`\n${"═".repeat(80)}`);
-        console.log(`║ ✅ CLASSIFY ROUTE COMPLETED`);
-        console.log(`║ ParseID: ${parseId} | Critical Pages: ${criticalPageNumbers.length}`);
-        console.log(`║ Results saved to database only (no in-memory cache)`);
-        console.log(`${"═".repeat(80)}\n`);
 
         controller.close();
       } catch (error: any) {
-        console.error(`\n${"═".repeat(80)}`);
-        console.error(`║ ❌ CLASSIFY ROUTE FAILED`);
-        console.error(`║ ParseID: ${parseId}`);
-        console.error(`${"═".repeat(80)}`);
-        console.error(`\n[ERROR] ${error.message}`);
+        console.error(`[ERROR] ${error.message}`);
         console.error(`[ERROR] Stack:`, error.stack);
 
         await db.parse.update({
@@ -196,7 +171,6 @@ export async function GET(
           message: error.message || "Classification failed",
         });
 
-        console.error(`${"═".repeat(80)}\n`);
         controller.close();
       }
     },
