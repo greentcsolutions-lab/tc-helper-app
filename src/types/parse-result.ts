@@ -1,5 +1,6 @@
 // src/types/parse-result.ts
 // Version: 2.0.0 - 2025-12-24
+// SINGLE SOURCE OF TRUTH FOR ALL PARSE RESULTS TYPES
 // Public ParseResult contract — enriched with full universal extraction fields
 // Preserves all existing fields for backward compatibility during migration
 

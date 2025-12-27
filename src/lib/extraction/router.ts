@@ -1,15 +1,25 @@
 // src/lib/extraction/router.ts
-// Version: 1.1.0 - 2025-12-23 - added universal fallback
-// With safe fallback: if californiaExtractor fails → universalExtractor
+// Version: 2.0.0 - 2025-12-27
+// Pure routing logic: Receives classification results, decides extractor, returns extraction
 
-import { classifyCriticalPages } from './classify/classifier';
 import { californiaExtractor } from './extract/california/index';
 import { universalExtractor } from './extract/universal/index';
 
 import type { LabeledCriticalImage } from '@/types/classification';
 import type { UniversalExtractionResult } from '../../types/extraction';
 
-export interface ExtractionRouteResult {
+export interface RouterInput {
+  criticalImages: LabeledCriticalImage[];
+  packageMetadata: {
+    detectedFormCodes: string[];
+    sampleFooters: string[];
+    totalDetectedPages: number;
+    hasMultipleForms: boolean;
+  };
+  highDpiPages: { pageNumber: number; base64: string }[];
+}
+
+export interface RouterOutput {
   universal: UniversalExtractionResult;
   details: Record<string, any> | null;
   timelineEvents: Array<{
@@ -20,55 +30,63 @@ export interface ExtractionRouteResult {
   }>;
   needsReview: boolean;
   route: 'california' | 'universal' | 'california-fallback-universal';
-  metadata: Awaited<ReturnType<typeof classifyCriticalPages>>;
 }
 
-export async function routeAndExtract(
-  lowDpiPages: { pageNumber: number; base64: string }[],
-  highDpiPages: { pageNumber: number; base64: string }[],
-  totalPages: number
-): Promise<ExtractionRouteResult> {
-  console.log('[router] Starting classification...');
-  const classification = await classifyCriticalPages(lowDpiPages, totalPages);
-  const { criticalImages, packageMetadata } = classification;
+/**
+ * Routes classification results to the appropriate extractor
+ * Does NOT run classification — only receives results and decides strategy
+ */
+export async function route(input: RouterInput): Promise<RouterOutput> {
+  const { criticalImages, packageMetadata, highDpiPages } = input;
   const { detectedFormCodes } = packageMetadata;
 
+  console.log('[router] Received classification results');
   console.log('[router] Detected forms:', detectedFormCodes.join(', ') || 'none');
+  console.log('[router] Critical images:', criticalImages.length);
 
-  // Map to high-DPI images
+  // Map critical images to high-DPI versions
   const highResCriticalImages: LabeledCriticalImage[] = criticalImages.map((crit) => {
     const highRes = highDpiPages.find((p) => p.pageNumber === crit.pageNumber);
-    if (!highRes) throw new Error(`Missing high-DPI for page ${crit.pageNumber}`);
+    if (!highRes) {
+      throw new Error(`Missing high-DPI for page ${crit.pageNumber}`);
+    }
     return { ...crit, base64: highRes.base64 };
   });
 
+  console.log('[router] Mapped to high-DPI images:', highResCriticalImages.length);
+
+  // ROUTING DECISION: Determine which extractor to use
   const californiaFormCodes = ['RPA', 'SCO', 'SMCO', 'BCO', 'ADM', 'PRBS', 'AD', 'ZIP'];
   const isCalifornia = detectedFormCodes.some((code) => californiaFormCodes.includes(code));
-/*
+
+  // ROUTE 1: California-specific extraction (if enabled and detected)
   if (isCalifornia && highResCriticalImages.length > 0) {
-    console.log('[router] Attempting California extractor...');
+    console.log('[router] Routing to California extractor');
+    
+    // NOTE: California extractor currently disabled in your codebase
+    // Uncomment when ready to use:
+    /*
     try {
       const result = await californiaExtractor(highResCriticalImages, packageMetadata);
-      console.log('[router] California extractor succeeded');
+      console.log('[router] California extraction succeeded');
       return {
         universal: result.universal,
         details: result.details ?? null,
         timelineEvents: result.timelineEvents ?? [],
         needsReview: result.needsReview,
         route: 'california',
-        metadata: classification,
       };
     } catch (error: any) {
-      console.error('[router] California extractor failed → falling back to universal', error);
-      // Fall through to universal path
+      console.error('[router] California extractor failed, falling back to universal:', error);
+      // Fall through to universal
     }
+    */
+    
+    console.log('[router] California extractor disabled, using universal fallback');
   }
-*/
-  console.log('[router] California route DISABLED - forcing universal extractor');
 
-
-  // Universal path (either intentional or fallback)
-  console.log('[router] Running universal extractor');
+  // ROUTE 2: Universal extraction (fallback or primary)
+  console.log('[router] Routing to universal extractor');
   const universalResult = await universalExtractor(highResCriticalImages, packageMetadata);
 
   return {
@@ -77,6 +95,11 @@ export async function routeAndExtract(
     timelineEvents: universalResult.timelineEvents,
     needsReview: universalResult.needsReview,
     route: isCalifornia ? 'california-fallback-universal' : 'universal',
-    metadata: classification,
   };
 }
+
+// Future routes can be added here:
+// - texasExtractor (TREC forms)
+// - floridaExtractor (FAR/BAR forms)
+// - nevadaExtractor (NV RPA)
+// etc.

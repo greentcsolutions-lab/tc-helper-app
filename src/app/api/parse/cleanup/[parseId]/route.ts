@@ -1,5 +1,6 @@
 // src/app/api/parse/cleanup/[parseId]/route.ts
-// Deletes critical page ZIP and original PDF buffer after user confirmation
+// Version: 2.0.0 - 2025-12-27
+// Deletes temporary render artifacts (ZIPs) and clears temporary DB fields after extraction
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
@@ -18,56 +19,92 @@ export async function POST(
 
   const { parseId } = await params;
 
+  console.log(`\n${"═".repeat(80)}`);
+  console.log(`║ 🧹 CLEANUP ROUTE STARTED`);
+  console.log(`║ ParseID: ${parseId}`);
+  console.log(`${"═".repeat(80)}\n`);
+
   const parse = await db.parse.findUnique({
     where: { id: parseId },
     select: {
       id: true,
       userId: true,
-      renderZipKey: true,
+      lowResZipKey: true,
+      highResZipKey: true,
       pdfBuffer: true,
+      user: { select: { clerkId: true } },
     },
   });
 
   if (!parse) {
+    console.error(`[cleanup:${parseId}] ❌ Parse not found`);
     return Response.json({ error: "Parse not found" }, { status: 404 });
+  }
+
+  if (parse.user.clerkId !== clerkUserId) {
+    console.error(`[cleanup:${parseId}] ❌ Unauthorized access`);
+    return Response.json({ error: "Unauthorized" }, { status: 403 });
   }
 
   try {
     const cleanupTasks = [];
 
-    // Delete critical page ZIP from Vercel Blob
-    if (parse.renderZipKey) {
+    // Delete low-res ZIP from Vercel Blob
+    if (parse.lowResZipKey) {
       cleanupTasks.push(
-        del(parse.renderZipKey)
-          .then(() => console.log(`[cleanup:${parseId}] Critical page ZIP deleted`))
-          .catch((err) => console.warn(`[cleanup:${parseId}] ZIP delete failed:`, err))
+        del(parse.lowResZipKey)
+          .then(() => console.log(`[cleanup:${parseId}] ✓ Low-res ZIP deleted`))
+          .catch((err) => console.warn(`[cleanup:${parseId}] ⚠️ Low-res ZIP delete failed:`, err))
       );
     }
 
-    // Clear original PDF buffer from database
-    if (parse.pdfBuffer) {
+    // Delete high-res ZIP from Vercel Blob
+    if (parse.highResZipKey) {
       cleanupTasks.push(
-        db.parse.update({
-          where: { id: parseId },
-          data: {
-            pdfBuffer: null,
-            renderZipUrl: null,
-            renderZipKey: null,
-          },
-        })
+        del(parse.highResZipKey)
+          .then(() => console.log(`[cleanup:${parseId}] ✓ High-res ZIP deleted`))
+          .catch((err) => console.warn(`[cleanup:${parseId}] ⚠️ High-res ZIP delete failed:`, err))
       );
     }
+
+    // Clear temporary fields from database
+    cleanupTasks.push(
+      db.parse.update({
+        where: { id: parseId },
+        data: {
+          pdfBuffer: null,
+          lowResZipUrl: null,
+          lowResZipKey: null,
+          highResZipUrl: null,
+          highResZipKey: null,
+          // Keep deprecated fields null too for consistency
+          renderZipUrl: null,
+          renderZipKey: null,
+        },
+      })
+        .then(() => console.log(`[cleanup:${parseId}] ✓ Temporary DB fields cleared`))
+        .catch((err) => console.error(`[cleanup:${parseId}] ❌ DB update failed:`, err))
+    );
 
     await Promise.allSettled(cleanupTasks);
 
-    console.log(`[cleanup:${parseId}] ✓ All temporary files deleted`);
+    console.log(`\n${"═".repeat(80)}`);
+    console.log(`║ ✅ CLEANUP COMPLETE`);
+    console.log(`║ ParseID: ${parseId}`);
+    console.log(`${"═".repeat(80)}\n`);
 
     return Response.json({
       success: true,
-      message: "All temporary files deleted",
+      message: "All temporary files and data deleted",
     });
   } catch (error: any) {
-    console.error(`[cleanup:${parseId}] Failed:`, error);
+    console.error(`\n${"═".repeat(80)}`);
+    console.error(`║ ❌ CLEANUP FAILED`);
+    console.error(`║ ParseID: ${parseId}`);
+    console.error(`${"═".repeat(80)}`);
+    console.error(`[ERROR]`, error.message);
+    console.error(`[ERROR] Stack:`, error.stack);
+
     return Response.json(
       { error: "Cleanup failed", message: error.message },
       { status: 500 }
