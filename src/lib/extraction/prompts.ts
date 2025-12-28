@@ -25,88 +25,29 @@ export function buildClassifierPrompt(
   batchSize: number,
 ): string {
   return `
-You are a document page classifier. You will examine exactly ${batchSize} separate, independent page images from a U.S. real estate transaction packet.
+You are a U.S. real estate document page classifier. Examine ${batchSize} independent page images from a transaction packet.
 
-IMPORTANT: Treat every page as completely isolated. DO NOT maintain any context or assumptions about order, document flow, or relationships between pages. DO NOT try to determine which form came first, what overrides what, or where the "main contract" should appear. Classify each page based solely on its own visible content.
+Treat each page as isolated. Classify based solely on visible content: header/title, footer (code, revision, page X of Y), layout, section headings, and fields.
 
-The images are provided in strict document order:
-- Image 1 = absolute PDF page ${batchStart}
-- Image 2 = absolute PDF page ${batchStart + 1}
+Images in order:
+- Image 1 = PDF page ${batchStart}
 - ...
-- Image ${batchSize} = absolute PDF page ${batchEnd}
+- Image ${batchSize} = PDF page ${batchEnd}
 
-For EACH page independently, identify whether it belongs to a known standard real estate form by examining:
-- Top header / title (this is usually the most reliable indicator of form type)
-- Bottom footer (form code, revision date, "Page X of Y", copyright)
-- Overall layout, section headings, and signature blocks
+For each page:
+- If no standard form detected → null
+- Otherwise, extract metadata matching the schema.
+- state: Two-letter code if detected (e.g., 'CA'); null if unknown.
+- formCode: Short code (e.g., 'RPA', 'TREC 20-16').
+- formRevision: Date if visible (e.g., '6/25').
+- formPage/totalPagesInForm: From footer (e.g., 'Page 3 of 17').
+- role: Best enum match based on content (e.g., 'main_contract' for purchase agreements).
+- titleSnippet: Prominent header text (max 120 chars).
+- confidence: 0–100 based on clarity.
+- contentCategory: Primary type from headings/filled fields (e.g., 'core_terms' for price/address; 'boilerplate' for dense legal text without fields).
+- hasFilledFields: true if visible filled text, checkboxes, or handwriting.
 
-Common indicators (examples only — match any similar pattern nationwide):
-- Title contains "Residential Purchase Agreement", "Purchase and Sale Agreement", "Contract of Sale", "One to Four Family Residential Contract" → role "main_contract"
-- Title contains "Counter Offer", "Buyer Counter", "Seller Counter", "Amendment to Contract" → role "counter_offer" or "addendum"
-- Title contains "Agency Disclosure", "Property Condition Disclosure", "Lead-Based Paint Disclosure" → role "disclosure"
-- Title or section contains "Broker Compensation", "Confirmation of Agency Relationships", "Listing Agent", "Selling Agent" → contentCategory "broker_info"
-- Underwriting reports, loan approvals, appraisals, title reports → role "financing"
-- Cover letters, emails, blank pages, miscellaneous attachments → role "other"
-
-CRITICAL DISTINCTION — LENDER UNDERWRITING REPORTS ARE NOT REAL ESTATE FORMS:
-Pages from lender automated underwriting systems are COMMON attachments in U.S. transaction packets, especially VA loans.
-Typical titles/headers:
-- "DU Underwriting Findings"
-- "Desktop Underwriter Findings"
-- "Underwriting Findings"
-- "Loan Analysis"
-- "Credit and Liabilities"
-- "Risk/Eligibility"
-- "Verification Messages/Approval Conditions"
-
-These pages contain numbered conditions, credit/income analysis, ratios, residual income, and lender recommendations.
-They are produced by Fannie Mae Desktop Underwriter (DU), Freddie Mac LP, or similar AUS tools.
-
-RULE: If the page matches ANY of the above patterns → 
-- Set role = "financing" 
-- Set formCode = "" (empty string)
-- Set confidence ≤ 50
-- DO NOT treat as main_contract, counter_offer, addendum, or disclosure
-- These pages are lender-side only and contain NO purchase agreement terms
-
-Similar rule for title reports, appraisals, credit reports, bank statements → role = "financing" or "other", empty formCode.
-
-For each detected form page, also classify:
-- contentCategory: Choose the BEST single category based on visible section headings and filled content:
-  • "core_terms" → property address, buyer/seller names, purchase price, earnest money, closing date
-  • "contingencies" → inspection, appraisal, loan, or sale contingency periods/days
-  • "financing_details" → loan type (Conventional/FHA/VA), loan amount, all-cash option
-  • "signatures" → signature blocks, acceptance dates, effective date (usually near end of main contract)
-  • "broker_info" → listing/selling brokerage names, agent names, phone/email, compensation confirmation (typically on final page of main RPA)
-  • "counter_or_addendum" → explicit changes to price, dates, contingencies (look for "Counter Offer", "Amendment")
-  • "disclosures" → agency, lead paint, property condition
-  • "boilerplate" → dense legal text, arbitration clauses, no filled fields visible
-  • "other" → anything else
-- Set contentCategory to 'boilerplate' ONLY for pages with dense, continuous legal paragraphs lacking any form fields, checkboxes, blanks, tables, or signature lines. For these, set hasFilledFields: false and confidence ≤ 70. Prioritize and elevate confidence (≥90) for pages with structured form elements (tables, checkboxes, blanks for data like prices/dates/names), even if unfilled, as these contain critical transaction terms.
-- hasFilledFields: true only if you see actual filled text, checked boxes, or handwriting (not just blank form fields)
-
-Prioritize pages with filled fields — these contain the real terms.
-
-Always:
-- Use the exact batch position as pdfPage (1st image = page ${batchStart}, etc.)
-- Extract formPage and totalPagesInForm ONLY from footer text like "Page X of Y"
-- Set formCode to the detected abbreviation or short code (e.g., "RPA", "TREC 20-16", "FAR/BAR-6", "AD") — use any string you see or leave empty if none
-- Set formRevision to the detected revision date if visible (e.g., "6/25", "12/24", "11/2023")
-- Capture the most prominent header/title text in titleSnippet (max 120 characters)
-- Assign the role based purely on this page's content — ignore its position in the document
-- Do not assign 'main_contract' to boilerplate pages without fields; use 'other' or null for pure legalese.
-- Set confidence 0–100 based on how clearly the form is identifiable
-- If no standard form is detected → use null for non-required fields and role "other"
-- Focus on pages that require user input or contain deal-specific customizations. Ignore or downrank walls of text without interactive elements
-
-Never:
-- Identify lending or title company documents as real estate contract forms
-- Assume any page is part of a multi-page form unless explicitly indicated in footer
-- Infer relationships between pages or try to group them into sets
-- Hallucinate form codes, revision dates, or page numbers that aren't clearly visible  
-- Assign a real estate form code (RPA, SCO, AD, etc.) to lender underwriting reports, credit reports, or bank statements
-
-Return ONLY valid JSON exactly matching the schema below. No explanations, no markdown.
+Return ONLY valid JSON matching this schema exactly. No other text.
 
 ${classifierSchemaString}
 `.trim();
