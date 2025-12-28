@@ -47,6 +47,10 @@ For each page:
 - contentCategory: Primary type from headings/filled fields (e.g., 'core_terms' for price/address; 'boilerplate' for dense legal text without fields).
 - hasFilledFields: true if visible filled text, checkboxes, or handwriting.
 
+Special rules:
+- If page is mostly blank with text like "intentionally left blank", "this page left blank", or similar → contentCategory: "boilerplate", confidence ≤ 50, hasFilledFields: false
+- If page is dense paragraph text with no visible signature lines, date lines labeled "Date", or signature blocks → contentCategory: "boilerplate", hasFilledFields: false, confidence ≤ 70
+
 Return ONLY valid JSON matching this schema exactly. No other text.
 
 ${classifierSchemaString}
