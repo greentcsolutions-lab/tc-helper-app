@@ -1,7 +1,7 @@
 // src/lib/extraction/classify/post-processor.ts
-// Version: 2.5.0-universal-legalese-filter - 2025-12-27
-// ENHANCED: Intelligent, form-agnostic filtering of text-dense legalese pages
-//           No reliance on specific form structure or state-specific knowledge
+// Version: 2.6.0-universal-dense-legalese-demote - 2025-12-27
+// ENHANCED: Stronger demotion of dense legalese pages (even in early main_contract pages)
+//           Only early pages with actual filled fields qualify for the boost
 
 import type { LabeledCriticalImage, GrokPageResult } from '../../../types/classification';
 
@@ -15,7 +15,6 @@ export function mergeDetectedPages(
   return allGrokPages.filter((p): p is GrokPageResult => p !== null);
 }
 
-// Category base priorities (unchanged)
 const CATEGORY_PRIORITY: Record<string, number> = {
   core_terms: 10,
   counter_or_addendum: 9,
@@ -35,17 +34,28 @@ export function getCriticalPageNumbers(detectedPages: GrokPageResult[]): number[
       (page.hasFilledFields ? 5 : 0) +
       (page.confidence ?? 0) / 20;
 
-    // Hard exclude known low-value categories
+    // Hard excludes
     if (page.contentCategory === 'disclosures' || page.contentCategory === 'boilerplate') {
       score = 0;
     }
 
-    // Explicit blank page exclusion (titleSnippet check)
     if (page.titleSnippet && /blank|intentionally left blank|this page left blank/i.test(page.titleSnippet)) {
       score = 0;
     }
 
-    // UNIVERSAL EARLY-PAGE BOOST (already proven safe across states)
+    // Title-based advisory/legalese guardrail
+    const looksLikeLegaleseTitle =
+      page.titleSnippet &&
+      /(advisory|disclosure|notice|remedies|arbitration|mediation|attorney fees|risk|warning|important)/i.test(
+        page.titleSnippet
+      );
+
+    if (looksLikeLegaleseTitle) {
+      score = Math.min(score, CATEGORY_PRIORITY[page.contentCategory || 'other'] || 2);
+    }
+
+    // UNIVERSAL EARLY-PAGE BOOST — NOW REQUIRES FILLED FIELDS
+    // All major U.S. contracts put core terms in first ~5 pages, but last 1–2 are often legalese
     const isHighValueRole =
       page.role === 'main_contract' ||
       page.role === 'counter_offer' ||
@@ -53,33 +63,31 @@ export function getCriticalPageNumbers(detectedPages: GrokPageResult[]): number[
       page.role === 'local_addendum';
 
     const formPage = page.formPage ?? null;
-    if (isHighValueRole && formPage !== null && formPage <= 5 && page.hasFilledFields) {
-      score += 5;
+    if (
+      isHighValueRole &&
+      formPage !== null &&
+      formPage <= 5 &&
+      page.hasFilledFields &&               // ← CRITICAL: must have visible filled data
+      !looksLikeLegaleseTitle               // ← don't boost pure advisory pages
+    ) {
+      score += 5; // Keep the boost strong for true core-term pages (price, financing, contingencies)
     }
 
-    // NEW: INTELLIGENT LEGALESE FILTER
-    // If Grok already tagged it as boilerplate → already score=0 above
-    // Additional heuristic: downrank pages that are likely pure legalese
-    // even if Grok gave them a higher category
-    const looksLikeLegalese =
-      // No filled fields (most reliable signal)
-      !page.hasFilledFields ||
-      // Title contains common advisory/legalese words
-      (page.titleSnippet &&
-        /(advisory|disclosure|notice|remedies|arbitration|mediation|attorney fees|risk|warning|important)/i.test(
-          page.titleSnippet
-        ));
+    // NEW: SEVERE DEMOTION FOR DENSE LEGALESE (even in main_contract)
+    // If no filled fields AND not a force-include category → treat as near-worthless
+    const isForceIncludeCategory =
+      page.contentCategory === 'counter_or_addendum' ||
+      page.contentCategory === 'signatures' ||
+      page.contentCategory === 'broker_info';
 
-    if (looksLikeLegalese) {
-      // Don't completely kill it (might be a signed disclosure we need)
-      // Just remove the filled-field boost and cap base score
-      score = Math.min(score, CATEGORY_PRIORITY[page.contentCategory || 'other'] || 2);
+    if (!page.hasFilledFields && !isForceIncludeCategory) {
+      // Cap at minimal score — effectively excludes unless very high confidence pushes it in
+      score = Math.min(score, 3);
     }
 
     return { page, score };
   });
 
-  // Sort descending
   scored.sort((a, b) => b.score - a.score);
 
   // Force-include absolute must-haves
@@ -90,19 +98,18 @@ export function getCriticalPageNumbers(detectedPages: GrokPageResult[]): number[
       s.page.contentCategory === 'broker_info'
   );
 
-  // Non-priority: only filled pages, tighter cap
+  // Non-priority: require filled fields, tight cap
   const topNonPriority = scored
     .filter(
       s =>
-        s.page.hasFilledFields && // ← KEY: require actual filled data
+        s.page.hasFilledFields &&
         s.page.contentCategory !== 'counter_or_addendum' &&
         s.page.contentCategory !== 'signatures' &&
         s.page.contentCategory !== 'broker_info' &&
         s.score > 0
     )
-    .slice(0, 8); // Reduced from 10 → expect 12–15 total critical pages
+    .slice(0, 8);
 
-  // Combine + dedupe + sort by PDF order
   const selectedPages = Array.from(
     new Set([
       ...highPriority.map(s => s.page.pdfPage),
@@ -113,7 +120,7 @@ export function getCriticalPageNumbers(detectedPages: GrokPageResult[]): number[
   return selectedPages.sort((a, b) => a - b);
 }
 
-// Rest of file unchanged
+// Rest of file unchanged (labels, images, metadata)
 export function buildUniversalPageLabels(
   detectedPages: GrokPageResult[],
   criticalPageNumbers: number[]
