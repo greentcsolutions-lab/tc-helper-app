@@ -1,7 +1,7 @@
 // src/lib/extraction/classify/post-processor.ts
-// Version: 2.3.0-broker-signatures-boost - 2025-12-24
-// Enhanced: Boosted priority for signatures and broker_info (critical for agency contacts)
-//           Aligns with current C.A.R. RPA 6/25 format (17-page form)
+// Version: 2.4.0-universal-early-pages - 2025-12-27
+// ENHANCED: Universal boost for early pages (≤5) of main_contract, counter_offer, or addendum
+//           Keeps logic state-agnostic while ensuring core terms are captured across all major U.S. forms
 
 import type { LabeledCriticalImage, GrokPageResult } from '../../../types/classification';
 
@@ -15,14 +15,14 @@ export function mergeDetectedPages(
   return allGrokPages.filter((p): p is GrokPageResult => p !== null);
 }
 
-// UPDATED: Priority scoring — signatures and broker_info now high priority
+// Priority scoring — signatures, broker_info, and overrides remain highest
 const CATEGORY_PRIORITY: Record<string, number> = {
   core_terms: 10,
   counter_or_addendum: 9,    // overrides are king
   contingencies: 8,
   financing_details: 7,
-  signatures: 9,             // BOOSTED — acceptance, effective date, always needed
-  broker_info: 9,            // NEW + BOOSTED — agency contacts critical for workflow
+  signatures: 9,             // acceptance, effective date
+  broker_info: 9,            // agency contacts critical
   disclosures: 3,
   boilerplate: 1,
   other: 2,
@@ -36,9 +36,22 @@ export function getCriticalPageNumbers(detectedPages: GrokPageResult[]): number[
       (page.hasFilledFields ? 5 : 0) +   // massive boost for actual filled data
       (page.confidence ?? 0) / 20;       // minor confidence tie-breaker
 
-    // NEW: Always exclude disclosures and boilerplate (force score to 0)
+    // Exclude disclosures and boilerplate entirely
     if (page.contentCategory === 'disclosures' || page.contentCategory === 'boilerplate') {
       score = 0;
+    }
+
+    // NEW UNIVERSAL RULE: Boost early pages (formPage ≤ 5) of high-value roles
+    // All major U.S. residential contracts place defining terms in first ~5 pages
+    const isHighValueRole =
+      page.role === 'main_contract' ||
+      page.role === 'counter_offer' ||
+      page.role === 'addendum' ||
+      page.role === 'local_addendum';
+
+    const formPage = page.formPage ?? null;
+    if (isHighValueRole && formPage !== null && formPage <= 5 && page.hasFilledFields) {
+      score += 5; // Strong boost to ensure core terms (price, financing, contingencies) are included
     }
 
     return {
@@ -50,20 +63,22 @@ export function getCriticalPageNumbers(detectedPages: GrokPageResult[]): number[
   // Sort highest score first
   scored.sort((a, b) => b.score - a.score);
 
-  // Always force-include any counter/addendum, signatures, or broker_info pages
+  // Force-include critical categories
   const highPriority = scored.filter(s => 
     s.page.contentCategory === 'counter_or_addendum' ||
     s.page.contentCategory === 'signatures' ||
     s.page.contentCategory === 'broker_info'
   );
+
+  // Add top non-priority pages (tighter cap now that high-priority + early pages are boosted)
   const topNonPriority = scored
     .filter(s => 
       s.page.contentCategory !== 'counter_or_addendum' &&
       s.page.contentCategory !== 'signatures' &&
       s.page.contentCategory !== 'broker_info' &&
-      s.score > 0  // Exclude any forced 0 scores
+      s.score > 0
     )
-    .slice(0, 10); // tighter cap now that high-priority are force-included
+    .slice(0, 10);
 
   // Combine, dedupe, and sort by PDF order
   const selectedPages = Array.from(
@@ -93,11 +108,11 @@ export function buildUniversalPageLabels(
 
     labelMap.set(
       page.pdfPage,
-      `${code} PAGE ${formPage} – ${categoryDisplay}${filled}`
+      `${code} PAGE ${formPage} – \( {categoryDisplay} \){filled}`
     );
   });
 
-  // Fallback for any undetected critical pages (should be rare now)
+  // Fallback for any undetected critical pages
   criticalPageNumbers.forEach((pdfPage) => {
     if (!labelMap.has(pdfPage)) {
       labelMap.set(pdfPage, `PAGE ${pdfPage} – POSSIBLE KEY TERMS`);
@@ -107,7 +122,6 @@ export function buildUniversalPageLabels(
   return labelMap;
 }
 
-// Rest of file unchanged: buildLabeledCriticalImages, extractPackageMetadata
 export function buildLabeledCriticalImages(
   pages: { pageNumber: number; base64: string }[],
   criticalPageNumbers: number[],
