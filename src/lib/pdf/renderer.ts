@@ -38,7 +38,7 @@ export async function renderPdfParallel(
   console.log("━".repeat(80));
   console.log(`[Nutrient:Parallel] PDF size: ${(buffer.length / 1024).toFixed(2)} KB`);
   console.log(`[Nutrient:Parallel] Total pages: ${totalPages ?? "auto-detect"}`);
-  console.log(`[Nutrient:Parallel] Strategy: Flatten → 150 DPI (classify) + 300 DPI (extract) in parallel`);
+  console.log(`[Nutrient:Parallel] Strategy: Flatten → 180 DPI (classify) + 300 DPI (extract) in parallel`);
   console.log("━".repeat(80) + "\n");
 
   // Validate PDF
@@ -48,7 +48,7 @@ export async function renderPdfParallel(
 
   // Execute both renders in parallel
   const [lowResResult, highResResult] = await Promise.all([
-    renderSingleDpi(buffer, 150, totalPages ?? undefined, "classify"),
+    renderSingleDpi(buffer, 180, totalPages ?? undefined, "classify"),
     renderSingleDpi(buffer, 300, totalPages ?? undefined, "extract"),
   ]);
 
