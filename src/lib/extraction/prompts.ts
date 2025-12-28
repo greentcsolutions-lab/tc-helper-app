@@ -50,6 +50,8 @@ For each page:
 Special rules:
 - If page is mostly blank with text like "intentionally left blank", "this page left blank", or similar → contentCategory: "boilerplate", confidence ≤ 50, hasFilledFields: false
 - If page is dense paragraph text with no visible signature lines, date lines labeled "Date", or signature blocks → contentCategory: "boilerplate", hasFilledFields: false, confidence ≤ 70
+- formRevision: Extract exactly as visible; if unclear or ambiguous → null
+- Prioritize footer for formCode, formRevision, formPage/totalPagesInForm. Read carefully—common formats: "REVISED 12/25", "6/25", "PAGE 3 OF 17".
 
 Return ONLY valid JSON matching this schema exactly. No other text.
 
