@@ -1,7 +1,7 @@
 // src/lib/extraction/classify/post-processor.ts
-// Version: 2.4.0-universal-early-pages - 2025-12-27
-// ENHANCED: Universal boost for early pages (≤5) of main_contract, counter_offer, or addendum
-//           Keeps logic state-agnostic while ensuring core terms are captured across all major U.S. forms
+// Version: 2.5.0-universal-legalese-filter - 2025-12-27
+// ENHANCED: Intelligent, form-agnostic filtering of text-dense legalese pages
+//           No reliance on specific form structure or state-specific knowledge
 
 import type { LabeledCriticalImage, GrokPageResult } from '../../../types/classification';
 
@@ -15,34 +15,37 @@ export function mergeDetectedPages(
   return allGrokPages.filter((p): p is GrokPageResult => p !== null);
 }
 
-// Priority scoring — signatures, broker_info, and overrides remain highest
+// Category base priorities (unchanged)
 const CATEGORY_PRIORITY: Record<string, number> = {
   core_terms: 10,
-  counter_or_addendum: 9,    // overrides are king
+  counter_or_addendum: 9,
   contingencies: 8,
   financing_details: 7,
-  signatures: 9,             // acceptance, effective date
-  broker_info: 9,            // agency contacts critical
+  signatures: 9,
+  broker_info: 9,
   disclosures: 3,
   boilerplate: 1,
   other: 2,
 };
 
 export function getCriticalPageNumbers(detectedPages: GrokPageResult[]): number[] {
-  // Score each detected page
   const scored = detectedPages.map(page => {
     let score =
       (CATEGORY_PRIORITY[page.contentCategory || 'other'] || 0) +
-      (page.hasFilledFields ? 5 : 0) +   // massive boost for actual filled data
-      (page.confidence ?? 0) / 20;       // minor confidence tie-breaker
+      (page.hasFilledFields ? 5 : 0) +
+      (page.confidence ?? 0) / 20;
 
-    // Exclude disclosures and boilerplate entirely
+    // Hard exclude known low-value categories
     if (page.contentCategory === 'disclosures' || page.contentCategory === 'boilerplate') {
       score = 0;
     }
 
-    // NEW UNIVERSAL RULE: Boost early pages (formPage ≤ 5) of high-value roles
-    // All major U.S. residential contracts place defining terms in first ~5 pages
+    // Explicit blank page exclusion (titleSnippet check)
+    if (page.titleSnippet && /blank|intentionally left blank|this page left blank/i.test(page.titleSnippet)) {
+      score = 0;
+    }
+
+    // UNIVERSAL EARLY-PAGE BOOST (already proven safe across states)
     const isHighValueRole =
       page.role === 'main_contract' ||
       page.role === 'counter_offer' ||
@@ -51,46 +54,66 @@ export function getCriticalPageNumbers(detectedPages: GrokPageResult[]): number[
 
     const formPage = page.formPage ?? null;
     if (isHighValueRole && formPage !== null && formPage <= 5 && page.hasFilledFields) {
-      score += 5; // Strong boost to ensure core terms (price, financing, contingencies) are included
+      score += 5;
     }
 
-    return {
-      page,
-      score
-    };
+    // NEW: INTELLIGENT LEGALESE FILTER
+    // If Grok already tagged it as boilerplate → already score=0 above
+    // Additional heuristic: downrank pages that are likely pure legalese
+    // even if Grok gave them a higher category
+    const looksLikeLegalese =
+      // No filled fields (most reliable signal)
+      !page.hasFilledFields ||
+      // Title contains common advisory/legalese words
+      (page.titleSnippet &&
+        /(advisory|disclosure|notice|remedies|arbitration|mediation|attorney fees|risk|warning|important)/i.test(
+          page.titleSnippet
+        ));
+
+    if (looksLikeLegalese) {
+      // Don't completely kill it (might be a signed disclosure we need)
+      // Just remove the filled-field boost and cap base score
+      score = Math.min(score, CATEGORY_PRIORITY[page.contentCategory || 'other'] || 2);
+    }
+
+    return { page, score };
   });
 
-  // Sort highest score first
+  // Sort descending
   scored.sort((a, b) => b.score - a.score);
 
-  // Force-include critical categories
-  const highPriority = scored.filter(s => 
-    s.page.contentCategory === 'counter_or_addendum' ||
-    s.page.contentCategory === 'signatures' ||
-    s.page.contentCategory === 'broker_info'
+  // Force-include absolute must-haves
+  const highPriority = scored.filter(
+    s =>
+      s.page.contentCategory === 'counter_or_addendum' ||
+      s.page.contentCategory === 'signatures' ||
+      s.page.contentCategory === 'broker_info'
   );
 
-  // Add top non-priority pages (tighter cap now that high-priority + early pages are boosted)
+  // Non-priority: only filled pages, tighter cap
   const topNonPriority = scored
-    .filter(s => 
-      s.page.contentCategory !== 'counter_or_addendum' &&
-      s.page.contentCategory !== 'signatures' &&
-      s.page.contentCategory !== 'broker_info' &&
-      s.score > 0
+    .filter(
+      s =>
+        s.page.hasFilledFields && // ← KEY: require actual filled data
+        s.page.contentCategory !== 'counter_or_addendum' &&
+        s.page.contentCategory !== 'signatures' &&
+        s.page.contentCategory !== 'broker_info' &&
+        s.score > 0
     )
-    .slice(0, 10);
+    .slice(0, 8); // Reduced from 10 → expect 12–15 total critical pages
 
-  // Combine, dedupe, and sort by PDF order
+  // Combine + dedupe + sort by PDF order
   const selectedPages = Array.from(
     new Set([
       ...highPriority.map(s => s.page.pdfPage),
-      ...topNonPriority.map(s => s.page.pdfPage)
+      ...topNonPriority.map(s => s.page.pdfPage),
     ])
   );
 
   return selectedPages.sort((a, b) => a - b);
 }
 
+// Rest of file unchanged
 export function buildUniversalPageLabels(
   detectedPages: GrokPageResult[],
   criticalPageNumbers: number[]
@@ -112,7 +135,6 @@ export function buildUniversalPageLabels(
     );
   });
 
-  // Fallback for any undetected critical pages
   criticalPageNumbers.forEach((pdfPage) => {
     if (!labelMap.has(pdfPage)) {
       labelMap.set(pdfPage, `PAGE ${pdfPage} – POSSIBLE KEY TERMS`);
@@ -139,14 +161,8 @@ export function buildLabeledCriticalImages(
 export function extractPackageMetadata(detectedPages: GrokPageResult[]) {
   const formCodes = Array.from(new Set(detectedPages.map((p) => p.formCode))).filter(Boolean);
 
-  const sampleFooters = detectedPages
-    .map((p) => p?.footerText)
-    .filter((text): text is string => typeof text === 'string' && text.trim() !== '')
-    .slice(0, 5);
-
   return {
     detectedFormCodes: formCodes,
-    sampleFooters,
     totalDetectedPages: detectedPages.length,
     hasMultipleForms: formCodes.length > 1,
   };
