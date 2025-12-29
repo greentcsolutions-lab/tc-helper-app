@@ -1,13 +1,13 @@
 // src/app/api/parse/extract/[parseId]/route.ts
-// Version: 2.2.0 - 2025-12-29
-// BREAKING: Now reconstructs images from ZIP (no longer reads base64 from DB)
+// Version: 3.0.0 - 2025-12-29
+// BREAKING: Fixed Issues #1, #2, #4 - High-res only, field provenance, remove duplicate cache clear
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
 import { route } from "@/lib/extraction/router";
 import { mapExtractionToParseResult } from "@/lib/parse/map-to-parse-result";
-import { downloadAndExtractZip, extractSpecificPagesFromZip } from "@/lib/pdf/renderer";
+import { extractSpecificPagesFromZip } from "@/lib/pdf/renderer";
 import { logDataShape, logStep, logSuccess, logError } from "@/lib/debug/parse-logger";
 import { Prisma } from "@prisma/client";
 
@@ -39,7 +39,6 @@ export async function POST(
         id: true,
         userId: true,
         status: true,
-        lowResZipUrl: true,
         highResZipUrl: true,
         classificationCache: true,
         user: { select: { clerkId: true } },
@@ -61,8 +60,8 @@ export async function POST(
       return Response.json({ error: `Invalid status: ${parse.status}` }, { status: 400 });
     }
 
-    if (!parse.lowResZipUrl || !parse.highResZipUrl) {
-      logError("EXTRACT:1", "Missing ZIP URLs");
+    if (!parse.highResZipUrl) {
+      logError("EXTRACT:1", "Missing high-res ZIP URL");
       return Response.json({ error: "Rendering not complete" }, { status: 400 });
     }
 
@@ -85,29 +84,23 @@ export async function POST(
     logDataShape("EXTRACT:1 Classification Metadata", classificationMetadata);
     logSuccess("EXTRACT:1", `Metadata loaded: ${classificationMetadata.criticalPageNumbers.length} critical pages`);
 
-    // STEP 2: RECONSTRUCT IMAGES FROM ZIPS
-    logStep("EXTRACT:2", "📥 Reconstructing critical images from ZIPs...");
+    // STEP 2: RECONSTRUCT IMAGES FROM HIGH-RES ZIP ONLY (FIX #1)
+    logStep("EXTRACT:2", "📥 Downloading high-res critical pages from ZIP...");
 
-    // Download low-res critical pages for labeling
-    const lowResCriticalPages = await extractSpecificPagesFromZip(
-      parse.lowResZipUrl,
-      classificationMetadata.criticalPageNumbers
-    );
-
-    // Download high-res critical pages for extraction
+    // Download ONLY high-res critical pages (performance optimization)
     const highResCriticalPages = await extractSpecificPagesFromZip(
       parse.highResZipUrl,
       classificationMetadata.criticalPageNumbers
     );
 
-    // Rebuild labeled critical images (low-res for metadata)
-    const criticalImages = lowResCriticalPages.map(page => ({
+    // Build labeled critical images using high-res + metadata labels
+    const criticalImages = highResCriticalPages.map(page => ({
       pageNumber: page.pageNumber,
       base64: page.base64,
       label: classificationMetadata.pageLabels[page.pageNumber] || `Page ${page.pageNumber}`,
     }));
 
-    logSuccess("EXTRACT:2", `Reconstructed ${criticalImages.length} critical images from ZIPs`);
+    logSuccess("EXTRACT:2", `Downloaded ${criticalImages.length} high-res critical pages (skipped low-res download)`);
 
     // STEP 3: ROUTE TO APPROPRIATE EXTRACTOR
     logStep("EXTRACT:3", "🧠 Routing to appropriate extractor...");
@@ -134,20 +127,8 @@ export async function POST(
 
     logSuccess("EXTRACT:3", `Extraction complete via ${extractionRoute} route — needsReview: ${needsReview}`);
 
-    // STEP 4: CLEAR CLASSIFICATION FROM DB (temporary data)
-    logStep("EXTRACT:4", "🗑️ Clearing classificationCache from database...");
-
-    await db.parse.update({
-      where: { id: parseId },
-      data: {
-        classificationCache: Prisma.JsonNull,
-      },
-    });
-
-    logSuccess("EXTRACT:4", "Temporary classification cleared");
-
-    // STEP 5: MAP TO DB FIELDS
-    logStep("EXTRACT:5", "🗺️ Mapping extraction to DB fields...");
+    // STEP 4: MAP TO DB FIELDS (with proper field provenance - FIX #2)
+    logStep("EXTRACT:4", "🗺️ Mapping extraction to DB fields...");
 
     const mappedFields = mapExtractionToParseResult({
       universal,
@@ -156,12 +137,17 @@ export async function POST(
       timelineEvents,
     });
 
-    logDataShape("EXTRACT:5 Mapped Fields", mappedFields);
+    logDataShape("EXTRACT:4 Mapped Fields", mappedFields);
 
-    // STEP 6: SAVE FINAL RESULTS
-    logStep("EXTRACT:6", "💾 Saving final results to database...");
+    // STEP 5: SAVE FINAL RESULTS (removed duplicate classificationCache clear - FIX #4)
+    logStep("EXTRACT:5", "💾 Saving final results to database...");
 
     const finalStatus = needsReview ? "NEEDS_REVIEW" : "COMPLETED";
+
+    // Serialize extractionDetails to proper JSON (fix Prisma type error)
+    const extractionDetailsJson = mappedFields.extractionDetails 
+      ? JSON.parse(JSON.stringify(mappedFields.extractionDetails))
+      : undefined;
 
     const dbUpdateData = {
       status: finalStatus,
@@ -172,7 +158,7 @@ export async function POST(
       closingCosts: mappedFields.closingCosts ?? undefined,
       brokers: mappedFields.brokers ?? undefined,
       personalPropertyIncluded: mappedFields.personalPropertyIncluded ?? undefined,
-      extractionDetails: mappedFields.extractionDetails ?? undefined,
+      extractionDetails: extractionDetailsJson,  // Use serialized version
       timelineEvents: mappedFields.timelineEvents ?? undefined,
       rawJson: {
         _extraction_route: extractionRoute,
@@ -180,16 +166,17 @@ export async function POST(
         _critical_page_count: criticalImages.length,
       },
       finalizedAt: new Date(),
+      // REMOVED: classificationCache clear (FIX #4 - cleanup route handles this)
     };
 
-    logDataShape("EXTRACT:6 DB Update", dbUpdateData);
+    logDataShape("EXTRACT:5 DB Update", dbUpdateData);
 
     await db.parse.update({
       where: { id: parseId },
       data: dbUpdateData,
     });
 
-    logSuccess("EXTRACT:6", `Saved — Status: ${finalStatus}`);
+    logSuccess("EXTRACT:5", `Saved — Status: ${finalStatus}`);
 
     console.log(`\n${"═".repeat(80)}`);
     console.log(`║ ✅ EXTRACT ROUTE COMPLETED`);

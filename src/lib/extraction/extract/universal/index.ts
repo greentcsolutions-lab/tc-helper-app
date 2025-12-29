@@ -1,11 +1,12 @@
 // src/lib/extraction/extract/universal/index.ts
-// Version: 7.0.0 - 2025-12-29
-// BREAKING: Per-page extraction + post-processing merge
+// Version: 8.0.0 - 2025-12-29
+// BREAKING: Fixed Issue #2 & #5 - Proper details structure + second-turn implementation
 
 import type { LabeledCriticalImage } from '@/types/classification';
 import type { UniversalExtractionResult } from '@/types/extraction';
 import { buildPerPageExtractorPrompt } from '../../prompts/universal-extractor-prompt';
 import { mergePageExtractions, type PerPageExtraction } from './post-processor';
+import { runSecondTurnExtraction } from './second-turn';
 
 export async function universalExtractor(
   criticalImages: LabeledCriticalImage[],
@@ -13,9 +14,9 @@ export async function universalExtractor(
 ): Promise<{
   universal: UniversalExtractionResult;
   details: {
-    pageExtractions: PerPageExtraction[];
+    provenance: Record<string, number>;  // field → pageNumber
+    pageExtractions: PerPageExtraction[];  // FIX #2: For field provenance building
     mergeLog: string[];
-    provenance: Record<string, number>;
     validationErrors: string[];
     validationWarnings: string[];
   } | null;
@@ -33,7 +34,7 @@ export async function universalExtractor(
   console.log(`[extractor:phase1] ${"─".repeat(60)}`);
   console.log(`[extractor:phase1] Starting per-page extraction...`);
   
-  const pageExtractions = await extractPerPage(criticalImages);
+  let pageExtractions = await extractPerPage(criticalImages);
   
   console.log(`[extractor:phase1] ✅ Extracted ${pageExtractions.length} pages`);
   console.log(`[extractor:phase1] ${"─".repeat(60)}\n`);
@@ -44,9 +45,10 @@ export async function universalExtractor(
   console.log(`[extractor:phase2] ${"─".repeat(60)}`);
   console.log(`[extractor:phase2] Starting merge post-processing...`);
   
-  const { 
+  let { 
     finalTerms, 
     provenance, 
+    pageExtractions: originalPageExtractions,
     needsReview, 
     needsSecondTurn,
     mergeLog, 
@@ -57,27 +59,58 @@ export async function universalExtractor(
   console.log(`[extractor:phase2] ✅ Merge complete`);
   console.log(`[extractor:phase2] ${"─".repeat(60)}\n`);
   
+  // PHASE 3: SECOND-TURN EXTRACTION (FIX #5 - if needed)
+  if (needsSecondTurn) {
+    console.log(`\n[extractor:phase3] ${"─".repeat(60)}`);
+    console.log(`[extractor:phase3] PHASE 3: SECOND-TURN EXTRACTION`);
+    console.log(`[extractor:phase3] ${"─".repeat(60)}`);
+    console.log(`[extractor:phase3] Triggering second-turn extraction...`);
+    
+    const secondTurnResult = await runSecondTurnExtraction(
+      criticalImages,
+      pageExtractions,
+      validationErrors,
+      finalTerms
+    );
+    
+    if (secondTurnResult.success) {
+      // Re-merge with second-turn results
+      const secondMerge = mergePageExtractions(secondTurnResult.pageExtractions);
+      
+      finalTerms = secondMerge.finalTerms;
+      provenance = secondMerge.provenance;
+      pageExtractions = secondTurnResult.pageExtractions;
+      needsReview = secondMerge.needsReview;
+      needsSecondTurn = secondMerge.needsSecondTurn;
+      mergeLog = [...mergeLog, '🔄 SECOND TURN APPLIED', ...secondMerge.mergeLog];
+      validationErrors = secondMerge.validationErrors;
+      validationWarnings = secondMerge.validationWarnings;
+      
+      console.log(`[extractor:phase3] ✅ Second turn complete - errors resolved`);
+    } else {
+      console.error(`[extractor:phase3] ❌ Second turn failed:`, secondTurnResult.error);
+      mergeLog.push(`❌ Second turn failed: ${secondTurnResult.error}`);
+    }
+    
+    console.log(`[extractor:phase3] ${"─".repeat(60)}\n`);
+  }
+  
   console.log(`${"═".repeat(80)}`);
   console.log(`║ ✅ EXTRACTION COMPLETE`);
   console.log(`${"═".repeat(80)}`);
   console.log(`   Needs Review: ${needsReview}`);
-  console.log(`   Needs Second Turn: ${needsSecondTurn}`);
+  console.log(`   Second Turn Used: ${needsSecondTurn}`);
   console.log(`   Validation Errors: ${validationErrors.length}`);
   console.log(`   Validation Warnings: ${validationWarnings.length}`);
   console.log(`   Merge Log Entries: ${mergeLog.length}`);
   console.log(`${"═".repeat(80)}\n`);
   
-  // TODO: If needsSecondTurn, implement second-turn retry logic here
-  if (needsSecondTurn) {
-    console.warn(`[extractor] ⚠️ Second turn extraction needed but not yet implemented`);
-  }
-  
   return {
     universal: finalTerms,
     details: {
-      pageExtractions,
-      mergeLog,
       provenance,
+      pageExtractions,  // FIX #2: Return for field provenance building
+      mergeLog,
       validationErrors,
       validationWarnings,
     },

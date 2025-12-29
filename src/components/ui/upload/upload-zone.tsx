@@ -1,6 +1,6 @@
 // src/components/ui/upload/upload-zone.tsx
-// Version: 2.0.0 - 2025-12-27
-// Updated to use useParseOrchestrator hook for new pipeline architecture
+// Version: 3.0.0 - 2025-12-29
+// BREAKING: Fixed Issue #3 - Now uses dedicated preview endpoint
 
 "use client";
 
@@ -42,6 +42,7 @@ export default function UploadZone() {
   const [currentFile, setCurrentFile] = useState<File | null>(null);
   const [parseId, setParseId] = useState<string>("");
   const [extractedData, setExtractedData] = useState<any>(null);
+  const [previewZipUrl, setPreviewZipUrl] = useState<string>("");  // FIX #3
 
   const [jokeIndex, setJokeIndex] = useState(0);
   const lastActivity = useRef(Date.now());
@@ -65,7 +66,6 @@ export default function UploadZone() {
 
     if (orchestratorState.phase === 'complete') {
       setView("done");
-      // The extracted data will be fetched from DB
       return;
     }
 
@@ -142,7 +142,7 @@ export default function UploadZone() {
       if (result.success) {
         console.log("[upload-zone] Pipeline complete, fetching final results");
         
-        // Fetch the final extraction results from DB
+        // STEP 3: Fetch extraction results from DB
         const finalizeRes = await fetch(`/api/parse/finalize/${newParseId}`);
         
         if (finalizeRes.ok) {
@@ -164,6 +164,20 @@ export default function UploadZone() {
             effectiveDate: data.effectiveDate || null,
             escrowHolder: data.escrowHolder || null,
           });
+        }
+        
+        // STEP 4: Fetch preview ZIP URL (FIX #3)
+        try {
+          const previewRes = await fetch(`/api/parse/preview/${newParseId}`);
+          if (previewRes.ok) {
+            const previewData = await previewRes.json();
+            setPreviewZipUrl(previewData.zipUrl);
+            console.log("[upload-zone] Preview ZIP loaded:", previewData.zipUrl);
+          } else {
+            console.warn("[upload-zone] Preview not available (may have been cleaned up)");
+          }
+        } catch (err) {
+          console.warn("[upload-zone] Could not load preview:", err);
         }
 
         setView("done");
@@ -250,9 +264,7 @@ export default function UploadZone() {
             isUploading={true}
             currentFile={currentFile}
             onFileSelect={() => {}}
-            onCancel={() => {
-              // Cancel not allowed during processing
-            }}
+            onCancel={() => {}}
             liveText={getCurrentMessage()}
           />
 
@@ -298,16 +310,15 @@ export default function UploadZone() {
           {/* Extracted data display */}
           <ExtractionCategories data={extractedData} />
 
-          {/* Show critical page thumbnails if we have the parseId */}
-          {parseId && (
+          {/* Show critical page thumbnails (FIX #3 - using preview endpoint) */}
+          {previewZipUrl && (
             <div>
               <h3 className="text-xl font-bold mb-4">Critical Pages Used for Extraction</h3>
               <p className="text-sm text-muted-foreground mb-4">
                 These {orchestratorState.criticalPageCount || 'key'} pages contained the most important transaction information.
               </p>
-              {/* Note: PreviewGallery needs to fetch from finalize endpoint or we pass lowResZipUrl */}
               <PreviewGallery 
-                zipUrl={`/api/parse/preview/${parseId}`} 
+                zipUrl={previewZipUrl} 
                 maxPages={orchestratorState.criticalPageCount || 10} 
               />
             </div>

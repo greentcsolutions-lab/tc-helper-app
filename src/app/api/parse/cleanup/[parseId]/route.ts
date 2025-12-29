@@ -1,7 +1,8 @@
 // src/app/api/parse/cleanup/[parseId]/route.ts
-// Version: 2.1.0 - 2025-12-29
-// FIXED: Now clears ALL temporary DB fields including pdfBuffer and classificationCache
-// Deletes temporary render artifacts (ZIPs) and clears ALL temporary DB fields after extraction
+// Version: 3.0.0 - 2025-12-29
+// BREAKING: Fixed Issues #3 & #4
+// - Preserves high-res ZIP for previews (FIX #3)
+// - Clears classificationCache here instead of extract route (FIX #4)
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
@@ -53,7 +54,7 @@ export async function POST(
     const cleanupTasks = [];
 
     // ═══════════════════════════════════════════════════════════════════════
-    // STEP 1: Delete Vercel Blob ZIPs
+    // STEP 1: Delete Vercel Blob ZIPs (LOW-RES ONLY - FIX #3)
     // ═══════════════════════════════════════════════════════════════════════
     if (parse.lowResZipKey) {
       cleanupTasks.push(
@@ -63,21 +64,14 @@ export async function POST(
       );
     }
 
-    if (parse.highResZipKey) {
-      cleanupTasks.push(
-        del(parse.highResZipKey)
-          .then(() => console.log(`[cleanup:${parseId}] ✓ High-res ZIP deleted from Blob`))
-          .catch((err) => console.warn(`[cleanup:${parseId}] ⚠️ High-res ZIP delete failed:`, err))
-      );
-    }
+    // NOTE: High-res ZIP is PRESERVED for preview endpoint (FIX #3)
+    console.log(`[cleanup:${parseId}] ℹ️ Preserving high-res ZIP for preview endpoint`);
 
     await Promise.allSettled(cleanupTasks);
 
     // ═══════════════════════════════════════════════════════════════════════
-    // STEP 2: Clear ALL temporary fields from database
+    // STEP 2: Clear temporary DB fields (FIX #4)
     // ═══════════════════════════════════════════════════════════════════════
-    // This is the critical fix - we need to explicitly set large fields to JsonNull
-    
     console.log(`[cleanup:${parseId}] 🗑️ Clearing temporary DB fields...`);
     
     // Log sizes before cleanup (for debugging)
@@ -95,14 +89,16 @@ export async function POST(
         // Binary blob (can be 2-25MB)
         pdfBuffer: null,
         
-        // Large JSON with base64 images (can be 10-20MB)
+        // Large JSON with metadata (FIX #4 - now cleared here instead of extract)
         classificationCache: Prisma.JsonNull,
         
-        // ZIP URLs (small but no longer needed)
+        // Low-res ZIP URLs (no longer needed after extraction)
         lowResZipUrl: null,
         lowResZipKey: null,
-        highResZipUrl: null,
-        highResZipKey: null,
+        
+        // PRESERVE high-res ZIP for previews (FIX #3)
+        // highResZipUrl: keep!
+        // highResZipKey: keep!
         
         // Legacy deprecated fields (for backward compat)
         renderZipUrl: null,
@@ -110,26 +106,29 @@ export async function POST(
       },
     });
 
-    console.log(`[cleanup:${parseId}] ✓ All temporary DB fields cleared`);
+    console.log(`[cleanup:${parseId}] ✓ Temporary DB fields cleared`);
 
     console.log(`\n${"═".repeat(80)}`);
     console.log(`║ ✅ CLEANUP COMPLETE`);
     console.log(`║ ParseID: ${parseId}`);
-    console.log(`║ Freed up: pdfBuffer + classificationCache + ZIP URLs`);
+    console.log(`║ Deleted: pdfBuffer + classificationCache + low-res ZIP`);
+    console.log(`║ Preserved: high-res ZIP (for previews)`);
     console.log(`${"═".repeat(80)}\n`);
 
     return Response.json({
       success: true,
-      message: "All temporary files and data deleted",
+      message: "Temporary files cleaned up",
       clearedFields: [
         "pdfBuffer",
         "classificationCache", 
         "lowResZipUrl",
         "lowResZipKey",
-        "highResZipUrl", 
-        "highResZipKey",
         "renderZipUrl",
         "renderZipKey"
+      ],
+      preservedFields: [
+        "highResZipUrl (for preview endpoint)",
+        "highResZipKey"
       ]
     });
   } catch (error: any) {

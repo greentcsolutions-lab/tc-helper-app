@@ -1,28 +1,66 @@
 // src/lib/parse/map-to-parse-result.ts
-// Version: 2.0.0 - 2025-12-29
-// ENHANCED: Now includes field provenance in extractionDetails
-// Maps UniversalExtractionResult → enriched ParseResult fields for DB update
+// Version: 3.0.0 - 2025-12-29
+// BREAKING: Fixed Issue #2 - Proper field provenance implementation
+// Now builds FieldProvenance[] from Record<string, number> provenance map
 
 import type { UniversalExtractionResult } from '@/types/extraction';
-
-type FieldProvenance = {
-  field: string;
-  pageNumber: number;
-  pageLabel: string;
-  confidence: number;
-  value: any;
-};
+import type { FieldProvenance } from '@/types/parse-result';
 
 type MapToParseResultParams = {
   universal: UniversalExtractionResult;
   route: string;
   details?: {
-    fieldProvenance?: FieldProvenance[];
+    provenance?: Record<string, number>;  // field → pageNumber
+    pageExtractions?: Array<{
+      pageNumber: number;
+      pageLabel: string;
+      confidence: { overall: number; fieldScores?: Record<string, number> };
+      [key: string]: any;
+    }>;
     confidenceBreakdown?: Record<string, number>;
     missingConfidenceFields?: string[];
   };
   timelineEvents?: any[];
 };
+
+/**
+ * Builds proper FieldProvenance array from provenance map
+ * FIX #2: Converts Record<string, number> → FieldProvenance[]
+ */
+function buildFieldProvenance(
+  provenance: Record<string, number>,
+  pageExtractions: Array<any>,
+  finalTerms: UniversalExtractionResult
+): FieldProvenance[] {
+  return Object.entries(provenance).map(([field, pageNum]) => {
+    const page = pageExtractions.find(p => p.pageNumber === pageNum);
+    
+    // Get nested field value (handles "brokers.listingAgent" notation)
+    const fieldValue = field.includes('.') 
+      ? getNestedValue(finalTerms, field)
+      : (finalTerms as any)[field];
+    
+    // Get confidence from field scores or page overall
+    const confidence = page?.confidence?.fieldScores?.[field] 
+      || page?.confidence?.overall 
+      || 0;
+    
+    return {
+      field,
+      pageNumber: pageNum,
+      pageLabel: page?.pageLabel || `Page ${pageNum}`,
+      confidence,
+      value: fieldValue,
+    };
+  });
+}
+
+/**
+ * Helper: Get nested value from object (e.g., "brokers.listingAgent")
+ */
+function getNestedValue(obj: any, path: string): any {
+  return path.split('.').reduce((current, key) => current?.[key], obj);
+}
 
 export function mapExtractionToParseResult({
   universal,
@@ -30,6 +68,19 @@ export function mapExtractionToParseResult({
   details,
   timelineEvents = [],
 }: MapToParseResultParams) {
+  // Build field provenance if we have the data (FIX #2)
+  let fieldProvenance: FieldProvenance[] = [];
+  
+  if (details?.provenance && details?.pageExtractions) {
+    fieldProvenance = buildFieldProvenance(
+      details.provenance,
+      details.pageExtractions,
+      universal
+    );
+    
+    console.log(`[map-to-parse-result] Built ${fieldProvenance.length} field provenance entries`);
+  }
+  
   return {
     // === UNIVERSAL CORE SCALARS (backward compat) ===
     buyerNames: universal.buyerNames.length > 0 ? universal.buyerNames : undefined,
@@ -93,15 +144,13 @@ export function mapExtractionToParseResult({
     personalPropertyIncluded: universal.personalPropertyIncluded ?? null,
     escrowHolder: universal.escrowHolder ?? null,
 
-    // === RICH DATA (now includes field provenance) ===
-    extractionDetails: details 
-      ? { 
-          route, 
-          fieldProvenance: details.fieldProvenance || [],
-          confidenceBreakdown: details.confidenceBreakdown || {},
-          missingConfidenceFields: details.missingConfidenceFields || [],
-        } 
-      : { route },
+    // === RICH DATA (FIX #2: now includes field provenance) ===
+    extractionDetails: { 
+      route,
+      fieldProvenance,  // ← NOW PROPERLY POPULATED!
+      confidenceBreakdown: details?.confidenceBreakdown || {},
+      missingConfidenceFields: details?.missingConfidenceFields || [],
+    },
 
     // === TIMELINE ===
     ...(timelineEvents.length > 0 ? { timelineEvents } : {}),

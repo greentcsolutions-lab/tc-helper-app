@@ -1,6 +1,6 @@
 // src/lib/extraction/extract/universal/post-processor.ts
-// Version: 1.0.1 - 2025-12-29
-// FIXED: TypeScript errors with dynamic property access using type-safe Record approach
+// Version: 2.0.0 - 2025-12-29
+// BREAKING: Fixed Issue #2 - Now returns pageExtractions + provenance for field provenance building
 
 import type { UniversalExtractionResult } from '@/types/extraction';
 
@@ -52,7 +52,8 @@ export interface PerPageExtraction {
 
 export interface MergeResult {
   finalTerms: UniversalExtractionResult;
-  provenance: Record<string, number>;
+  provenance: Record<string, number>;  // field → pageNumber
+  pageExtractions: PerPageExtraction[];  // FIX #2: Added for field provenance building
   needsReview: boolean;
   needsSecondTurn: boolean;
   mergeLog: string[];
@@ -142,6 +143,7 @@ export function mergePageExtractions(
   return {
     finalTerms: finalTerms as UniversalExtractionResult,
     provenance,
+    pageExtractions,  // FIX #2: Return for field provenance building
     needsReview: validation.needsReview,
     needsSecondTurn: validation.needsSecondTurn,
     mergeLog,

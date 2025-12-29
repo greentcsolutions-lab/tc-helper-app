@@ -1,5 +1,7 @@
 // src/app/api/parse/finalize/[parseId]/route.ts
-// Version: 1.0.1-secure-params-fix - 2025-12-24
+// Version: 2.0.0 - 2025-12-29
+// BREAKING: Removed lowResZipUrl (FIX #3 - now using dedicated preview endpoint)
+
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
@@ -7,7 +9,6 @@ import { db } from "@/lib/prisma";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-// Fixed for Next.js 15 — params is now a Promise
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ parseId: string }> }
@@ -46,16 +47,18 @@ export async function GET(
       loanType: true,
 
       // === RICH / STATE-SPECIFIC DATA ===
-      extractionDetails: true,     // contains route + future california/tx/fl rich object
+      extractionDetails: true,     // contains route + field provenance (FIX #2)
       timelineEvents: true,
 
-      // === FOR THUMBNAIL GRID & REVIEW ===
-      lowResZipUrl: true,          // low-DPI render zip for page previews
-      criticalPageNumbers: true,   // if you want to highlight critical pages
+      // === FOR REVIEW FLAGS ===
+      criticalPageNumbers: true,   // used by preview endpoint
 
       // === DEBUG / METADATA (optional but helpful) ===
       rawJson: true,
       missingSCOs: true,
+      
+      // REMOVED: lowResZipUrl (FIX #3 - use /api/parse/preview/:id instead)
+      // Client should call preview endpoint separately if previews are needed
     },
   });
 
@@ -66,5 +69,6 @@ export async function GET(
   return Response.json({
     success: true,
     data: parse,
+    previewEndpoint: `/api/parse/preview/${parseId}`,  // FIX #3: Point to new endpoint
   });
 }
