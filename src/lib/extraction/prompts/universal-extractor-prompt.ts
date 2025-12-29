@@ -1,83 +1,234 @@
 // src/lib/extraction/prompts/universal-extractor-prompt.ts
-// Version: 6.0.0 - 2025-12-29
-// Universal extractor prompt for all U.S. states (CA, TX, FL, NV, etc.)
+// Version: 8.0.0 - 2025-12-29
+// BREAKING: Per-page extraction with single schema
 
-import universalExtractorSchema from '@/forms/universal/extractor.schema.json';
+import extractorSchema from '@/forms/universal/extractor.schema.json';
 
-const universalExtractorSchemaString = JSON.stringify(universalExtractorSchema, null, 2);
+const schemaString = JSON.stringify(extractorSchema, null, 2);
 
-export const UNIVERSAL_EXTRACTOR_PROMPT = `
-You are an expert U.S. real estate transaction analyst examining 5–15 high-resolution PNG images from a complete residential purchase packet.
+export function buildPerPageExtractorPrompt(
+  criticalImages: Array<{ pageNumber: number; label: string }>
+): string {
+  const imageList = criticalImages
+    .map((img, idx) => `${idx + 1}. Page ${img.pageNumber}: "${img.label}"`)
+    .join('\n');
 
-These images have been automatically selected as the most critical pages containing transaction data (main contract, counters/addenda, signature pages).
-
-Your task: Extract the FINAL accepted terms. If counters or addenda are present, they override earlier terms.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-CRITICAL: COUNTER OFFER & AMENDMENT HANDLING
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Common U.S. real estate forms by state:
-- California: RPA (main contract) + SCO/BCO/SMCO (counter offers) + ADM (addenda)
-- Texas: TREC 20-16 (main contract) + TREC 39-9 (counter) + TREC 38-9 (amendment)
-- Florida: FAR/BAR-6 (main contract) + FAR/BAR-5 (counter) + FAR/BAR-9 (amendment)
-- Nevada: NVAR Purchase Agreement + NVAR Counter Offer
-- Generic: Purchase Agreement + Counter Offer + Amendment
-
-OVERRIDE RULES:
-1. Counters and amendments OVERRIDE original contract terms
-2. If counter says "Purchase Price revised to $510,000" → use 510000 (not original)
-3. If counter says "Close of escrow extended to 45 days" → use 45 (not original 30)
-4. If field NOT mentioned in counter → use original value (counter didn't change it)
-
-EXAMPLES:
-
-Example 1 (California RPA + SCO):
-- RPA Page 1: Purchase Price $500,000, Deposit $10,000, Close 30 days
-- SCO Page 1: Purchase Price $510,000, Close 45 days, Appraisal waived
-→ Extract: purchasePrice: 510000, closingDate: "45", earnestMoney: 10000 (unchanged), appraisalDays: "Waived"
-
-Example 2 (Texas TREC + Counter):
-- TREC Page 1: Sales Price $425,000, Earnest Money $5,000, Closing Sept 30
-- TREC 39-9: Sales Price $430,000, Earnest Money $7,500, Closing Oct 15, Option 5 days
-→ Extract: purchasePrice: 430000, earnestMoney: 7500, closingDate: "2025-10-15", inspectionDays: 5
-
-Example 3 (Florida FAR/BAR + Amendment):
-- FAR/BAR-6: Purchase Price $650,000, Deposit $20,000, Closing 60 days
-- FAR/BAR-9: Seller credit $5,000, Inspection extended to 20 days
-→ Extract: purchasePrice: 650000 (unchanged), earnestMoney: 20000 (unchanged), closingDate: "60" (unchanged), sellerCredit: 5000 (new), inspectionDays: 20 (amended)
+  return `
+You are a U.S. real estate document OCR specialist examining ${criticalImages.length} high-resolution images from a residential purchase agreement.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 CRITICAL INSTRUCTION: PER-PAGE EXTRACTION ONLY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-KEY EXTRACTION RULES:
+Extract ONLY what you see on EACH SPECIFIC PAGE. DO NOT:
+❌ Merge data from multiple pages
+❌ Apply business logic about which terms override others
+❌ Assume fields exist if you can't see them on that page
+❌ Copy values from previous pages
+❌ Invent data that isn't visible
 
-1. Handwriting Detection:
-   - ONLY set handwriting_detected: true if you see actual pen/ink handwriting
-   - Digital signatures, typed text, DocuSign = NOT handwriting
+✅ DO:
+✓ Extract exactly what's written on THIS page
+✓ Return null for fields not visible on THIS page
+✓ Include page identification (pageNumber, formCode, formPage, pageRole)
+✓ Check BOTH main body AND page headers for property address
 
-2. Checkbox Reading:
-   - Checked = ✓, X, filled, shaded, darkened, or text inside
-   - Unchecked = empty, blank
-   - If unsure → default to unchecked
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📋 UNIVERSAL CONTRACT FIELDS (ALL U.S. STATES)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-3. Zero Values = Extraction Failure:
-   - purchasePrice: 0 means extraction FAILED (try harder to find the price)
-   - If truly $0, there will be text like "No purchase price" or "Land lease only"
-   - Otherwise, purchasePrice > 0 is ALWAYS required
+Every residential purchase agreement (CA, TX, FL, NV, etc.) has these fields:
 
-4. Confidence Scores (REQUIRED):
-   - Provide confidence: 0-100 for EVERY major field
-   - Lower confidence if: handwriting, blurry, ambiguous, multiple counters
-   - Example: { "confidence": { "overall_confidence": 92, "purchasePrice": 95, "buyerNames": 88 } }
+TIER 1 - CRITICAL (extract if visible on this page):
+- propertyAddress: Full address - usually page 1 OR in header on every page
+- purchasePrice: Sales price in USD - usually page 1
+- buyerNames: Buyer name(s) - usually page 1
+- earnestMoneyDeposit.amount: Initial deposit - usually page 1
+- closingDate: Close of escrow/closing date - usually page 1-2
+- effectiveDate: Final acceptance date - usually signature pages
 
-5. Null Handling:
-   - If field is blank → null
-   - If field has value → extract it
-   - Do NOT hallucinate data
+TIER 2 - COMMON (extract if visible on this page):
+- financing.isAllCash: Boolean - usually page 1
+- financing.loanType: Conventional/FHA/VA/etc - usually page 1
+- financing.loanAmount: Loan amount if specified
+- contingencies.inspectionDays: Inspection period - usually page 2-3
+- contingencies.appraisalDays: Appraisal period - usually page 2-3
+- contingencies.loanDays: Loan approval period - usually page 2-3
+- brokers: Agent names and firms - usually last 1-2 pages
 
-Return ONLY valid JSON exactly matching this schema. No explanations, no markdown.
+TIER 3 - OPTIONAL (extract if visible on this page):
+- sellerNames: May only appear on signature pages (not always on page 1)
+- closingCosts: Cost allocation if specified
+- personalPropertyIncluded: Appliances/fixtures
+- escrowHolder: Title company name
 
-${universalExtractorSchemaString}
+TERMINOLOGY VARIATIONS (same field, different names):
+- Purchase Price = Sales Price = Contract Price
+- Earnest Money (TX) = Initial Deposit (CA) = Deposit = Down Payment
+- Closing Date (TX/FL) = Close of Escrow (CA) = Settlement Date
+- Buyer = Purchaser
+- Seller = Vendor
 
-Images (critical pages only):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📄 PAGE IDENTIFICATION (CRITICAL)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+For EACH page, you MUST identify:
+
+1. formCode: Extract from footer or title
+   - California: "RPA", "SCO", "BCO", "SMCO", "ADM"
+   - Texas: "TREC 20-16", "TREC 1-4", "TREC 39-9"
+   - Florida: "FAR/BAR-6", "FAR/BAR-5", "FAR/BAR AS IS"
+   - Nevada: "NVAR", "NV RPA"
+   - Generic: "Purchase Agreement", "Counter Offer", "Addendum"
+
+2. formPage: Page number within this form
+   - Extract from footer like "(RPA PAGE 1 OF 17)" → formPage: 1
+   - Extract from footer like "(SCO PAGE 2 OF 2)" → formPage: 2
+
+3. pageRole: Classify based on content
+   - "main_contract": Primary purchase agreement pages
+   - "counter_offer": Any counter offer pages (SCO, BCO, TREC 39-9, etc.)
+   - "addendum": Addenda or amendment pages
+   - "signatures": Signature blocks and acceptance dates
+   - "broker_info": Agent/broker contact information
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ CORRECT EXTRACTION EXAMPLES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Example 1: RPA Page 1 (Main Contract)
+Visible: Property: 123 Main St, Los Angeles CA 90210, Price: $500,000, 
+         Buyers: John & Jane Doe, Deposit: $10,000, Close: 30 days
+→ Extract:
+{
+  "pageNumber": 11,
+  "pageLabel": "RPA PAGE 1 - TRANSACTION TERMS (FILLED)",
+  "formCode": "RPA",
+  "formPage": 1,
+  "pageRole": "main_contract",
+  "propertyAddress": "123 Main St, Los Angeles, CA 90210",
+  "purchasePrice": 500000,
+  "buyerNames": ["John Doe", "Jane Doe"],
+  "earnestMoneyDeposit": { "amount": 10000, "holder": null },
+  "closingDate": "30 days",
+  "sellerNames": null,
+  "effectiveDate": null,
+  "financing": null,
+  "contingencies": null,
+  "brokers": null,
+  "confidence": { 
+    "overall": 90,
+    "fieldScores": {
+      "propertyAddress": 95,
+      "purchasePrice": 92,
+      "buyerNames": 88
+    }
+  }
+}
+
+Example 2: SCO Page 1 (Counter Offer - OVERRIDES TERMS)
+Visible: Purchase Price changed to $510,000, Close of Escrow changed to 45 days
+→ Extract:
+{
+  "pageNumber": 1,
+  "pageLabel": "SCO PAGE 1 - COUNTER OFFER (FILLED)",
+  "formCode": "SCO",
+  "formPage": 1,
+  "pageRole": "counter_offer",
+  "purchasePrice": 510000,
+  "closingDate": "45 days",
+  "propertyAddress": null,
+  "buyerNames": null,
+  "sellerNames": null,
+  "earnestMoneyDeposit": null,
+  "financing": null,
+  "contingencies": null,
+  "brokers": null,
+  "confidence": { 
+    "overall": 85,
+    "fieldScores": {
+      "purchasePrice": 90,
+      "closingDate": 80
+    }
+  }
+}
+
+Example 3: RPA Page 16 (Broker Info)
+Visible: Listing Agent: Chris Irwin, Listing Brokerage: Keller Williams,
+         Selling Agent: Sarah Johnson, Selling Brokerage: Equity Union
+→ Extract:
+{
+  "pageNumber": 27,
+  "pageLabel": "RPA PAGE 16 - BROKER INFO (FILLED)",
+  "formCode": "RPA",
+  "formPage": 16,
+  "pageRole": "broker_info",
+  "brokers": {
+    "listingAgent": "Chris Irwin",
+    "listingBrokerage": "Keller Williams",
+    "sellingAgent": "Sarah Johnson",
+    "sellingBrokerage": "Equity Union"
+  },
+  "propertyAddress": null,
+  "purchasePrice": null,
+  "buyerNames": null,
+  "sellerNames": null,
+  "earnestMoneyDeposit": null,
+  "closingDate": null,
+  "financing": null,
+  "contingencies": null,
+  "confidence": { 
+    "overall": 95,
+    "fieldScores": {
+      "brokers": 95
+    }
+  }
+}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔴 CRITICAL RULES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. PROPERTY ADDRESS:
+   - Check BOTH main body AND page headers
+   - Often appears in header on every page
+   - Format: Full street address with city, state, zip
+
+2. PURCHASE PRICE = 0:
+   - This is an ERROR (price is never $0 in real contracts)
+   - If you can't read it → set confidence < 50 and return null
+   - DO NOT return 0 unless the document explicitly says "$0"
+
+3. DATE FORMATS:
+   - Accept as-is from document
+   - "45 days" → return "45 days" (string)
+   - "2025-12-31" → return "2025-12-31" (string)
+   - 45 → return 45 (number)
+   - Do NOT convert or calculate
+
+4. CONFIDENCE SCORES:
+   - overall: 0-100 based on image clarity + field visibility
+   - fieldScores: Optional per-field breakdown
+   - If handwritten/blurry → confidence < 70
+   - If typed/clear → confidence 80-100
+
+5. NULL vs EMPTY:
+   - null = field not visible on this page
+   - Empty string "" = field is visible but blank (rare)
+
+6. SELLER NAMES:
+   - NOT always on page 1 (especially CA/NV)
+   - Often only appear on signature pages
+   - Return null if not visible on this page
+
+Images to extract (one JSON object per image):
+${imageList}
+
+Return ONLY a JSON array matching this schema. No explanatory text. No markdown.
+
+${schemaString}
 `.trim();
+}
+
+export const PER_PAGE_EXTRACTOR_PROMPT = buildPerPageExtractorPrompt;
