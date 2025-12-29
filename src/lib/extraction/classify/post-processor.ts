@@ -1,7 +1,13 @@
 // src/lib/extraction/classify/post-processor.ts
-// Version: 2.7.0 - 2025-12-29
-// FIXED: Proper main_contract page selection - includes contingencies, excludes boilerplate
-// Strategy: For main_contract pages, require BOTH correct contentCategory AND hasFilledFields=true
+// Version: 2.8.0 - 2025-12-29
+// FIXED: Two critical issues:
+//   1. Added comprehensive page order debugging
+//   2. Addenda now filtered - disclosure-style addenda (dense text) are EXCLUDED
+// 
+// Selection Logic:
+//   counter_offer/addendum/local_addendum → ONLY if hasFilledFields=true AND category NOT disclosures/boilerplate
+//   main_contract → ONLY if extractable category + hasFilledFields=true + NOT boilerplate/disclosures
+//   All other roles → EXCLUDED
 
 import type { LabeledCriticalImage, GrokPageResult } from '@/types/classification';
 
@@ -41,14 +47,36 @@ export function getCriticalPageNumbers(detectedPages: GrokPageResult[]): number[
     'other',                // Unknown/misc
   ];
 
+  // DEBUG: Log full classification results to understand page order
+  console.log('\n[post-processor] === FULL CLASSIFICATION RESULTS ===');
+  detectedPages.forEach((page) => {
+    console.log(`[post-processor] Page ${page.pdfPage}: ${page.formCode} ${page.formPage}/${page.totalPagesInForm} | ${page.role} | ${page.contentCategory} | filled=${page.hasFilledFields}`);
+  });
+  console.log('[post-processor] ======================================\n');
+
   for (const page of detectedPages) {
     const role = page.role ?? '';
     const category = page.contentCategory ?? '';
     const hasFilled = page.hasFilledFields ?? false;
 
-    // RULE 1: Always include counters/addenda (regardless of filled status)
+    // RULE 1: Counters/addenda - BUT only if they modify transaction terms
     if (['counter_offer', 'addendum', 'local_addendum'].includes(role)) {
-      console.log(`[post-processor] ✓ Page ${page.pdfPage}: ${role} → INCLUDED (override document)`);
+      // CRITICAL FIX: Addenda can be disclosure forms (dense text) OR transaction modifications
+      // Include ONLY if:
+      // 1. Has filled fields (contains actual data)
+      // 2. Category is NOT disclosures/boilerplate (not just dense paragraph text)
+      
+      if (!hasFilled) {
+        console.log(`[post-processor] ✗ Page ${page.pdfPage}: ${role} → EXCLUDED (no filled fields - blank form)`);
+        continue;
+      }
+      
+      if (['disclosures', 'boilerplate'].includes(category)) {
+        console.log(`[post-processor] ✗ Page ${page.pdfPage}: ${role} (${page.formCode}) → EXCLUDED (disclosure-style addendum, not transaction terms)`);
+        continue;
+      }
+      
+      console.log(`[post-processor] ✓ Page ${page.pdfPage}: ${role} (${page.formCode}) → INCLUDED (modifies transaction terms)`);
       selected.add(page.pdfPage);
       continue;
     }
