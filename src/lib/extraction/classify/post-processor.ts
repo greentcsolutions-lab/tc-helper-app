@@ -1,7 +1,7 @@
 // src/lib/extraction/classify/post-processor.ts
-// Version: 3.1.1 - 2025-12-29
-// FIXED: extractPackageMetadata now only uses critical pages for form codes
-// This prevents disclosure forms from affecting routing decisions
+// Version: 3.2.0 - 2025-12-29
+// FIXED: Override documents with hasFilledFields=true now ALWAYS included (resilient to Grok misclassification)
+// BREAKING: Removed contentCategory check for addenda - filled fields is the only requirement
 
 import type { LabeledCriticalImage, GrokPageResult } from '@/types/classification';
 
@@ -48,19 +48,32 @@ export function getCriticalPageNumbers(detectedPages: GrokPageResult[]): number[
     // RULE 1: Override documents (counters, addenda, contingency releases)
     // Universal - works for all states
     if (['counter_offer', 'addendum', 'local_addendum', 'contingency_release'].includes(role)) {
-      // Must have extractable content (not just disclosures/boilerplate)
-      if (EXCLUDED_CATEGORIES.includes(category)) {
-        console.log(`[post-processor] ✗ Page ${page.pdfPage}: ${role} (${formCode}) → EXCLUDED (${category} content)`);
-        continue;
-      }
-
-      // Must have filled fields
+      // Primary requirement: Must have filled fields
       if (!hasFilled) {
         console.log(`[post-processor] ✗ Page ${page.pdfPage}: ${role} (${formCode}) → EXCLUDED (no filled fields)`);
         continue;
       }
 
-      console.log(`[post-processor] ✓ Page ${page.pdfPage}: ${role} (${formCode}) → INCLUDED (modifies terms)`);
+      // CRITICAL FIX (v3.2.0): For override documents with hasFilledFields=true,
+      // ALWAYS include regardless of contentCategory.
+      // 
+      // Rationale: Grok sometimes misclassifies addenda with critical timeline terms
+      // as "boilerplate" when they have:
+      // - Lots of blank lines for writing
+      // - Legal text surrounding the important terms
+      // - Mixed content (some boilerplate + some critical terms)
+      //
+      // Real-world example: Page 39 (ADM Addendum #1) had:
+      // - "Post Inspection and Section 1 Clearance to be completed at Seller's 
+      //    expense within 10 days after acceptance"
+      // - "Section 1 Clearance must be delivered to Buyer and Buyer's VA lender 
+      //    at least 5 days prior to close of escrow"
+      // → These are CRITICAL timeline terms, but Grok classified as "boilerplate"
+      //    because of blank lines and legal text
+      //
+      // If fields are filled, there's extractable data that modifies the contract.
+      // contentCategory is just a hint - hasFilledFields is the truth.
+      console.log(`[post-processor] ✓ Page ${page.pdfPage}: ${role} (${formCode}) → INCLUDED (modifies terms, has filled fields)`);
       selected.add(page.pdfPage);
       continue;
     }
