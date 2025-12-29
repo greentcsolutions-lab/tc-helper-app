@@ -1,7 +1,7 @@
 // src/lib/pdf/renderer.ts
-// Version: 4.0.6 - 2025-12-23
-// FIXED: Vercel Blob put() destructuring (current SDK returns object directly)
-// FIXED: Explicit flatten action → reliable ZIP output on fillable/signed California packets
+// Version: 4.1.0 - 2025-12-29
+// CRITICAL FIX: Extract page number from PNG filename instead of array index
+// This fixes bug where extract was pulling wrong pages from ZIP
 
 import { bufferToBlob } from "@/lib/utils";
 import { put } from "@vercel/blob";
@@ -142,7 +142,7 @@ async function renderSingleDpi(
 }
 
 // -----------------------------------------------------------------------------
-// PHASE 2: Download and extract pages from ZIP (unchanged)
+// PHASE 2: Download and extract pages from ZIP
 // -----------------------------------------------------------------------------
 export async function downloadAndExtractZip(
   zipUrl: string
@@ -186,13 +186,26 @@ export async function downloadAndExtractZip(
 
   console.log(`[ZIP Download] Found ${pngFiles.length} PNGs:`, pngFiles.slice(0, 5));
 
+  // ============================================================================
+  // CRITICAL FIX (Version 4.1.0): Extract page number from PNG filename
+  // ============================================================================
   const pages = await Promise.all(
-    pngFiles.map(async (name, index) => {
+    pngFiles.map(async (name) => {
       const file = zip.file(name)!;
       const buffer = await file.async("nodebuffer");
 
+      // BEFORE (BUGGY): pageNumber: index + 1
+      // This gave sequential numbers 1, 2, 3, 4... regardless of actual PNG filenames
+      //
+      // AFTER (FIXED): Extract from filename
+      // "0.png" → pngIndex=0 → pageNumber=1
+      // "10.png" → pngIndex=10 → pageNumber=11
+      // "38.png" → pngIndex=38 → pageNumber=39
+      const pngIndex = parseInt(name.match(/(\d+)\.png$/i)?.[1] || "0");
+      const pageNumber = pngIndex + 1; // Convert 0-indexed PNG to 1-indexed PDF page
+
       return {
-        pageNumber: index + 1,
+        pageNumber,
         base64: `data:image/png;base64,${buffer.toString("base64")}`,
       };
     })
@@ -203,7 +216,7 @@ export async function downloadAndExtractZip(
 }
 
 // -----------------------------------------------------------------------------
-// HELPER: Extract specific pages from high-res ZIP (unchanged)
+// HELPER: Extract specific pages from high-res ZIP
 // -----------------------------------------------------------------------------
 export async function extractSpecificPagesFromZip(
   zipUrl: string,
