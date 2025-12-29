@@ -1,5 +1,7 @@
 // src/components/CategoryRepresentingParties.tsx
-// Updated to use direct brokers field from enriched ParseResult
+// Version: 2.0.0 - 2025-12-29
+// FIXED: Proper null handling with type guards
+// ENHANCED: Safe string validation to prevent undefined/null display
 
 import CategorySection from "./CategorySection";
 import { Users } from "lucide-react";
@@ -12,12 +14,23 @@ export default function CategoryRepresentingParties({
 }) {
   const brokers = data.brokers;
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // HELPER: Safe string display
+  // ═══════════════════════════════════════════════════════════════════════
+  const formatString = (value: string | null | undefined): string | null => {
+    if (typeof value !== 'string' || value.trim() === '') return null;
+    return value;
+  };
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // BUILD FIELD LIST WITH TYPE-SAFE GUARDS
+  // ═══════════════════════════════════════════════════════════════════════
   const fields = [
-    { label: "Listing Brokerage", value: brokers?.listingBrokerage },
-    { label: "Listing Agent", value: brokers?.listingAgent },
-    { label: "Selling Brokerage", value: brokers?.sellingBrokerage },
-    { label: "Selling Agent", value: brokers?.sellingAgent },
-  ].filter((f) => f.value);
+    { label: "Listing Brokerage", value: formatString(brokers?.listingBrokerage) },
+    { label: "Listing Agent", value: formatString(brokers?.listingAgent) },
+    { label: "Selling Brokerage", value: formatString(brokers?.sellingBrokerage) },
+    { label: "Selling Agent", value: formatString(brokers?.sellingAgent) },
+  ].filter((f) => f.value !== null);
 
   if (fields.length === 0) return null;
 

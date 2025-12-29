@@ -1,10 +1,37 @@
 // src/types/parse-result.ts
-// Version: 2.0.0 - 2025-12-24
-// SINGLE SOURCE OF TRUTH FOR ALL PARSE RESULTS TYPES
-// Public ParseResult contract — enriched with full universal extraction fields
-// Preserves all existing fields for backward compatibility during migration
+// Version: 3.0.0 - 2025-12-29
+// ENHANCED: Added field provenance tracking for debugging
+// NEW: extractionDetails now includes fieldProvenance, confidenceBreakdown, missingConfidenceFields
+// BREAKING: purchasePrice: 0 is now treated as an extraction error
 
 import { JsonValue } from "@prisma/client/runtime/library";
+
+// ═══════════════════════════════════════════════════════════════════════════
+// NEW: Field provenance tracking (Issue 6)
+// ═══════════════════════════════════════════════════════════════════════════
+export interface FieldProvenance {
+  field: string;            // e.g., "purchasePrice", "buyerNames", "brokers.listingAgent"
+  pageNumber: number;       // Which PDF page this field came from
+  pageLabel: string;        // Human-readable label (e.g., "RPA PAGE 1 - TERMS")
+  confidence: number;       // 0-100 confidence for this specific field
+  value: any;               // The extracted value
+}
+
+export interface ExtractionDetails {
+  route: "universal" | "california" | "california-fallback-universal";
+  
+  // NEW: Field provenance (which page → which field)
+  fieldProvenance?: FieldProvenance[];
+  
+  // NEW: Per-field confidence scores
+  confidenceBreakdown?: Record<string, number>;
+  
+  // NEW: Fields that didn't return confidence scores
+  missingConfidenceFields?: string[];
+  
+  // Legacy/future state-specific data
+  [key: string]: any;
+}
 
 export interface ParseResult {
   // === CORE IDENTIFIERS & METADATA ===
@@ -18,7 +45,7 @@ export interface ParseResult {
   buyerNames: string[] | null;
   sellerNames: string[] | null;
   propertyAddress: string | null;
-  purchasePrice: number | null;
+  purchasePrice: number | null;  // IMPORTANT: 0 = extraction error, requires review
   earnestMoneyAmount: number | null;        // deprecated — use earnestMoneyDeposit.amount
   earnestMoneyHolder: string | null;        // deprecated — use earnestMoneyDeposit.holder
   closingDate: string | null;
@@ -65,11 +92,8 @@ export interface ParseResult {
   // === FLAGS ===
   missingSCOs: boolean;
 
-  // === RICH JSON FIELDS (kept for backward compatibility with old records) ===
-  extractionDetails?: {
-    route?: "universal" | "california" | "california-fallback-universal";
-    [key: string]: any;
-  } | JsonValue | null;
+  // === RICH JSON FIELDS (enhanced with field provenance) ===
+  extractionDetails?: ExtractionDetails | JsonValue | null;
 
   timelineEvents?: JsonValue | null;
 

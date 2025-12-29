@@ -1,5 +1,7 @@
 // src/components/CategoryTimelineContingencies.tsx
-// Updated to use direct contingencies field from enriched ParseResult
+// Version: 2.0.0 - 2025-12-29
+// FIXED: Proper null handling with type guards
+// ENHANCED: Safe display for days/dates (handles both string and number)
 
 import CategorySection from "./CategorySection";
 import { Calendar } from "lucide-react";
@@ -12,41 +14,67 @@ export default function CategoryTimelineContingencies({
 }) {
   const cont = data.contingencies;
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // HELPER: Format contingency days (number or string like "Waived")
+  // ═══════════════════════════════════════════════════════════════════════
+  const formatContingencyDays = (
+    value: number | string | null | undefined
+  ): string | null => {
+    if (value === null || value === undefined) return null;
+    
+    if (typeof value === 'string') {
+      // Already formatted (e.g., "Waived" or "2025-12-31")
+      return value.trim() === '' ? null : value;
+    }
+    
+    if (typeof value === 'number') {
+      return `${value} days`;
+    }
+    
+    return null;
+  };
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // HELPER: Safe string display
+  // ═══════════════════════════════════════════════════════════════════════
+  const formatString = (value: string | null | undefined): string | null => {
+    if (typeof value !== 'string' || value.trim() === '') return null;
+    return value;
+  };
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // HELPER: Format COP contingency
+  // ═══════════════════════════════════════════════════════════════════════
+  const formatCOPContingency = (value: boolean | undefined): string | null => {
+    if (value === undefined) return null;
+    return value ? "Active" : "Waived";
+  };
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // BUILD FIELD LIST WITH TYPE-SAFE GUARDS
+  // ═══════════════════════════════════════════════════════════════════════
   const fields = [
-    { label: "Close of Escrow", value: data.closingDate },
+    { 
+      label: "Close of Escrow", 
+      value: formatString(data.closingDate) 
+    },
     {
       label: "Inspection Contingency",
-      value: cont?.inspectionDays
-        ? typeof cont.inspectionDays === "string"
-          ? cont.inspectionDays
-          : `${cont.inspectionDays} days`
-        : null,
+      value: formatContingencyDays(cont?.inspectionDays),
     },
     {
       label: "Appraisal Contingency",
-      value: cont?.appraisalDays
-        ? typeof cont.appraisalDays === "string"
-          ? cont.appraisalDays
-          : `${cont.appraisalDays} days`
-        : null,
+      value: formatContingencyDays(cont?.appraisalDays),
     },
     {
       label: "Loan Contingency",
-      value: cont?.loanDays
-        ? typeof cont.loanDays === "string"
-          ? cont.loanDays
-          : `${cont.loanDays} days`
-        : null,
+      value: formatContingencyDays(cont?.loanDays),
     },
     {
       label: "Sale of Buyer Property Contingency",
-      value: cont?.saleOfBuyerProperty !== undefined
-        ? cont.saleOfBuyerProperty
-          ? "Active"
-          : "Waived"
-        : null,
+      value: formatCOPContingency(cont?.saleOfBuyerProperty),
     },
-  ].filter((f) => f.value !== null && f.value !== undefined);
+  ].filter((f) => f.value !== null);
 
   if (fields.length === 0) return null;
 

@@ -1,15 +1,27 @@
 // src/lib/parse/map-to-parse-result.ts
-// Version: 1.0.0 - 2025-12-24
+// Version: 2.0.0 - 2025-12-29
+// ENHANCED: Now includes field provenance in extractionDetails
 // Maps UniversalExtractionResult → enriched ParseResult fields for DB update
-// Keeps backward compatibility during migration
 
 import type { UniversalExtractionResult } from '@/types/extraction';
+
+type FieldProvenance = {
+  field: string;
+  pageNumber: number;
+  pageLabel: string;
+  confidence: number;
+  value: any;
+};
 
 type MapToParseResultParams = {
   universal: UniversalExtractionResult;
   route: string;
-  details?: Record<string, any>; // any future debug details
-  timelineEvents?: any[];       // keep shape loose for now
+  details?: {
+    fieldProvenance?: FieldProvenance[];
+    confidenceBreakdown?: Record<string, number>;
+    missingConfidenceFields?: string[];
+  };
+  timelineEvents?: any[];
 };
 
 export function mapExtractionToParseResult({
@@ -81,8 +93,15 @@ export function mapExtractionToParseResult({
     personalPropertyIncluded: universal.personalPropertyIncluded ?? null,
     escrowHolder: universal.escrowHolder ?? null,
 
-    // === RICH DATA (minimal now) ===
-    extractionDetails: details ? { route, ...details } : { route },
+    // === RICH DATA (now includes field provenance) ===
+    extractionDetails: details 
+      ? { 
+          route, 
+          fieldProvenance: details.fieldProvenance || [],
+          confidenceBreakdown: details.confidenceBreakdown || {},
+          missingConfidenceFields: details.missingConfidenceFields || [],
+        } 
+      : { route },
 
     // === TIMELINE ===
     ...(timelineEvents.length > 0 ? { timelineEvents } : {}),

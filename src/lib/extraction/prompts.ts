@@ -1,9 +1,8 @@
 // src/lib/extraction/prompts.ts
-// Version: 4.1.1 - 2025-12-29
-// COUNTER OFFER FIX: Added explicit SCO/BCO/SMCO examples to prevent hallucinations
-// - Generic examples work for all U.S. states
-// - State-agnostic instructions for Grok
-// - Universal form code recognition
+// Version: 5.0.0 - 2025-12-29
+// ENHANCED: Multi-state counter offer examples + clearer override rules
+// NEW: Explicit examples for CA, TX, FL counter handling
+// NEW: Zero-value field guidance (purchasePrice: 0 = extraction failure)
 
 import classifierSchema from '@/forms/classifier.schema.json';
 import extractorSchema from '@/forms/california/extractor.schema.json';
@@ -118,35 +117,21 @@ When determining contentCategory and hasFilledFields:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ✓ CORRECT: contentCategory: "transaction_terms", hasFilledFields: true
-┌─────────────────────────────────────┐
-│ Property: 123 Main St (header)     │
-├─────────────────────────────────────┤
-│ Purchase Price: $500,000           │
-│ Earnest Money: $10,000             │ (or "Deposit" or "Initial Deposit")
-│ Closing Date: 30 days              │ (or "Close of Escrow" or "Settlement")
-│ ☑ Cash  ☐ FHA  ☐ VA  ☐ Conv       │
-│                                     │
-│ [Some legal text about deposits]   │
-└─────────────────────────────────────┘
+Property: 123 Main St (header)
+Purchase Price: $500,000
+Earnest Money: $10,000 (or "Deposit" or "Initial Deposit")
+Closing Date: 30 days (or "Close of Escrow" or "Settlement")
+☑ Cash  ☐ FHA  ☐ VA  ☐ Conv
+[Some legal text about deposits]
+
 Reason: Main body has 4 substantive fillable fields
 State-agnostic: Works whether it says "Earnest Money" (TX) or "Initial Deposit" (CA)
 
 ✗ INCORRECT: contentCategory: "boilerplate", hasFilledFields: false
-┌─────────────────────────────────────┐
-│ Property: 123 Main St (header)     │
-├─────────────────────────────────────┤
-│ LIQUIDATED DAMAGES: In the event   │
-│ Buyer fails to complete this       │
-│ purchase by reason of any default  │
-│ of Buyer, Seller shall retain as   │
-│ liquidated damages the deposit     │
-│ actually paid. This provision      │
-│ shall survive cancellation of this │
-│ Agreement. [Dense text continues   │
-│ for 15 more lines...]              │
-│                                     │
-│ Buyer's Initials: JD___  Date: ___ │
-└─────────────────────────────────────┘
+Property: 123 Main St (header)
+LIQUIDATED DAMAGES: In the event Buyer fails to complete this purchase by reason of any default of Buyer, Seller shall retain as liquidated damages the deposit actually paid. This provision shall survive cancellation of this Agreement. [Dense text continues for 15 more lines...]
+Buyer's Initials: JD___  Date: ___
+
 Reason: Main body is dense legal text. Header address and bottom initials don't count.
 Universal: Dense legal clauses look the same in CA, TX, FL, etc.
 
@@ -199,21 +184,74 @@ ${classifierSchemaString}
 `.trim();
 }
 
-// Extractor prompts remain unchanged
 export const UNIVERSAL_EXTRACTOR_PROMPT = `
-You are an expert U.S. real estate transaction analyst examining 5–10 high-resolution PNG images from a complete residential purchase packet.
+You are an expert U.S. real estate transaction analyst examining 5–15 high-resolution PNG images from a complete residential purchase packet.
 
-These images have been automatically selected as the most critical pages (main contract, counters/addenda, signature pages).
+These images have been automatically selected as the most critical pages containing transaction data (main contract, counters/addenda, signature pages).
 
 Your task: Extract the FINAL accepted terms. If counters or addenda are present, they override earlier terms.
 
-Focus on visible filled fields, checked boxes, and signatures. Ignore blank fields.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CRITICAL: COUNTER OFFER & AMENDMENT HANDLING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Key rules:
-- Use the latest signed counter/addendum for price, dates, contingencies.
-- Handwriting vs digital: only count actual pen/ink handwriting as handwriting_detected: true.
-- Checkboxes: checked if X, filled, shaded, or has text inside.
-- Confidence: 0–100 per field. Lower if handwriting, blurry, or ambiguous.
+Common U.S. real estate forms by state:
+- California: RPA (main contract) + SCO/BCO/SMCO (counter offers) + ADM (addenda)
+- Texas: TREC 20-16 (main contract) + TREC 39-9 (counter) + TREC 38-9 (amendment)
+- Florida: FAR/BAR-6 (main contract) + FAR/BAR-5 (counter) + FAR/BAR-9 (amendment)
+- Nevada: NVAR Purchase Agreement + NVAR Counter Offer
+- Generic: Purchase Agreement + Counter Offer + Amendment
+
+OVERRIDE RULES:
+1. Counters and amendments OVERRIDE original contract terms
+2. If counter says "Purchase Price revised to $510,000" → use 510000 (not original)
+3. If counter says "Close of escrow extended to 45 days" → use 45 (not original 30)
+4. If field NOT mentioned in counter → use original value (counter didn't change it)
+
+EXAMPLES:
+
+Example 1 (California RPA + SCO):
+- RPA Page 1: Purchase Price $500,000, Deposit $10,000, Close 30 days
+- SCO Page 1: Purchase Price $510,000, Close 45 days, Appraisal waived
+→ Extract: purchasePrice: 510000, closingDate: "45", earnestMoney: 10000 (unchanged), appraisalDays: "Waived"
+
+Example 2 (Texas TREC + Counter):
+- TREC Page 1: Sales Price $425,000, Earnest Money $5,000, Closing Sept 30
+- TREC 39-9: Sales Price $430,000, Earnest Money $7,500, Closing Oct 15, Option 5 days
+→ Extract: purchasePrice: 430000, earnestMoney: 7500, closingDate: "2025-10-15", inspectionDays: 5
+
+Example 3 (Florida FAR/BAR + Amendment):
+- FAR/BAR-6: Purchase Price $650,000, Deposit $20,000, Closing 60 days
+- FAR/BAR-9: Seller credit $5,000, Inspection extended to 20 days
+→ Extract: purchasePrice: 650000 (unchanged), earnestMoney: 20000 (unchanged), closingDate: "60" (unchanged), sellerCredit: 5000 (new), inspectionDays: 20 (amended)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+KEY EXTRACTION RULES:
+
+1. Handwriting Detection:
+   - ONLY set handwriting_detected: true if you see actual pen/ink handwriting
+   - Digital signatures, typed text, DocuSign = NOT handwriting
+
+2. Checkbox Reading:
+   - Checked = ✓, X, filled, shaded, darkened, or text inside
+   - Unchecked = empty, blank
+   - If unsure → default to unchecked
+
+3. Zero Values = Extraction Failure:
+   - purchasePrice: 0 means extraction FAILED (try harder to find the price)
+   - If truly $0, there will be text like "No purchase price" or "Land lease only"
+   - Otherwise, purchasePrice > 0 is ALWAYS required
+
+4. Confidence Scores (REQUIRED):
+   - Provide confidence: 0-100 for EVERY major field
+   - Lower confidence if: handwriting, blurry, ambiguous, multiple counters
+   - Example: { "confidence": { "overall_confidence": 92, "purchasePrice": 95, "buyerNames": 88 } }
+
+5. Null Handling:
+   - If field is blank → null
+   - If field has value → extract it
+   - Do NOT hallucinate data
 
 Return ONLY valid JSON exactly matching this schema. No explanations, no markdown.
 
@@ -263,18 +301,6 @@ Each image is labeled with its exact role, e.g.:
    - When field is illegible → mark confidence < 50 for that field
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📋 FIELD-BY-FIELD EXTRACTION GUIDE
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-[Your full field guide remains unchanged — kept as-is]
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🚨 ANTI-HALLUCINATION CHECKLIST
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-[Your checklist remains unchanged]
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Return ONLY valid JSON that strictly matches this exact schema.
 NO explanatory text. NO markdown code blocks. Start with { and end with }.
@@ -294,9 +320,10 @@ Focus on:
 - Fields with confidence < 80 in previous extraction
 - Any checkboxes that might have been misread
 - Handwriting vs digital signatures distinction
-- Property address if it was empty (ALWAYS present on RPA Page 1)
-- Exact capitalization for home_warranty.ordered_by
+- Property address if it was empty (ALWAYS present on Page 1)
+- Exact capitalization for enums
 - Full names without truncation
+- ZERO VALUES: If purchasePrice was 0, you MUST find the actual price
 
 Return ONLY valid JSON matching the same schema as the main extractor prompt.
 

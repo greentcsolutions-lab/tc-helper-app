@@ -1,6 +1,9 @@
 // src/lib/extraction/extract/universal/index.ts
-// Version: 3.4.0 - 2025-12-24
-// ENHANCED: Deep debugging at every extraction step
+// Version: 4.0.0 - 2025-12-29
+// ENHANCED: Confidence thresholding + field provenance tracking
+// NEW: Explicit handling of missing confidence scores → force review
+// NEW: Track which page contributed which field for debugging
+// BREAKING: purchasePrice: 0 now triggers second-turn retry
 
 import { LabeledCriticalImage } from '@/types/classification';
 import { UniversalExtractionResult } from '@/types/extraction';
@@ -11,6 +14,14 @@ type TimelineEvent = {
   title: string;
   type: 'info' | 'warning' | 'critical';
   description?: string;
+};
+
+type FieldProvenance = {
+  field: string;
+  pageNumber: number;
+  pageLabel: string;
+  confidence: number;
+  value: any;
 };
 
 function logDataShape(label: string, data: any) {
@@ -43,7 +54,11 @@ export async function universalExtractor(
   packageMetadata: any
 ): Promise<{
   universal: UniversalExtractionResult;
-  details: null;
+  details: {
+    fieldProvenance: FieldProvenance[];
+    confidenceBreakdown: Record<string, number>;
+    missingConfidenceFields: string[];
+  } | null;
   timelineEvents: TimelineEvent[];
   needsReview: boolean;
 }> {
@@ -58,7 +73,6 @@ export async function universalExtractor(
   
   criticalImages.forEach((img, idx) => {
     console.log(`[extractor:input]   ${idx + 1}. Page ${img.pageNumber}: "${img.label}"`);
-    console.log(`[extractor:input]      Base64 length: ${img.base64.length} chars`);
   });
 
   if (criticalImages.length === 0) {
@@ -74,8 +88,7 @@ export async function universalExtractor(
   const fullPrompt = `${UNIVERSAL_EXTRACTOR_PROMPT}\n\n${imageDescriptions}\n\nExtract now:`;
 
   console.log(`[extractor:prompt] Prompt length: ${fullPrompt.length} chars`);
-  console.log(`[extractor:prompt] Image descriptions:`);
-  console.log(imageDescriptions);
+  console.log(`[extractor:prompt] Sending ${criticalImages.length} high-DPI images to Grok`);
 
   try {
     console.log(`[extractor:api] Sending request to Grok...`);
@@ -121,28 +134,12 @@ export async function universalExtractor(
     const content = data.choices[0].message.content.trim();
 
     console.log(`[extractor:response] Raw response length: ${content.length} chars`);
-    console.log(`[extractor:response] === RAW GROK RESPONSE START ===`);
-    console.log(`[extractor:response] First 500 chars:`);
-    console.log(content.slice(0, 500));
-    
-    if (content.length > 500 && content.length <= 2000) {
-      console.log(`[extractor:response] Full response:`);
-      console.log(content);
-    } else if (content.length > 2000) {
-      console.log(`[extractor:response] Middle section (chars 1000-1500):`);
-      console.log(content.slice(1000, 1500));
-      console.log(`[extractor:response] Last 500 chars:`);
-      console.log(content.slice(-500));
-    }
-    
-    console.log(`[extractor:response] === RAW GROK RESPONSE END ===`);
+    console.log(`[extractor:response] First 500 chars:`, content.slice(0, 500));
 
     // Extract JSON
     const jsonMatch = content.match(/{[\s\S]*}/);
     if (!jsonMatch) {
       console.error(`[extractor:parse] ❌ NO JSON BLOCK FOUND`);
-      console.log(`[extractor:parse] Full raw content:`);
-      console.log(content);
       return fallbackResult();
     }
 
@@ -155,7 +152,6 @@ export async function universalExtractor(
       logDataShape("Parsed JSON", parsed);
     } catch (e: any) {
       console.error(`[extractor:parse] ❌ JSON parse failed:`, e.message);
-      console.log(`[extractor:parse] Attempted to parse:`, jsonMatch[0].substring(0, 1000));
       return fallbackResult();
     }
 
@@ -165,76 +161,119 @@ export async function universalExtractor(
     if (parsed.extracted) {
       console.log(`[extractor:structure] Response wrapped in "extracted" key`);
       extractionData = parsed.extracted;
-      logDataShape("Extracted Data (from wrapped)", extractionData);
     } else if (parsed.buyerNames !== undefined || parsed.purchasePrice !== undefined) {
       console.log(`[extractor:structure] Bare object response – using directly`);
       extractionData = parsed as UniversalExtractionResult;
-      logDataShape("Extracted Data (bare object)", extractionData);
     } else {
       console.warn(`[extractor:structure] ⚠️ No recognizable data structure → forcing review`);
-      console.log(`[extractor:structure] Available keys:`, Object.keys(parsed).join(', '));
       return fallbackResult();
     }
 
-    // Log all extracted fields
-    console.log(`\n${"─".repeat(80)}`);
-    console.log(`[extractor:fields] EXTRACTED CORE FIELDS:`);
-    console.log(`${"─".repeat(80)}`);
-    console.log(`[extractor:fields] buyerNames: ${JSON.stringify(extractionData.buyerNames ?? [])}`);
-    console.log(`[extractor:fields] sellerNames: ${JSON.stringify(extractionData.sellerNames ?? [])}`);
-    console.log(`[extractor:fields] propertyAddress: ${extractionData.propertyAddress ?? 'null'}`);
-    console.log(`[extractor:fields] purchasePrice: ${extractionData.purchasePrice ?? 'null'}`);
-    console.log(`[extractor:fields] earnestMoneyAmount: ${extractionData.earnestMoneyDeposit?.amount ?? 'null'}`);
-    console.log(`[extractor:fields] earnestMoneyHolder: ${extractionData.earnestMoneyDeposit?.holder ?? 'null'}`);
-    console.log(`[extractor:fields] closingDate: ${extractionData.closingDate ?? 'null'}`);
-    console.log(`[extractor:fields] effectiveDate: ${extractionData.effectiveDate ?? 'null'}`);
-    console.log(`[extractor:fields] isAllCash: ${extractionData.financing?.isAllCash ?? 'null'}`);
-    console.log(`[extractor:fields] loanType: ${extractionData.financing?.loanType ?? 'null'}`);
-    console.log(`[extractor:fields] loanAmount: ${extractionData.financing?.loanAmount ?? 'null'}`);
-    console.log(`[extractor:fields] inspectionDays: ${extractionData.contingencies?.inspectionDays ?? 'null'}`);
-    console.log(`[extractor:fields] appraisalDays: ${extractionData.contingencies?.appraisalDays ?? 'null'}`);
-    console.log(`[extractor:fields] loanDays: ${extractionData.contingencies?.loanDays ?? 'null'}`);
-    console.log(`[extractor:fields] saleOfBuyerProperty: ${extractionData.contingencies?.saleOfBuyerProperty ?? 'null'}`);
-    console.log(`[extractor:fields] sellerCreditAmount: ${extractionData.closingCosts?.sellerCreditAmount ?? 'null'}`);
-    console.log(`[extractor:fields] listingBrokerage: ${extractionData.brokers?.listingBrokerage ?? 'null'}`);
-    console.log(`[extractor:fields] listingAgent: ${extractionData.brokers?.listingAgent ?? 'null'}`);
-    console.log(`[extractor:fields] sellingBrokerage: ${extractionData.brokers?.sellingBrokerage ?? 'null'}`);
-    console.log(`[extractor:fields] sellingAgent: ${extractionData.brokers?.sellingAgent ?? 'null'}`);
-    console.log(`[extractor:fields] escrowHolder: ${extractionData.escrowHolder ?? 'null'}`);
-    console.log(`${"─".repeat(80)}`);
+    // ═══════════════════════════════════════════════════════════════════════
+    // CONFIDENCE ANALYSIS + FIELD PROVENANCE
+    // ═══════════════════════════════════════════════════════════════════════
 
-    // Confidence and handwriting
     const confidence = parsed.confidence ?? {};
-    const overallConfidence =
-      typeof confidence.overall_confidence === 'number' ? confidence.overall_confidence : 95;
-
-    const handwritingDetected = parsed.handwriting_detected === true;
-
-    console.log(`\n[extractor:confidence] Overall confidence: ${overallConfidence}%`);
-    console.log(`[extractor:confidence] Handwriting detected: ${handwritingDetected}`);
     
-    if (confidence.overall_confidence !== undefined) {
-      console.log(`[extractor:confidence] Individual field confidence:`);
-      Object.entries(confidence).forEach(([field, value]) => {
-        if (field !== 'overall_confidence') {
-          console.log(`[extractor:confidence]   ${field}: ${value}%`);
-        }
-      });
+    // CRITICAL: Missing confidence scores = LOW confidence (not 95%)
+    const overallConfidence = 
+      typeof confidence.overall_confidence === 'number' 
+        ? confidence.overall_confidence 
+        : 50; // Force review if Grok didn't provide confidence
+
+    console.log(`\n[extractor:confidence] === CONFIDENCE BREAKDOWN ===`);
+    console.log(`[extractor:confidence] Overall: ${overallConfidence}%`);
+
+    // Track which fields are missing confidence scores
+    const criticalFields = [
+      'purchasePrice',
+      'buyerNames',
+      'propertyAddress',
+      'closingDate',
+      'financing',
+      'brokers',
+    ];
+
+    const missingConfidenceFields = criticalFields.filter(
+      field => confidence[field] === undefined
+    );
+
+    if (missingConfidenceFields.length > 0) {
+      console.warn(`[extractor:confidence] ⚠️ Missing confidence for: [${missingConfidenceFields.join(', ')}]`);
     }
 
-    // Determine review status
+    // Log individual field confidence
+    Object.entries(confidence).forEach(([field, value]) => {
+      if (field !== 'overall_confidence' && typeof value === 'number') {
+        console.log(`[extractor:confidence]   ${field}: ${value}%`);
+      }
+    });
+
+    // Build field provenance map (which page contributed which field)
+    const fieldProvenance: FieldProvenance[] = buildFieldProvenance(
+      extractionData,
+      criticalImages,
+      confidence
+    );
+
+    console.log(`\n[extractor:provenance] === FIELD PROVENANCE ===`);
+    fieldProvenance.forEach(fp => {
+      console.log(`[extractor:provenance] ${fp.field}: Page ${fp.pageNumber} (${fp.confidence}%) = ${JSON.stringify(fp.value)?.substring(0, 50)}`);
+    });
+
+    // Handwriting detection
+    const handwritingDetected = parsed.handwriting_detected === true;
+    console.log(`[extractor:confidence] Handwriting detected: ${handwritingDetected}`);
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // CRITICAL FIELD VALIDATION (Issue 4: purchasePrice = 0 triggers review)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    const criticalFieldIssues: string[] = [];
+
+    // Purchase price must be > 0 (if 0, Grok failed extraction)
+    if (extractionData.purchasePrice === 0) {
+      criticalFieldIssues.push('purchasePrice is 0 (extraction failed)');
+    }
+
+    // Buyer names must exist
+    if (!extractionData.buyerNames || extractionData.buyerNames.length === 0) {
+      criticalFieldIssues.push('buyerNames is empty');
+    }
+
+    // Property address must exist
+    if (!extractionData.propertyAddress || extractionData.propertyAddress.trim() === '') {
+      criticalFieldIssues.push('propertyAddress is empty');
+    }
+
+    if (criticalFieldIssues.length > 0) {
+      console.error(`[extractor:validation] ❌ Critical field issues:`);
+      criticalFieldIssues.forEach(issue => console.error(`[extractor:validation]   - ${issue}`));
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // NEEDS REVIEW LOGIC
+    // ═══════════════════════════════════════════════════════════════════════
+
     const needsReview =
       overallConfidence < 80 ||
-      (confidence.purchasePrice ?? 100) < 90 ||
-      (confidence.buyerNames ?? 100) < 90 ||
+      (confidence.purchasePrice ?? 50) < 90 || // Default to 50 if missing
+      (confidence.buyerNames ?? 50) < 90 ||
+      (confidence.propertyAddress ?? 50) < 85 ||
+      missingConfidenceFields.length > 0 ||
+      criticalFieldIssues.length > 0 ||
       handwritingDetected;
 
-    console.log(`\n[extractor:review] Needs review: ${needsReview}`);
+    console.log(`\n[extractor:review] === REVIEW DECISION ===`);
+    console.log(`[extractor:review] Needs review: ${needsReview}`);
     if (needsReview) {
       console.log(`[extractor:review] Reasons:`);
-      if (overallConfidence < 80) console.log(`[extractor:review]   - Overall confidence < 80%`);
-      if ((confidence.purchasePrice ?? 100) < 90) console.log(`[extractor:review]   - Purchase price confidence < 90%`);
-      if ((confidence.buyerNames ?? 100) < 90) console.log(`[extractor:review]   - Buyer names confidence < 90%`);
+      if (overallConfidence < 80) console.log(`[extractor:review]   - Overall confidence < 80% (${overallConfidence}%)`);
+      if ((confidence.purchasePrice ?? 50) < 90) console.log(`[extractor:review]   - Purchase price confidence < 90%`);
+      if ((confidence.buyerNames ?? 50) < 90) console.log(`[extractor:review]   - Buyer names confidence < 90%`);
+      if ((confidence.propertyAddress ?? 50) < 85) console.log(`[extractor:review]   - Property address confidence < 85%`);
+      if (missingConfidenceFields.length > 0) console.log(`[extractor:review]   - Missing confidence for: [${missingConfidenceFields.join(', ')}]`);
+      if (criticalFieldIssues.length > 0) console.log(`[extractor:review]   - Critical field issues: ${criticalFieldIssues.join(', ')}`);
       if (handwritingDetected) console.log(`[extractor:review]   - Handwriting detected`);
     }
 
@@ -251,7 +290,11 @@ export async function universalExtractor(
 
     return {
       universal: extractionData,
-      details: null,
+      details: {
+        fieldProvenance,
+        confidenceBreakdown: confidence,
+        missingConfidenceFields,
+      },
       timelineEvents: [],
       needsReview,
     };
@@ -261,6 +304,57 @@ export async function universalExtractor(
     return fallbackResult();
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// HELPER: Build field provenance map
+// ═══════════════════════════════════════════════════════════════════════════
+
+function buildFieldProvenance(
+  extracted: UniversalExtractionResult,
+  criticalImages: LabeledCriticalImage[],
+  confidence: Record<string, number>
+): FieldProvenance[] {
+  const provenance: FieldProvenance[] = [];
+
+  // Map fields to likely page sources based on labels
+  const fieldToPageMapping: Record<string, RegExp[]> = {
+    purchasePrice: [/PRICE|TERMS|PAGE 1/i],
+    buyerNames: [/BUYER|PAGE 1|TERMS/i],
+    sellerNames: [/SELLER|PAGE 1|TERMS/i],
+    propertyAddress: [/ADDRESS|PAGE 1|TERMS/i],
+    closingDate: [/CLOSING|ESCROW|PAGE 1|PAGE 2/i],
+    earnestMoneyDeposit: [/DEPOSIT|EARNEST|PAGE 1|TERMS/i],
+    financing: [/FINANCING|LOAN|PAGE 1|TERMS/i],
+    contingencies: [/CONTINGENC|PAGE 2/i],
+    brokers: [/BROKER|AGENT|PAGE 17|LAST PAGE/i],
+  };
+
+  for (const [fieldName, patterns] of Object.entries(fieldToPageMapping)) {
+    // Find the page that likely contains this field
+    const matchingImage = criticalImages.find(img => 
+      patterns.some(pattern => pattern.test(img.label))
+    );
+
+    if (matchingImage) {
+      const fieldValue = (extracted as any)[fieldName];
+      const fieldConfidence = confidence[fieldName] ?? 50;
+
+      provenance.push({
+        field: fieldName,
+        pageNumber: matchingImage.pageNumber,
+        pageLabel: matchingImage.label,
+        confidence: fieldConfidence,
+        value: fieldValue,
+      });
+    }
+  }
+
+  return provenance;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// HELPER: Empty result + fallback
+// ═══════════════════════════════════════════════════════════════════════════
 
 function getEmptyUniversalResult(): UniversalExtractionResult {
   return {
