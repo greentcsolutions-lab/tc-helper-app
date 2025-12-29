@@ -2,12 +2,12 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://yourapp.com/schemas/universal-classifier.schema.json",
   "title": "Universal U.S. Real Estate Page Classifier Output",
-  "description": "One entry per image in batch order. Batch size always 1–20.",
+  "description": "Version 3.1.0 - 2025-12-29 - Universal terminology for all U.S. states",
   "type": "object",
   "properties": {
     "state": {
       "type": ["string", "null"],
-      "description": "Two-letter state code if confidently detected (e.g., 'CA', 'TX'). Null if unknown."
+      "description": "Two-letter state code if confidently detected (e.g., 'CA', 'TX', 'FL'). Null if unknown."
     },
     "pages": {
       "type": "array",
@@ -33,17 +33,19 @@
               },
               "formCode": {
                 "type": "string",
-                "description": "Short code like 'RPA', 'TREC 20-16', 'FAR/BAR-6'"
+                "description": "Short code identifying the form. Examples: 'RPA' (CA), 'TREC 20-16' (TX), 'FAR/BAR-6' (FL), 'NVAR' (NV), 'APR' (contingency release), 'Amendment', 'Addendum'"
               },
               "formRevision": {
                 "type": ["string", "null"],
-                "description": "e.g., '6/25', '11/2023'"
+                "description": "Form revision date as visible on document. Examples: '6/25', '11/2023', '12/15'"
               },
               "formPage": {
-                "type": ["integer", "null"]
+                "type": ["integer", "null"],
+                "description": "Current page number within this specific form (e.g., page 3 of a 17-page contract)"
               },
               "totalPagesInForm": {
-                "type": ["integer", "null"]
+                "type": ["integer", "null"],
+                "description": "Total pages in this specific form (e.g., 17 for CA RPA, 9 for TREC 20-16)"
               },
               "role": {
                 "type": "string",
@@ -51,42 +53,42 @@
                   "main_contract",
                   "counter_offer",
                   "addendum",
+                  "local_addendum",
+                  "contingency_release",
                   "disclosure",
                   "financing",
-                  "signatures",
                   "broker_info",
                   "title_page",
-                  "other",
-                  "local_addendum"
-                ]
+                  "other"
+                ],
+                "description": "Document type classification: main_contract = primary purchase/sales agreement; counter_offer = any counter offer; addendum = general addendum/amendment; local_addendum = state/region-specific addendum; contingency_release = forms that release/modify contingencies (APR, RR, amendments); disclosure = disclosure forms; financing = lender documents; broker_info = standalone broker representation forms NOT part of main contract; title_page = cover pages; other = unknown/misc"
               },
               "titleSnippet": {
                 "type": "string",
-                "maxLength": 120
+                "maxLength": 120,
+                "description": "Prominent header/title text from the page"
               },
               "confidence": {
                 "type": "integer",
                 "minimum": 0,
-                "maximum": 100
+                "maximum": 100,
+                "description": "Classification confidence based on form clarity and recognizable elements"
               },
               "contentCategory": {
                 "type": "string",
                 "enum": [
-                  "core_terms",
-                  "contingencies",
-                  "financing_details",
+                  "transaction_terms",
                   "signatures",
                   "broker_info",
-                  "counter_or_addendum",
                   "disclosures",
                   "boilerplate",
                   "other"
                 ],
-                "description": "Primary content type of this page based on visible filled fields and section headings"
+                "description": "Primary content type based on MAIN BODY content (ignore headers/footers): transaction_terms = ANY fillable transaction data (purchase price, earnest money/deposit, closing date, contingency dates, financing terms, items included/excluded); signatures = signature blocks and final acceptance dates; broker_info = agent/broker contact information; disclosures = standard disclosure text; boilerplate = dense legal text with no substantive fillable fields; other = unknown/blank. IMPORTANT: Use universal terminology - 'earnest money' and 'deposit' and 'initial deposit' are all the same thing."
               },
               "hasFilledFields": {
                 "type": "boolean",
-                "description": "True if page shows visible filled text, checkboxes, or handwriting"
+                "description": "True if the MAIN BODY (not headers/footers) has 3+ substantive filled fields or checked boxes. Do NOT count: property address in header, page numbers, form codes, single initial fields on boilerplate pages. Examples of substantive fields: purchase/sales price, earnest money/deposit amount, closing date, contingency deadlines, loan type checkboxes, items included/excluded checkboxes, agent contact information."
               }
             },
             "required": ["pdfPage", "formCode", "role", "confidence", "contentCategory", "hasFilledFields"],

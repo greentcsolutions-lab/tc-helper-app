@@ -1,9 +1,9 @@
 // src/lib/extraction/classify/post-processor.ts
-// Version: 2.8.2 - 2025-12-29
-// CHANGES:
-//   - Signature pages included ONLY from main transaction flow
-//   - Counter/addendum pages show accurate role-based labels (SCO, ADM, FVAC, etc.)
-//   - Minor label polish
+// Version: 3.1.0 - 2025-12-29
+// UNIVERSAL UPDATE: Added multi-state form code recognition
+// - Expanded ADDENDUM_DISPLAY_CODES for TX, FL, NV, and generic forms
+// - Logic remains state-agnostic (no special cases)
+// - Works with any U.S. real estate contract
 
 import type { LabeledCriticalImage, GrokPageResult } from '@/types/classification';
 
@@ -13,100 +13,95 @@ export function mergeDetectedPages(
   return allGrokPages.filter((p): p is GrokPageResult => p !== null);
 }
 
+/**
+ * Selects critical pages for extraction using universal logic
+ * Works for CA, TX, FL, NV, and all other U.S. states
+ */
 export function getCriticalPageNumbers(detectedPages: GrokPageResult[]): number[] {
   const selected = new Set<number>();
 
-  const TRANSACTION_TERMS_CATEGORIES = [
-    'core_terms',
-    'contingencies',
-    'financing_details',
-    'counter_or_addendum',
+  // Categories that contain extractable data (universal)
+  const EXTRACTABLE_CATEGORIES = [
+    'transaction_terms',  // Any fillable transaction data
+    'signatures',         // Final acceptance dates
+    'broker_info',        // Agent contact info
   ];
 
-  const EXCLUDED_CATEGORIES = ['boilerplate', 'disclosures', 'other'];
+  // Categories to always exclude (universal)
+  const EXCLUDED_CATEGORIES = [
+    'disclosures',        // Standard disclosures
+    'boilerplate',        // Dense legal text
+    'other',              // Unknown/blank
+  ];
 
+  // DEBUG: Log full classification results
   console.log('\n[post-processor] === FULL CLASSIFICATION RESULTS ===');
   detectedPages.forEach((page) => {
     console.log(`[post-processor] Page ${page.pdfPage}: ${page.formCode} ${page.formPage}/${page.totalPagesInForm} | ${page.role} | ${page.contentCategory} | filled=${page.hasFilledFields}`);
   });
   console.log('[post-processor] ======================================\n');
 
-  // First pass: collect all counter/addendum/local_addendum pages that actually modify transaction terms
-  const termModifyingOverrides = new Set<number>();
-
   for (const page of detectedPages) {
     const role = page.role ?? '';
     const category = page.contentCategory ?? '';
     const hasFilled = page.hasFilledFields ?? false;
+    const formCode = page.formCode ?? '';
 
-    if (['counter_offer', 'addendum', 'local_addendum'].includes(role)) {
+    // RULE 1: Override documents (counters, addenda, contingency releases)
+    // Universal - works for all states
+    if (['counter_offer', 'addendum', 'local_addendum', 'contingency_release'].includes(role)) {
+      // Must have extractable content (not just disclosures/boilerplate)
+      if (EXCLUDED_CATEGORIES.includes(category)) {
+        console.log(`[post-processor] ✗ Page ${page.pdfPage}: ${role} (${formCode}) → EXCLUDED (${category} content)`);
+        continue;
+      }
+
+      // Must have filled fields
       if (!hasFilled) {
-        console.log(`[post-processor] ✗ Page ${page.pdfPage}: ${role} → EXCLUDED (no filled fields)`);
+        console.log(`[post-processor] ✗ Page ${page.pdfPage}: ${role} (${formCode}) → EXCLUDED (no filled fields)`);
         continue;
       }
-      if (['disclosures', 'boilerplate'].includes(category)) {
-        console.log(`[post-processor] ✗ Page ${page.pdfPage}: ${role} (${page.formCode}) → EXCLUDED (disclosure-style)`);
-        continue;
-      }
-      console.log(`[post-processor] ✓ Page ${page.pdfPage}: ${role} (${page.formCode}) → INCLUDED (modifies terms)`);
-      termModifyingOverrides.add(page.pdfPage);
+
+      console.log(`[post-processor] ✓ Page ${page.pdfPage}: ${role} (${formCode}) → INCLUDED (modifies terms)`);
       selected.add(page.pdfPage);
-    }
-  }
-
-  // Second pass: main_contract pages
-  for (const page of detectedPages) {
-    if (page.role !== 'main_contract') continue;
-
-    const category = page.contentCategory ?? '';
-    const hasFilled = page.hasFilledFields ?? false;
-
-    if (EXCLUDED_CATEGORIES.includes(category)) {
-      console.log(`[post-processor] ✗ Page ${page.pdfPage}: ${category} → EXCLUDED (boilerplate/disclosures)`);
       continue;
     }
 
-    // Core transaction terms
-    if (TRANSACTION_TERMS_CATEGORIES.includes(category) && hasFilled) {
+    // RULE 2: Main contract pages
+    // Universal - works for all states
+    if (role === 'main_contract') {
+      // Must have extractable content
+      if (EXCLUDED_CATEGORIES.includes(category)) {
+        console.log(`[post-processor] ✗ Page ${page.pdfPage}: ${category} → EXCLUDED (excluded category)`);
+        continue;
+      }
+
+      // Must be an extractable category
+      if (!EXTRACTABLE_CATEGORIES.includes(category)) {
+        console.log(`[post-processor] ✗ Page ${page.pdfPage}: ${category} → EXCLUDED (non-extractable category)`);
+        continue;
+      }
+
+      // Must have filled fields
+      if (!hasFilled) {
+        console.log(`[post-processor] ✗ Page ${page.pdfPage}: ${category} → EXCLUDED (no filled fields)`);
+        continue;
+      }
+
       console.log(`[post-processor] ✓ Page ${page.pdfPage}: ${category} + filled → INCLUDED`);
       selected.add(page.pdfPage);
       continue;
     }
 
-    // Signatures from the main contract
-    if (category === 'signatures') {
-      if (hasFilled) {
-        console.log(`[post-processor] ✓ Page ${page.pdfPage}: signatures + filled → INCLUDED (main contract acceptance)`);
-        selected.add(page.pdfPage);
-      } else {
-        console.log(`[post-processor] ✗ Page ${page.pdfPage}: signatures → EXCLUDED (blank)`);
-      }
-      continue;
-    }
-
-    // Fallback: any other filled main_contract page that's not excluded
-    if (hasFilled && !EXCLUDED_CATEGORIES.includes(category)) {
-      console.log(`[post-processor] ✓ Page ${page.pdfPage}: ${category} + filled → INCLUDED (main contract fallback)`);
-      selected.add(page.pdfPage);
-    } else {
-      console.log(`[post-processor] ✗ Page ${page.pdfPage}: ${category} → EXCLUDED (non-extractable or blank)`);
-    }
-  }
-
-  // Ensure signatures on term-modifying overrides are included (rare edge case)
-  for (const page of detectedPages) {
-    if (
-      termModifyingOverrides.has(page.pdfPage) &&
-      page.contentCategory === 'signatures' &&
-      page.hasFilledFields
-    ) {
-      console.log(`[post-processor] ✓ Page ${page.pdfPage}: signatures on override → INCLUDED`);
-      selected.add(page.pdfPage);
-    }
+    // RULE 3: All other roles (disclosure, financing, broker_info, title_page, other)
+    // Universal - always excluded
+    console.log(`[post-processor] ✗ Page ${page.pdfPage}: ${role} → EXCLUDED (non-critical role)`);
   }
 
   const sortedPages = Array.from(selected).sort((a, b) => a - b);
+  
   console.log(`\n[post-processor] FINAL SELECTION: ${sortedPages.length} pages → [${sortedPages.join(', ')}]`);
+  
   return sortedPages;
 }
 
@@ -116,17 +111,58 @@ export function buildUniversalPageLabels(
 ): Map<number, string> {
   const labelMap = new Map<number, string>();
 
-  // Define known short/display codes for common addenda
-    const ADDENDUM_DISPLAY_CODES: Record<string, string> = {
-  ADM: 'ADM',
-  FVAC: 'FVAC',
-  FRPA: 'FRPA',
-  RPA: 'RPA',
-  SCO: 'SCO',
-  BCO: 'BCO',
-  SMCO: 'SMCO',
-  AEA: 'AEA',
-} as const; // optional: makes values literal types
+  // Universal form code display names (all U.S. states)
+  const ADDENDUM_DISPLAY_CODES: Record<string, string> = {
+    // California
+    'RPA': 'RPA',
+    'SCO': 'SCO',
+    'BCO': 'BCO',
+    'SMCO': 'SMCO',
+    'ADM': 'ADM',
+    'FVAC': 'FVAC',
+    'FRPA': 'FRPA',
+    'AEA': 'AEA',
+    'APR': 'APR',
+    'RR': 'RR',
+    'TOA': 'TOA',
+    'PRBS': 'PRBS',
+    'AD': 'AD',
+    'FRA': 'FRA',
+    'BIA': 'BIA',
+    'BHIA': 'BHIA',
+    'WFA': 'WFA',
+    'COPA': 'COPA',
+    'FHDA': 'FHDA',
+    'CPDA': 'CPDA',
+    'RPMA': 'RPMA',
+    
+    // Texas (TREC forms)
+    'TREC 20-16': 'TREC',
+    'TREC 1-4': 'TREC-AMD',
+    'TREC 38-9': 'TREC-REL',
+    'TREC 39-9': 'TREC-CO',
+    'TREC 9-13': 'TREC-ADD',
+    'TREC': 'TREC',
+    
+    // Florida (FAR/BAR forms)
+    'FAR/BAR-6': 'FAR/BAR',
+    'FAR/BAR-5': 'FAR/BAR-CO',
+    'FAR/BAR-AS IS': 'FAR/BAR-AS',
+    'FAR/BAR-9': 'FAR/BAR-AMD',
+    'FAR/BAR': 'FAR/BAR',
+    
+    // Nevada
+    'NVAR': 'NVAR',
+    'NV RPA': 'NV-RPA',
+    
+    // Generic/Universal
+    'Amendment': 'AMD',
+    'Addendum': 'ADM',
+    'Counter Offer': 'CO',
+    'Purchase Agreement': 'PA',
+    'Sales Contract': 'SC',
+    'Contingency Release': 'REL',
+  } as const;
 
   detectedPages.forEach((page) => {
     const rawCode = page.formCode?.trim() || 'UNKNOWN';
@@ -135,21 +171,15 @@ export function buildUniversalPageLabels(
     const category = page.contentCategory || 'UNKNOWN';
     const filled = page.hasFilledFields ? ' (FILLED)' : '';
 
-    // Role-based display code overrides
-    let displayCode = rawCode;
-    if (role === 'counter_offer') {
-      displayCode = 'SCO';
-    } else if (role === 'addendum' || role === 'local_addendum') {
-      displayCode = ADDENDUM_DISPLAY_CODES[rawCode] ?? rawCode;
-    }
+    // Use display code if available, otherwise use raw code
+    const displayCode = ADDENDUM_DISPLAY_CODES[rawCode] ?? rawCode;
 
-    let categoryDisplay =
-      category === 'broker_info'
-        ? 'BROKER/AGENCY INFO'
-        : category.toUpperCase().replace('_', ' ');
-
-    if (['counter_offer', 'addendum', 'local_addendum'].includes(role)) {
-      categoryDisplay = 'COUNTER OR ADDENDUM';
+    // Build category display
+    let categoryDisplay = category.toUpperCase().replace('_', ' ');
+    
+    // Special handling for override documents
+    if (['counter_offer', 'addendum', 'local_addendum', 'contingency_release'].includes(role)) {
+      categoryDisplay = role.toUpperCase().replace('_', ' ');
     }
 
     labelMap.set(
