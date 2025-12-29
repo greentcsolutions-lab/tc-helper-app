@@ -1,13 +1,11 @@
 // src/lib/extraction/classify/post-processor.ts
-// Version: 2.6.0-universal-dense-legalese-demote - 2025-12-27
-// ENHANCED: Stronger demotion of dense legalese pages (even in early main_contract pages)
-//           Only early pages with actual filled fields qualify for the boost
+// Version: 2.6.0-main-contract-refined - 2025-12-29
+// Precise universal selection:
+//   • ALL counter_offer / addendum / local_addendum pages → fully included (overrides must be complete)
+//   • main_contract pages → ONLY those with contentCategory = core_terms, signatures, or broker_info
+//   • Everything else (disclosures, lender docs, contingencies outside contract, boilerplate) → excluded
 
-import type { LabeledCriticalImage, GrokPageResult } from '../../../types/classification';
-
-interface GrokClassifierOutput {
-  pages: (GrokPageResult | null)[];
-}
+import type { LabeledCriticalImage, GrokPageResult } from '@/types/classification';
 
 export function mergeDetectedPages(
   allGrokPages: (GrokPageResult | null)[]
@@ -15,112 +13,40 @@ export function mergeDetectedPages(
   return allGrokPages.filter((p): p is GrokPageResult => p !== null);
 }
 
-const CATEGORY_PRIORITY: Record<string, number> = {
-  core_terms: 10,
-  counter_or_addendum: 9,
-  contingencies: 8,
-  financing_details: 7,
-  signatures: 9,
-  broker_info: 9,
-  disclosures: 3,
-  boilerplate: 1,
-  other: 2,
-};
-
+/**
+ * REFINED SELECTION LOGIC
+ * Guarantees clean, minimal critical batch:
+ *   - Full overrides (counters/addenda)
+ *   - Only the truly essential main contract pages (core terms, signatures, broker info)
+ */
 export function getCriticalPageNumbers(detectedPages: GrokPageResult[]): number[] {
-  const scored = detectedPages.map(page => {
-    let score =
-      (CATEGORY_PRIORITY[page.contentCategory || 'other'] || 0) +
-      (page.hasFilledFields ? 5 : 0) +
-      (page.confidence ?? 0) / 20;
+  const selected = new Set<number>();
 
-    // Hard excludes
-    if (page.contentCategory === 'disclosures' || page.contentCategory === 'boilerplate') {
-      score = 0;
+  for (const page of detectedPages) {
+    // Safe check – guard against any unexpected undefined/null role
+    const role = page.role ?? '';
+
+    // 1. Force-include every page that is a counter, addendum, or local addendum
+    if (['counter_offer', 'addendum', 'local_addendum'].includes(role)) {
+      selected.add(page.pdfPage);
+      continue;
     }
 
-    if (page.titleSnippet && /blank|intentionally left blank|this page left blank/i.test(page.titleSnippet)) {
-      score = 0;
+    // 2. For main_contract pages → restrict to only the categories we care about
+    if (role === 'main_contract') {
+      const category = page.contentCategory ?? '';
+      if (['core_terms', 'signatures', 'broker_info'].includes(category)) {
+        selected.add(page.pdfPage);
+      }
     }
 
-    // Title-based advisory/legalese guardrail
-    const looksLikeLegaleseTitle =
-      page.titleSnippet &&
-      /(advisory|disclosure|notice|remedies|arbitration|mediation|attorney fees|risk|warning|important)/i.test(
-        page.titleSnippet
-      );
+    // All other roles (disclosure, financing, other, etc.) → ignored
+  }
 
-    if (looksLikeLegaleseTitle) {
-      score = Math.min(score, CATEGORY_PRIORITY[page.contentCategory || 'other'] || 2);
-    }
-
-    // UNIVERSAL EARLY-PAGE BOOST — NOW REQUIRES FILLED FIELDS
-    // All major U.S. contracts put core terms in first ~5 pages, but last 1–2 are often legalese
-    const isHighValueRole =
-      page.role === 'main_contract' ||
-      page.role === 'counter_offer' ||
-      page.role === 'addendum' ||
-      page.role === 'local_addendum';
-
-    const formPage = page.formPage ?? null;
-    if (
-      isHighValueRole &&
-      formPage !== null &&
-      formPage <= 5 &&
-      page.hasFilledFields &&               // ← CRITICAL: must have visible filled data
-      !looksLikeLegaleseTitle               // ← don't boost pure advisory pages
-    ) {
-      score += 5; // Keep the boost strong for true core-term pages (price, financing, contingencies)
-    }
-
-    // NEW: SEVERE DEMOTION FOR DENSE LEGALESE (even in main_contract)
-    // If no filled fields AND not a force-include category → treat as near-worthless
-    const isForceIncludeCategory =
-      page.contentCategory === 'counter_or_addendum' ||
-      page.contentCategory === 'signatures' ||
-      page.contentCategory === 'broker_info';
-
-    if (!page.hasFilledFields && !isForceIncludeCategory) {
-      // Cap at minimal score — effectively excludes unless very high confidence pushes it in
-      score = Math.min(score, 3);
-    }
-
-    return { page, score };
-  });
-
-  scored.sort((a, b) => b.score - a.score);
-
-  // Force-include absolute must-haves
-  const highPriority = scored.filter(
-    s =>
-      s.page.contentCategory === 'counter_or_addendum' ||
-      s.page.contentCategory === 'signatures' ||
-      s.page.contentCategory === 'broker_info'
-  );
-
-  // Non-priority: require filled fields, tight cap
-  const topNonPriority = scored
-    .filter(
-      s =>
-        s.page.hasFilledFields &&
-        s.page.contentCategory !== 'counter_or_addendum' &&
-        s.page.contentCategory !== 'signatures' &&
-        s.page.contentCategory !== 'broker_info' &&
-        s.score > 0
-    )
-    .slice(0, 8);
-
-  const selectedPages = Array.from(
-    new Set([
-      ...highPriority.map(s => s.page.pdfPage),
-      ...topNonPriority.map(s => s.page.pdfPage),
-    ])
-  );
-
-  return selectedPages.sort((a, b) => a - b);
+  // Sorted by PDF order for consistent extraction
+  return Array.from(selected).sort((a, b) => a - b);
 }
 
-// Rest of file unchanged (labels, images, metadata)
 export function buildUniversalPageLabels(
   detectedPages: GrokPageResult[],
   criticalPageNumbers: number[]
@@ -138,13 +64,14 @@ export function buildUniversalPageLabels(
 
     labelMap.set(
       page.pdfPage,
-      `${code} PAGE ${formPage} – \( {categoryDisplay} \){filled}`
+      `${code} PAGE ${formPage} – ${categoryDisplay}${filled}`
     );
   });
 
+  // Defensive fallback – extremely rare with this logic
   criticalPageNumbers.forEach((pdfPage) => {
     if (!labelMap.has(pdfPage)) {
-      labelMap.set(pdfPage, `PAGE ${pdfPage} – POSSIBLE KEY TERMS`);
+      labelMap.set(pdfPage, `PAGE ${pdfPage} – KEY CONTRACT PAGE`);
     }
   });
 
@@ -168,8 +95,14 @@ export function buildLabeledCriticalImages(
 export function extractPackageMetadata(detectedPages: GrokPageResult[]) {
   const formCodes = Array.from(new Set(detectedPages.map((p) => p.formCode))).filter(Boolean);
 
+  const sampleFooters = detectedPages
+    .map((p) => p?.footerText)
+    .filter((text): text is string => typeof text === 'string' && text.trim() !== '')
+    .slice(0, 5);
+
   return {
     detectedFormCodes: formCodes,
+    sampleFooters,
     totalDetectedPages: detectedPages.length,
     hasMultipleForms: formCodes.length > 1,
   };
