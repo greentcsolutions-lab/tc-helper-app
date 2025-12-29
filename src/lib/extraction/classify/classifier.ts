@@ -1,7 +1,7 @@
 // src/lib/extraction/classify/classifier.ts
-// Version: 6.3.0 - 2025-12-27
-// ENHANCED: Deep debugging at every classification step
-// SIMPLIFIED: Reduced logging to summaries, samples, success states and errors; added critical pages list log
+// Version: 6.3.1 - 2025-12-29
+// FIXED: Pass criticalPageNumbers to extractPackageMetadata
+// This ensures routing decisions are based only on critical forms (not disclosures)
 
 import { buildClassifierPrompt } from '../prompts';
 import {
@@ -282,7 +282,8 @@ export async function classifyCriticalPages(
   const criticalImages = buildLabeledCriticalImages(pages, criticalPageNumbers, labelMap);
   console.log(`[classifier:post] Critical images ready: ${criticalImages.length}`);
 
-  const packageMetadata = extractPackageMetadata(detectedPages);
+  // FIXED: Pass criticalPageNumbers to extractPackageMetadata
+  const packageMetadata = extractPackageMetadata(detectedPages, criticalPageNumbers);
 
   console.log(`\n[classifier] ✅ Classification complete`);
   console.log(`   Form codes: ${packageMetadata.detectedFormCodes.join(', ') || 'none'}`);

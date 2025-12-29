@@ -1,0 +1,6 @@
+{
+  "crons": [{
+    "path": "/api/cron/cleanup-stale-temp-data",
+    "schedule": "0 0 * * *"
+  }]
+}

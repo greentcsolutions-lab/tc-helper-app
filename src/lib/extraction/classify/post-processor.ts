@@ -1,9 +1,7 @@
 // src/lib/extraction/classify/post-processor.ts
-// Version: 3.1.0 - 2025-12-29
-// UNIVERSAL UPDATE: Added multi-state form code recognition
-// - Expanded ADDENDUM_DISPLAY_CODES for TX, FL, NV, and generic forms
-// - Logic remains state-agnostic (no special cases)
-// - Works with any U.S. real estate contract
+// Version: 3.1.1 - 2025-12-29
+// FIXED: extractPackageMetadata now only uses critical pages for form codes
+// This prevents disclosure forms from affecting routing decisions
 
 import type { LabeledCriticalImage, GrokPageResult } from '@/types/classification';
 
@@ -212,8 +210,17 @@ export function buildLabeledCriticalImages(
     }));
 }
 
-export function extractPackageMetadata(detectedPages: GrokPageResult[]) {
-  const formCodes = Array.from(new Set(detectedPages.map((p) => p.formCode))).filter(Boolean);
+export function extractPackageMetadata(
+  detectedPages: GrokPageResult[],
+  criticalPageNumbers: number[]
+) {
+  // FIXED: Only extract form codes from critical pages (not all pages)
+  // This prevents disclosure forms from affecting routing decisions
+  const criticalPages = detectedPages.filter((p) =>
+    criticalPageNumbers.includes(p.pdfPage)
+  );
+
+  const formCodes = Array.from(new Set(criticalPages.map((p) => p.formCode))).filter(Boolean);
 
   const sampleFooters = detectedPages
     .map((p) => p?.footerText)
