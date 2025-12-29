@@ -1,6 +1,6 @@
 // src/lib/extraction/extract/universal/post-processor.ts
-// Version: 1.0.0 - 2025-12-29
-// Deterministic merger for per-page extractions (mirrors classify/post-processor.ts)
+// Version: 1.0.1 - 2025-12-29
+// FIXED: TypeScript errors with dynamic property access using type-safe Record approach
 
 import type { UniversalExtractionResult } from '@/types/extraction';
 
@@ -158,17 +158,18 @@ function mergePages(
   source: string,
   provenance: Record<string, number>,
   log: string[]
-): Partial<UniversalExtractionResult> {
-  const merged: any = {};
+): Record<string, any> {
+  const merged: Record<string, any> = {};
   
   for (const page of pages) {
-    const pageData = { ...page };
-    delete (pageData as any).pageNumber;
-    delete (pageData as any).pageLabel;
-    delete (pageData as any).formCode;
-    delete (pageData as any).formPage;
-    delete (pageData as any).pageRole;
-    delete (pageData as any).confidence;
+    // Create a mutable copy as Record for safe iteration
+    const pageData: Record<string, any> = { ...page };
+    delete pageData.pageNumber;
+    delete pageData.pageLabel;
+    delete pageData.formCode;
+    delete pageData.formPage;
+    delete pageData.pageRole;
+    delete pageData.confidence;
     
     for (const [key, value] of Object.entries(pageData)) {
       if (value != null && !isEmpty(value)) {
@@ -195,22 +196,23 @@ function mergePages(
  * Applies overrides from counter offers or addenda
  */
 function applyOverrides(
-  baseline: Partial<UniversalExtractionResult>,
+  baseline: Record<string, any>,
   overridePages: PerPageExtraction[],
   source: string,
   provenance: Record<string, number>,
   log: string[]
-): Partial<UniversalExtractionResult> {
+): Record<string, any> {
   const result = { ...baseline };
   
   for (const page of overridePages) {
-    const pageData = { ...page };
-    delete (pageData as any).pageNumber;
-    delete (pageData as any).pageLabel;
-    delete (pageData as any).formCode;
-    delete (pageData as any).formPage;
-    delete (pageData as any).pageRole;
-    delete (pageData as any).confidence;
+    // Create a mutable copy as Record for safe iteration
+    const pageData: Record<string, any> = { ...page };
+    delete pageData.pageNumber;
+    delete pageData.pageLabel;
+    delete pageData.formCode;
+    delete pageData.formPage;
+    delete pageData.pageRole;
+    delete pageData.confidence;
     
     for (const [key, value] of Object.entries(pageData)) {
       if (value != null && !isEmpty(value)) {
@@ -234,9 +236,9 @@ function applyOverrides(
  * Normalizes date formats (days → actual dates where possible)
  */
 function normalizeDates(
-  terms: Partial<UniversalExtractionResult>,
+  terms: Record<string, any>,
   log: string[]
-): Partial<UniversalExtractionResult> {
+): Record<string, any> {
   const acceptanceDate = terms.effectiveDate;
   
   if (!acceptanceDate) {
@@ -328,7 +330,7 @@ function addBusinessDays(startDate: Date, days: number): string {
  * Validates that critical fields are present and make logical sense
  */
 function validateExtractedTerms(
-  terms: Partial<UniversalExtractionResult>,
+  terms: Record<string, any>,
   log: string[]
 ): {
   isValid: boolean;
