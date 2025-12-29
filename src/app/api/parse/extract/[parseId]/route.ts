@@ -1,15 +1,15 @@
 // src/app/api/parse/extract/[parseId]/route.ts
-// Version: 2.1.2-db-only-prisma-fix - 2025-12-27
-// Fixed Prisma Json null assignment error
+// Version: 2.2.0 - 2025-12-29
+// BREAKING: Now reconstructs images from ZIP (no longer reads base64 from DB)
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
 import { route } from "@/lib/extraction/router";
 import { mapExtractionToParseResult } from "@/lib/parse/map-to-parse-result";
-import { downloadAndExtractZip } from "@/lib/pdf/renderer";
+import { downloadAndExtractZip, extractSpecificPagesFromZip } from "@/lib/pdf/renderer";
 import { logDataShape, logStep, logSuccess, logError } from "@/lib/debug/parse-logger";
-import { Prisma } from "@prisma/client"; // <-- ADD THIS IMPORT
+import { Prisma } from "@prisma/client";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -39,6 +39,7 @@ export async function POST(
         id: true,
         userId: true,
         status: true,
+        lowResZipUrl: true,
         highResZipUrl: true,
         classificationCache: true,
         user: { select: { clerkId: true } },
@@ -60,9 +61,9 @@ export async function POST(
       return Response.json({ error: `Invalid status: ${parse.status}` }, { status: 400 });
     }
 
-    if (!parse.highResZipUrl) {
-      logError("EXTRACT:1", "Missing high-res ZIP URL");
-      return Response.json({ error: "High-res rendering not complete" }, { status: 400 });
+    if (!parse.lowResZipUrl || !parse.highResZipUrl) {
+      logError("EXTRACT:1", "Missing ZIP URLs");
+      return Response.json({ error: "Rendering not complete" }, { status: 400 });
     }
 
     if (!parse.classificationCache) {
@@ -74,22 +75,39 @@ export async function POST(
 
     logSuccess("EXTRACT:1", "Parse validated + classification loaded from DB");
 
-    const classification = parse.classificationCache as {
-      criticalImages: Array<{ pageNumber: number; base64: string; label: string }>;
-      packageMetadata: any;
+    const classificationMetadata = parse.classificationCache as {
       criticalPageNumbers: number[];
+      pageLabels: Record<number, string>;
+      packageMetadata: any;
       state: string;
     };
 
-    logDataShape("EXTRACT:1 Classification from DB", classification);
-    logSuccess("EXTRACT:1", `Loaded ${classification.criticalImages.length} critical images`);
+    logDataShape("EXTRACT:1 Classification Metadata", classificationMetadata);
+    logSuccess("EXTRACT:1", `Metadata loaded: ${classificationMetadata.criticalPageNumbers.length} critical pages`);
 
-    // STEP 2: DOWNLOAD HIGH-DPI ZIP
-    logStep("EXTRACT:2", "📥 Downloading high-DPI ZIP from Blob storage...");
+    // STEP 2: RECONSTRUCT IMAGES FROM ZIPS
+    logStep("EXTRACT:2", "📥 Reconstructing critical images from ZIPs...");
 
-    const highDpiPages = await downloadAndExtractZip(parse.highResZipUrl);
+    // Download low-res critical pages for labeling
+    const lowResCriticalPages = await extractSpecificPagesFromZip(
+      parse.lowResZipUrl,
+      classificationMetadata.criticalPageNumbers
+    );
 
-    logSuccess("EXTRACT:2", `Downloaded ${highDpiPages.length} high-DPI pages`);
+    // Download high-res critical pages for extraction
+    const highResCriticalPages = await extractSpecificPagesFromZip(
+      parse.highResZipUrl,
+      classificationMetadata.criticalPageNumbers
+    );
+
+    // Rebuild labeled critical images (low-res for metadata)
+    const criticalImages = lowResCriticalPages.map(page => ({
+      pageNumber: page.pageNumber,
+      base64: page.base64,
+      label: classificationMetadata.pageLabels[page.pageNumber] || `Page ${page.pageNumber}`,
+    }));
+
+    logSuccess("EXTRACT:2", `Reconstructed ${criticalImages.length} critical images from ZIPs`);
 
     // STEP 3: ROUTE TO APPROPRIATE EXTRACTOR
     logStep("EXTRACT:3", "🧠 Routing to appropriate extractor...");
@@ -101,9 +119,9 @@ export async function POST(
       needsReview,
       route: extractionRoute,
     } = await route({
-      criticalImages: classification.criticalImages,
-      packageMetadata: classification.packageMetadata,
-      highDpiPages,
+      criticalImages,
+      packageMetadata: classificationMetadata.packageMetadata,
+      highDpiPages: highResCriticalPages,
     });
 
     logDataShape("EXTRACT:3 Extraction Result", {
@@ -122,7 +140,6 @@ export async function POST(
     await db.parse.update({
       where: { id: parseId },
       data: {
-        // FIX: Use Prisma.JsonNull to explicitly allow null for Json? fields
         classificationCache: Prisma.JsonNull,
       },
     });
@@ -159,8 +176,8 @@ export async function POST(
       timelineEvents: mappedFields.timelineEvents ?? undefined,
       rawJson: {
         _extraction_route: extractionRoute,
-        _classifier_metadata: classification.packageMetadata,
-        _critical_page_count: classification.criticalImages.length,
+        _classifier_metadata: classificationMetadata.packageMetadata,
+        _critical_page_count: criticalImages.length,
       },
       finalizedAt: new Date(),
     };

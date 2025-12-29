@@ -1,6 +1,6 @@
 // src/app/api/parse/classify/[parseId]/route.ts
-// Version: 2.1.1-db-only - 2025-12-27
-// Classifies critical pages via Grok, stores results ONLY in DB (no in-memory cache)
+// Version: 2.2.0 - 2025-12-29
+// BREAKING: No longer stores base64 images in DB (only metadata)
 // SIMPLIFIED: Logging minimized to success states and errors only
 
 import { NextRequest } from "next/server";
@@ -39,7 +39,6 @@ export async function GET(
             userId: true,
             status: true,
             lowResZipUrl: true,
-            highResZipUrl: true,
             pageCount: true,
             user: { select: { clerkId: true } },
           },
@@ -66,7 +65,7 @@ export async function GET(
           return;
         }
 
-        if (!parse.lowResZipUrl || !parse.highResZipUrl || !parse.pageCount) {
+        if (!parse.lowResZipUrl || !parse.pageCount) {
           logError("CLASSIFY:1", "Missing render artifacts (ZIP URLs or page count)");
           emit(controller, { type: "error", message: "Rendering not complete" });
           controller.close();
@@ -106,39 +105,35 @@ export async function GET(
 
         logSuccess("CLASSIFY:3", `Identified ${criticalPageNumbers.length} critical pages`);
 
-        // STEP 4: DOWNLOAD HIGH-DPI PAGES
-        logStep("CLASSIFY:4", "📥 Downloading high-DPI ZIP for extraction...");
+        // STEP 4: SAVE METADATA ONLY (NO BASE64!)
+        logStep("CLASSIFY:4", "💾 Saving classification metadata to database...");
 
-        const highDpiPages = await downloadAndExtractZip(parse.highResZipUrl);
+        // Build page labels map (no base64)
+        const pageLabels: Record<number, string> = {};
+        criticalImages.forEach(img => {
+          pageLabels[img.pageNumber] = img.label;
+        });
 
-        logSuccess("CLASSIFY:4", `Extracted ${highDpiPages.length} high-DPI pages`);
-
-        // STEP 5: SAVE TO DATABASE ONLY (no in-memory cache)
-        logStep("CLASSIFY:5", "💾 Saving classification results to database...");
-
-        const classificationData = {
-          criticalImages: criticalImages.map(img => ({
-            pageNumber: img.pageNumber,
-            base64: img.base64,
-            label: img.label,
-          })),
-          packageMetadata,
+        const classificationMetadata = {
           criticalPageNumbers,
+          pageLabels,
+          packageMetadata,
           state,
         };
 
         await db.parse.update({
           where: { id: parseId },
           data: {
-            classificationCache: classificationData,
+            classificationCache: classificationMetadata,
             criticalPageNumbers,
           },
         });
 
-        logSuccess("CLASSIFY:5", "Classification saved to database");
+        const metadataSize = JSON.stringify(classificationMetadata).length;
+        logSuccess("CLASSIFY:4", `Metadata saved (${(metadataSize / 1024).toFixed(1)} KB - no base64!)`);
 
-        // STEP 6: SEND COMPLETION EVENT (no base64 in response)
-        logStep("CLASSIFY:6", "📤 Sending completion event to client...");
+        // STEP 5: SEND COMPLETION EVENT
+        logStep("CLASSIFY:5", "📤 Sending completion event to client...");
 
         const completeEvent = {
           type: "complete",

@@ -209,7 +209,7 @@ export async function extractSpecificPagesFromZip(
   zipUrl: string,
   pageNumbers: number[]
 ): Promise<{ pageNumber: number; base64: string }[]> {
-  console.log(`[Selective Extract] Fetching specific pages from high-res ZIP: [${pageNumbers.join(", ")}]`);
+  console.log(`[Selective Extract] Fetching specific pages from ZIP: [${pageNumbers.join(", ")}]`);
 
   const allPages = await downloadAndExtractZip(zipUrl);
 
