@@ -13,37 +13,25 @@ export function mergeDetectedPages(
   return allGrokPages.filter((p): p is GrokPageResult => p !== null);
 }
 
-/**
- * REFINED SELECTION LOGIC
- * Guarantees clean, minimal critical batch:
- *   - Full overrides (counters/addenda)
- *   - Only the truly essential main contract pages (core terms, signatures, broker info)
- */
 export function getCriticalPageNumbers(detectedPages: GrokPageResult[]): number[] {
   const selected = new Set<number>();
 
   for (const page of detectedPages) {
-    // Safe check – guard against any unexpected undefined/null role
     const role = page.role ?? '';
+    const category = page.contentCategory ?? '';
 
-    // 1. Force-include every page that is a counter, addendum, or local addendum
     if (['counter_offer', 'addendum', 'local_addendum'].includes(role)) {
       selected.add(page.pdfPage);
       continue;
     }
 
-    // 2. For main_contract pages → restrict to only the categories we care about
     if (role === 'main_contract') {
-      const category = page.contentCategory ?? '';
       if (['core_terms', 'signatures', 'broker_info'].includes(category)) {
         selected.add(page.pdfPage);
       }
     }
-
-    // All other roles (disclosure, financing, other, etc.) → ignored
   }
 
-  // Sorted by PDF order for consistent extraction
   return Array.from(selected).sort((a, b) => a - b);
 }
 
