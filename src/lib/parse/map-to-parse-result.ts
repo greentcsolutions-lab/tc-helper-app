@@ -1,7 +1,6 @@
 // src/lib/parse/map-to-parse-result.ts
-// Version: 3.0.0 - 2025-12-29
-// BREAKING: Fixed Issue #2 - Proper field provenance implementation
-// Now builds FieldProvenance[] from Record<string, number> provenance map
+// Version: 3.0.1 - 2025-12-29
+// FIX: Added defensive null checks for buyerNames/sellerNames to prevent .length on undefined
 
 import type { UniversalExtractionResult } from '@/types/extraction';
 import type { FieldProvenance } from '@/types/parse-result';
@@ -83,8 +82,9 @@ export function mapExtractionToParseResult({
   
   return {
     // === UNIVERSAL CORE SCALARS (backward compat) ===
-    buyerNames: universal.buyerNames.length > 0 ? universal.buyerNames : undefined,
-    sellerNames: universal.sellerNames.length > 0 ? universal.sellerNames : undefined,
+    // FIX: Added defensive null/undefined checks before accessing .length
+    buyerNames: (universal.buyerNames && universal.buyerNames.length > 0) ? universal.buyerNames : undefined,
+    sellerNames: (universal.sellerNames && universal.sellerNames.length > 0) ? universal.sellerNames : undefined,
     propertyAddress: universal.propertyAddress || null,
     purchasePrice: universal.purchasePrice || null,
     earnestMoneyAmount: universal.earnestMoneyDeposit?.amount ?? null,

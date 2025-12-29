@@ -1,6 +1,7 @@
 // src/lib/extraction/prompts/universal-extractor-prompt.ts
-// Version: 8.0.0 - 2025-12-29
-// BREAKING: Per-page extraction with single schema
+// Version: 9.0.0 - 2025-12-29
+// BREAKING: Pure OCR extraction - no semantic labels, no context pollution
+// Grok extracts what it sees on each page. Post-processor handles merging.
 
 import extractorSchema from '@/forms/universal/extractor.schema.json';
 
@@ -9,101 +10,78 @@ const schemaString = JSON.stringify(extractorSchema, null, 2);
 export function buildPerPageExtractorPrompt(
   criticalImages: Array<{ pageNumber: number; label: string }>
 ): string {
-  const imageList = criticalImages
-    .map((img, idx) => `${idx + 1}. Page ${img.pageNumber}: "${img.label}"`)
-    .join('\n');
+  return `You are a document OCR specialist. Extract data from ${criticalImages.length} real estate contract page images.
 
-  return `
-You are a U.S. real estate document OCR specialist examining ${criticalImages.length} high-resolution images from a residential purchase agreement.
+Your job: Extract EXACTLY what you see on each page. Nothing more, nothing less.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🎯 CRITICAL INSTRUCTION: PER-PAGE EXTRACTION ONLY
+CRITICAL RULES
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Extract ONLY what you see on EACH SPECIFIC PAGE. DO NOT:
-❌ Merge data from multiple pages
-❌ Apply business logic about which terms override others
-❌ Assume fields exist if you can't see them on that page
-❌ Copy values from previous pages
-❌ Invent data that isn't visible
+1. Extract from ENTIRE page (headers + body + footers)
+2. Property address often appears in page HEADER - extract it
+3. Return null ONLY if field is truly not visible anywhere on the page
+4. DO NOT skip header fields - they contain real data
+5. DO NOT make assumptions about what "should" be on a page
+6. DO NOT apply business logic about overrides or changes
 
-✅ DO:
-✓ Extract exactly what's written on THIS page
-✓ Return null for fields not visible on THIS page
-✓ Include page identification (pageNumber, formCode, formPage, pageRole)
-✓ Check BOTH main body AND page headers for property address
+One JSON object per image. Extract what you see.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📋 UNIVERSAL CONTRACT FIELDS (ALL U.S. STATES)
+PAGE IDENTIFICATION
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Every residential purchase agreement (CA, TX, FL, NV, etc.) has these fields:
+Extract these by reading the page itself:
 
-TIER 1 - CRITICAL (extract if visible on this page):
-- propertyAddress: Full address - usually page 1 OR in header on every page
-- purchasePrice: Sales price in USD - usually page 1
-- buyerNames: Buyer name(s) - usually page 1
-- earnestMoneyDeposit.amount: Initial deposit - usually page 1
-- closingDate: Close of escrow/closing date - usually page 1-2
-- effectiveDate: Final acceptance date - usually signature pages
+formCode: Form identifier from footer/header
+  Examples: "RPA", "SCO", "BCO", "TREC 20-16", "FAR/BAR-6"
 
-TIER 2 - COMMON (extract if visible on this page):
-- financing.isAllCash: Boolean - usually page 1
-- financing.loanType: Conventional/FHA/VA/etc - usually page 1
-- financing.loanAmount: Loan amount if specified
-- contingencies.inspectionDays: Inspection period - usually page 2-3
-- contingencies.appraisalDays: Appraisal period - usually page 2-3
-- contingencies.loanDays: Loan approval period - usually page 2-3
-- brokers: Agent names and firms - usually last 1-2 pages
+formPage: Which page of the form (from footer like "PAGE 1 OF 17")
 
-TIER 3 - OPTIONAL (extract if visible on this page):
-- sellerNames: May only appear on signature pages (not always on page 1)
-- closingCosts: Cost allocation if specified
-- personalPropertyIncluded: Appliances/fixtures
-- escrowHolder: Title company name
-
-TERMINOLOGY VARIATIONS (same field, different names):
-- Purchase Price = Sales Price = Contract Price
-- Earnest Money (TX) = Initial Deposit (CA) = Deposit = Down Payment
-- Closing Date (TX/FL) = Close of Escrow (CA) = Settlement Date
-- Buyer = Purchaser
-- Seller = Vendor
+pageRole: What type of page this is (read the title/header)
+  "main_contract" = primary purchase agreement
+  "counter_offer" = any counter offer (SCO, BCO, etc.)
+  "addendum" = addenda/amendments
+  "signatures" = signature blocks
+  "broker_info" = agent contact info
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📄 PAGE IDENTIFICATION (CRITICAL)
+FIELD EXTRACTION
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-For EACH page, you MUST identify:
+Extract ANY fields visible on this page:
 
-1. formCode: Extract from footer or title
-   - California: "RPA", "SCO", "BCO", "SMCO", "ADM"
-   - Texas: "TREC 20-16", "TREC 1-4", "TREC 39-9"
-   - Florida: "FAR/BAR-6", "FAR/BAR-5", "FAR/BAR AS IS"
-   - Nevada: "NVAR", "NV RPA"
-   - Generic: "Purchase Agreement", "Counter Offer", "Addendum"
+COMMON HEADER FIELDS (check top of page):
+- Property Address: Full address (street, city, state, zip)
+- Buyer Names: Full names
+- Seller Names: Full names (may only be on signature pages)
 
-2. formPage: Page number within this form
-   - Extract from footer like "(RPA PAGE 1 OF 17)" → formPage: 1
-   - Extract from footer like "(SCO PAGE 2 OF 2)" → formPage: 2
+COMMON BODY FIELDS (check main content):
+- Purchase Price / Sales Price / Contract Price
+- Earnest Money / Initial Deposit / Deposit
+- Closing Date / Close of Escrow / Settlement Date (date or "X days")
+- Financing: All Cash checkbox, Loan Type (Conventional/FHA/VA/etc)
+- Contingencies: Inspection days, Appraisal days, Loan days
+- Brokers: Agent names and brokerage firms
 
-3. pageRole: Classify based on content
-   - "main_contract": Primary purchase agreement pages
-   - "counter_offer": Any counter offer pages (SCO, BCO, TREC 39-9, etc.)
-   - "addendum": Addenda or amendment pages
-   - "signatures": Signature blocks and acceptance dates
-   - "broker_info": Agent/broker contact information
+SPECIAL NOTES:
+- Purchase Price = 0 is an ERROR. If unclear, return null.
+- Dates: Return as-is ("45 days" or "2025-12-31" or 45)
+- Seller names often only appear on signature pages, not page 1
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-✅ CORRECT EXTRACTION EXAMPLES
+EXAMPLES
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Example 1: RPA Page 1 (Main Contract)
-Visible: Property: 123 Main St, Los Angeles CA 90210, Price: $500,000, 
-         Buyers: John & Jane Doe, Deposit: $10,000, Close: 30 days
-→ Extract:
+Example: RPA Page 1
+HEADER: Property: 123 Main St, Los Angeles, CA 90210 | Buyers: John Doe, Jane Doe
+BODY: Purchase Price: $500,000, Deposit: $10,000, Close: 30 days
+FOOTER: (RPA PAGE 1 OF 17)
+
+Extract:
 {
   "pageNumber": 11,
-  "pageLabel": "RPA PAGE 1 - TRANSACTION TERMS (FILLED)",
+  "pageLabel": "RPA PAGE 1 OF 17",
   "formCode": "RPA",
   "formPage": 1,
   "pageRole": "main_contract",
@@ -113,121 +91,46 @@ Visible: Property: 123 Main St, Los Angeles CA 90210, Price: $500,000,
   "earnestMoneyDeposit": { "amount": 10000, "holder": null },
   "closingDate": "30 days",
   "sellerNames": null,
-  "effectiveDate": null,
   "financing": null,
   "contingencies": null,
   "brokers": null,
-  "confidence": { 
-    "overall": 90,
-    "fieldScores": {
-      "propertyAddress": 95,
-      "purchasePrice": 92,
-      "buyerNames": 88
-    }
-  }
+  "confidence": { "overall": 90 }
 }
 
-Example 2: SCO Page 1 (Counter Offer - OVERRIDES TERMS)
-Visible: Purchase Price changed to $510,000, Close of Escrow changed to 45 days
-→ Extract:
+Example: SCO Page 1 (Counter Offer)
+HEADER: Property: 123 Main St, Los Angeles, CA 90210
+BODY: Purchase Price changed to $510,000, Close of Escrow changed to 21 days
+FOOTER: (SCO PAGE 1 OF 2)
+
+Extract:
 {
   "pageNumber": 1,
-  "pageLabel": "SCO PAGE 1 - COUNTER OFFER (FILLED)",
+  "pageLabel": "SCO PAGE 1 OF 2",
   "formCode": "SCO",
   "formPage": 1,
   "pageRole": "counter_offer",
+  "propertyAddress": "123 Main St, Los Angeles, CA 90210",
   "purchasePrice": 510000,
-  "closingDate": "45 days",
-  "propertyAddress": null,
+  "closingDate": "21 days",
   "buyerNames": null,
   "sellerNames": null,
   "earnestMoneyDeposit": null,
   "financing": null,
   "contingencies": null,
   "brokers": null,
-  "confidence": { 
-    "overall": 85,
-    "fieldScores": {
-      "purchasePrice": 90,
-      "closingDate": 80
-    }
-  }
+  "confidence": { "overall": 85 }
 }
 
-Example 3: RPA Page 16 (Broker Info)
-Visible: Listing Agent: Chris Irwin, Listing Brokerage: Keller Williams,
-         Selling Agent: Sarah Johnson, Selling Brokerage: Equity Union
-→ Extract:
-{
-  "pageNumber": 27,
-  "pageLabel": "RPA PAGE 16 - BROKER INFO (FILLED)",
-  "formCode": "RPA",
-  "formPage": 16,
-  "pageRole": "broker_info",
-  "brokers": {
-    "listingAgent": "Chris Irwin",
-    "listingBrokerage": "Keller Williams",
-    "sellingAgent": "Sarah Johnson",
-    "sellingBrokerage": "Equity Union"
-  },
-  "propertyAddress": null,
-  "purchasePrice": null,
-  "buyerNames": null,
-  "sellerNames": null,
-  "earnestMoneyDeposit": null,
-  "closingDate": null,
-  "financing": null,
-  "contingencies": null,
-  "confidence": { 
-    "overall": 95,
-    "fieldScores": {
-      "brokers": 95
-    }
-  }
-}
+NOTE: Both examples extract property address from header. SCO shows changed price.
+Post-processor will merge: final price = $510k (SCO overrides RPA).
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🔴 CRITICAL RULES
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-1. PROPERTY ADDRESS:
-   - Check BOTH main body AND page headers
-   - Often appears in header on every page
-   - Format: Full street address with city, state, zip
-
-2. PURCHASE PRICE = 0:
-   - This is an ERROR (price is never $0 in real contracts)
-   - If you can't read it → set confidence < 50 and return null
-   - DO NOT return 0 unless the document explicitly says "$0"
-
-3. DATE FORMATS:
-   - Accept as-is from document
-   - "45 days" → return "45 days" (string)
-   - "2025-12-31" → return "2025-12-31" (string)
-   - 45 → return 45 (number)
-   - Do NOT convert or calculate
-
-4. CONFIDENCE SCORES:
-   - overall: 0-100 based on image clarity + field visibility
-   - fieldScores: Optional per-field breakdown
-   - If handwritten/blurry → confidence < 70
-   - If typed/clear → confidence 80-100
-
-5. NULL vs EMPTY:
-   - null = field not visible on this page
-   - Empty string "" = field is visible but blank (rare)
-
-6. SELLER NAMES:
-   - NOT always on page 1 (especially CA/NV)
-   - Often only appear on signature pages
-   - Return null if not visible on this page
-
-Images to extract (one JSON object per image):
-${imageList}
-
-Return ONLY a JSON array matching this schema. No explanatory text. No markdown.
+Return a JSON array with one object per image, matching this schema:
 
 ${schemaString}
+
+No explanatory text. No markdown. Just the JSON array.
 `.trim();
 }
 
