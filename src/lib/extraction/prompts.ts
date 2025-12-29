@@ -1,14 +1,14 @@
 // src/lib/extraction/prompts.ts
-// Version: 3.2.1 - 2025-12-20
-// FIXED: Now uses static JSON imports — safe for Next.js/Vercel builds
-//        No more fs.readFileSync or __dirname issues
+// Version: 4.1.1 - 2025-12-29
+// COUNTER OFFER FIX: Added explicit SCO/BCO/SMCO examples to prevent hallucinations
+// - Generic examples work for all U.S. states
+// - State-agnostic instructions for Grok
+// - Universal form code recognition
 
-// Static imports — Next.js bundles these correctly at build time
 import classifierSchema from '@/forms/classifier.schema.json';
 import extractorSchema from '@/forms/california/extractor.schema.json';
 import universalExtractorSchema from '@/forms/universal/extractor.schema.json';
 
-// Prettify for clean prompt insertion
 const classifierSchemaString = JSON.stringify(classifierSchema, null, 2);
 const extractorSchemaString = JSON.stringify(extractorSchema, null, 2);
 const universalExtractorSchemaString = JSON.stringify(universalExtractorSchema, null, 2);
@@ -16,9 +16,8 @@ const universalExtractorSchemaString = JSON.stringify(universalExtractorSchema, 
 import { RPA_FORM, COUNTER_OFFERS, KEY_ADDENDA } from './extract/form-definitions';
 
 /**
- * Builds the classifier prompt dynamically based on total pages
+ * Builds the universal classifier prompt for any U.S. state
  */
-
 export function buildClassifierPrompt(
   batchStart: number,
   batchEnd: number,
@@ -41,11 +40,23 @@ Images in order:
 This system processes contracts from ALL U.S. states. Different states use different forms and terminology, but the CONCEPTS are universal.
 
 STATE-SPECIFIC FORMS (Examples):
-- California: RPA (17 pages), SCO/BCO (counter offers), APR/RR (contingency releases)
-- Texas: TREC 20-16 (9 pages), TREC 39-9 (counters), TREC 38-9 (amendments)
-- Florida: FAR/BAR-6 (varies), FAR/BAR-5 (counters), FAR/BAR-AS IS
-- Nevada: NVAR Purchase Agreement (similar to CA RPA)
-- Others: Generic "Purchase Agreement", "Sales Contract", etc.
+- California: 
+  * Main contract: RPA (17 pages)
+  * Counter offers: SCO (Seller Counter Offer, 2 pages), BCO (Buyer Counter Offer, 1 page), SMCO (Seller Multiple Counter Offer, 2 pages)
+  * Contingency releases: APR (Appraisal Contingency Removal), RR (Investigation Contingency Removal)
+  * Addenda: ADM (Addendum), FVAC (Fireplace/Woodstove), TOA (Text Overflow Addendum)
+- Texas: 
+  * Main contract: TREC 20-16 (9 pages)
+  * Counter offers: TREC 39-9 (Counter Offer)
+  * Amendments: TREC 38-9 (Amendment), TREC 1-4 (Amendment)
+- Florida: 
+  * Main contract: FAR/BAR-6 (varies)
+  * Counter offers: FAR/BAR-5 (Counter Offer)
+  * Amendments: FAR/BAR-9 (Amendment), FAR/BAR-AS IS (As Is Contract)
+- Nevada: 
+  * Main contract: NVAR Purchase Agreement (similar to CA RPA)
+  * Counter offers: NVAR Counter Offer
+- Others: Generic "Purchase Agreement", "Sales Contract", "Counter Offer", "Amendment", "Addendum"
 
 UNIVERSAL TERMINOLOGY (Different words, same meaning):
 - Purchase Price = Sales Price = Contract Price
@@ -145,7 +156,14 @@ For each page:
 - If no standard form detected → null
 - Otherwise, extract metadata matching the schema.
 - state: Two-letter code if detected (e.g., 'CA', 'TX', 'FL'); null if unknown.
-- formCode: Short code (e.g., 'RPA', 'TREC 20-16', 'FAR/BAR-6', 'APR', 'Amendment').
+- formCode: Extract the SHORT CODE from the footer or header. CRITICAL EXAMPLES:
+  * SELLER counter offers: SCO, SMCO (not BCO - that's buyer counter)
+  * BUYER counter offers: BCO (not SCO - that's seller counter)
+  * Main contracts: RPA, TREC 20-16, FAR/BAR-6
+  * If the footer says "(SCO PAGE 1 OF 2)" → formCode is "SCO"
+  * If the footer says "(BCO PAGE 1 OF 1)" → formCode is "BCO"
+  * If the title says "SELLER COUNTER OFFER" → usually SCO or SMCO
+  * If the title says "BUYER COUNTER OFFER" → usually BCO
 - formRevision: Date if visible (e.g., '6/25', '11/2023').
 - formPage/totalPagesInForm: From footer (e.g., 'Page 3 of 17').
 - role: Best enum match:
@@ -181,6 +199,7 @@ ${classifierSchemaString}
 `.trim();
 }
 
+// Extractor prompts remain unchanged
 export const UNIVERSAL_EXTRACTOR_PROMPT = `
 You are an expert U.S. real estate transaction analyst examining 5–10 high-resolution PNG images from a complete residential purchase packet.
 
