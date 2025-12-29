@@ -65,7 +65,7 @@ export async function renderPdfParallel(
   console.log("━".repeat(80));
   console.log(`[Nutrient:Parallel] Total time: ${elapsed}s (parallel execution)`);
   console.log(`[Nutrient:Parallel] Pages rendered: ${pageCount}`);
-  console.log(`[Nutrient:Parallel] Low-res (150 DPI): ${lowResResult.pathname}`);
+  console.log(`[Nutrient:Parallel] Low-res (180 DPI): ${lowResResult.pathname}`);
   console.log(`[Nutrient:Parallel] High-res (300 DPI): ${highResResult.pathname}`);
   console.log("━".repeat(80) + "\n");
 
@@ -78,7 +78,7 @@ export async function renderPdfParallel(
 
 async function renderSingleDpi(
   buffer: Buffer,
-  dpi: 150 | 300,
+  dpi: 180 | 300,
   _totalPages: number | undefined,
   purpose: "classify" | "extract"
 ): Promise<RenderResult> {
