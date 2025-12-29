@@ -1,6 +1,6 @@
 // src/hooks/useParseOrchestrator.ts
-// Version: 2.0.0 - 2025-12-27
-// Client orchestration: triggers server-side pipeline, receives progress updates only
+// Version: 2.0.1 - 2025-12-29
+// FIXED: Ensure cleanup always runs, even if there are issues
 
 import { useState, useCallback } from 'react';
 
@@ -71,7 +71,7 @@ export function useParseOrchestrator() {
 
       console.log('[orchestrator] Extraction complete, needsReview:', extractResult.needsReview);
 
-      // PHASE 4: CLEANUP
+      // PHASE 4: CLEANUP (ALWAYS RUN, EVEN IF EXTRACTION HAD ISSUES)
       setState({
         phase: 'cleanup',
         message: 'Cleaning up temporary files...',
@@ -81,9 +81,14 @@ export function useParseOrchestrator() {
         needsReview: extractResult.needsReview,
       });
 
-      await runCleanup(parseId);
-
-      console.log('[orchestrator] Cleanup complete');
+      const cleanupResult = await runCleanup(parseId);
+      
+      if (!cleanupResult.success) {
+        console.warn('[orchestrator] Cleanup had issues but continuing:', cleanupResult.error);
+        // Don't throw - cleanup issues shouldn't block the user
+      } else {
+        console.log('[orchestrator] Cleanup complete');
+      }
 
       // COMPLETE
       setState({
@@ -100,6 +105,15 @@ export function useParseOrchestrator() {
       return { success: true, needsReview: extractResult.needsReview };
     } catch (error: any) {
       console.error('[orchestrator] Pipeline failed:', error);
+      
+      // CRITICAL: Run cleanup even on failure
+      try {
+        console.log('[orchestrator] Running cleanup after failure...');
+        await runCleanup(parseId);
+      } catch (cleanupError) {
+        console.error('[orchestrator] Cleanup after failure also failed:', cleanupError);
+      }
+      
       setState({
         phase: 'error',
         message: error.message || 'Processing failed',
@@ -212,16 +226,21 @@ async function runExtract(parseId: string): Promise<{
   }
 }
 
-async function runCleanup(parseId: string): Promise<void> {
+async function runCleanup(parseId: string): Promise<{ success: boolean; error?: string }> {
   try {
     const res = await fetch(`/api/parse/cleanup/${parseId}`, {
       method: 'POST',
     });
 
     if (!res.ok) {
-      console.warn('[cleanup] Failed but continuing:', await res.text());
+      const text = await res.text();
+      console.warn('[cleanup] Failed but continuing:', text);
+      return { success: false, error: text };
     }
-  } catch (error) {
+
+    return { success: true };
+  } catch (error: any) {
     console.warn('[cleanup] Failed but continuing:', error);
+    return { success: false, error: error.message };
   }
 }
