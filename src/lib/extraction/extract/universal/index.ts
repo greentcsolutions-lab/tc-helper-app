@@ -1,6 +1,6 @@
 // src/lib/extraction/extract/universal/index.ts
-// Version: 9.0.0 - 2025-12-29
-// BREAKING: Pure OCR extraction - removed semantic labels, matches classifier approach
+// Version: 9.1.0 - 2025-12-30
+// FIXED: Robust JSON extraction using classifier's proven depth-tracking pattern
 
 import type { LabeledCriticalImage } from '@/types/classification';
 import type { UniversalExtractionResult } from '@/types/extraction';
@@ -37,143 +37,138 @@ export async function universalExtractor(
   let pageExtractions = await extractPerPage(criticalImages);
   
   console.log(`[extractor:phase1] ✅ Extracted ${pageExtractions.length} pages`);
-    console.log(`\n[extractor:debug] ${"─".repeat(60)}`);
-  console.log(`[extractor:debug] PROPERTY ADDRESS EXTRACTION AUDIT`);
+  console.log(`\n[extractor:debug] ${"─".repeat(60)}`);
+  console.log(`[extractor:debug] RAW PER-PAGE EXTRACTIONS`);
   console.log(`[extractor:debug] ${"─".repeat(60)}`);
   
-  const pagesWithAddress = pageExtractions.filter(p => p.propertyAddress && p.propertyAddress.trim() !== '');
-  const pagesWithoutAddress = pageExtractions.filter(p => !p.propertyAddress || p.propertyAddress.trim() === '');
-  
-  console.log(`[extractor:debug] ✅ Property address FOUND on ${pagesWithAddress.length}/${pageExtractions.length} pages:`);
-  pagesWithAddress.forEach(p => {
-    console.log(`[extractor:debug]    Page ${p.pageNumber} (${p.formCode} - ${p.pageRole}): "${p.propertyAddress}"`);
+  pageExtractions.forEach((extraction, idx) => {
+    console.log(`\n[extractor:debug] Page ${extraction.pageNumber}:`);
+    console.log(`  Label: ${extraction.pageLabel}`);
+    console.log(`  Role: ${extraction.pageRole}`);
+    console.log(`  Form: ${extraction.formCode} (page ${extraction.formPage})`);
+    console.log(`  Confidence: ${extraction.confidence.overall}`);
+    
+    const fieldsWithData = Object.entries(extraction)
+      .filter(([key, value]) => 
+        !['pageNumber', 'pageLabel', 'formCode', 'formPage', 'pageRole', 'confidence'].includes(key) &&
+        value != null &&
+        (typeof value !== 'object' || Object.keys(value).length > 0) &&
+        (!Array.isArray(value) || value.length > 0)
+      );
+    
+    if (fieldsWithData.length > 0) {
+      console.log(`  Fields with data (${fieldsWithData.length}):`);
+      fieldsWithData.forEach(([key]) => console.log(`    - ${key}`));
+    } else {
+      console.log(`  No data fields extracted`);
+    }
   });
   
-  if (pagesWithoutAddress.length > 0) {
-    console.log(`[extractor:debug] ❌ Property address MISSING on ${pagesWithoutAddress.length}/${pageExtractions.length} pages:`);
-    pagesWithoutAddress.forEach(p => {
-      console.log(`[extractor:debug]    Page ${p.pageNumber} (${p.formCode} - ${p.pageRole}) - confidence: ${p.confidence.overall}`);
-    });
-    console.log(`[extractor:debug] ⚠️ This is unusual - property addresses appear on 95% of pages`);
-  } else {
-    console.log(`[extractor:debug] ✅ All pages have property addresses extracted successfully!`);
-  }
-  
-  console.log(`[extractor:debug] ${"─".repeat(60)}\n`);
-  console.log(`[extractor:phase1] ${"─".repeat(60)}\n`);
-  
-  // PHASE 2: POST-PROCESSING MERGE (deterministic logic)
+  // PHASE 2: MERGE + POST-PROCESS
+  console.log(`\n[extractor:phase2] ${"─".repeat(60)}`);
+  console.log(`[extractor:phase2] PHASE 2: MERGE & POST-PROCESS`);
   console.log(`[extractor:phase2] ${"─".repeat(60)}`);
-  console.log(`[extractor:phase2] PHASE 2: POST-PROCESSING MERGE`);
-  console.log(`[extractor:phase2] ${"─".repeat(60)}`);
-  console.log(`[extractor:phase2] Starting merge post-processing...`);
+  console.log(`[extractor:phase2] Starting merge process...`);
   
-  let { 
-    finalTerms, 
-    provenance, 
-    pageExtractions: originalPageExtractions,
-    needsReview, 
-    needsSecondTurn,
-    mergeLog, 
-    validationErrors,
-    validationWarnings 
-  } = mergePageExtractions(pageExtractions);
+  const mergeResult = mergePageExtractions(pageExtractions);
   
   console.log(`[extractor:phase2] ✅ Merge complete`);
-  console.log(`[extractor:phase2] ${"─".repeat(60)}\n`);
+  console.log(`[extractor:phase2] Needs review: ${mergeResult.needsReview}`);
+  console.log(`[extractor:phase2] Needs second turn: ${mergeResult.needsSecondTurn}`);
   
-  // PHASE 3: SECOND-TURN EXTRACTION (if needed)
-  if (needsSecondTurn) {
+  // PHASE 3: SECOND TURN (if needed)
+  if (mergeResult.needsSecondTurn) {
     console.log(`\n[extractor:phase3] ${"─".repeat(60)}`);
-    console.log(`[extractor:phase3] PHASE 3: SECOND-TURN EXTRACTION`);
+    console.log(`[extractor:phase3] PHASE 3: SECOND TURN EXTRACTION`);
     console.log(`[extractor:phase3] ${"─".repeat(60)}`);
-    console.log(`[extractor:phase3] Triggering second-turn extraction...`);
+    console.log(`[extractor:phase3] Validation errors detected, running second turn...`);
     
     const secondTurnResult = await runSecondTurnExtraction(
       criticalImages,
       pageExtractions,
-      validationErrors,
-      finalTerms
+      mergeResult.validationErrors,
+      mergeResult.finalTerms
     );
     
     if (secondTurnResult.success) {
-      // Combine second-turn with first-turn instead of replacing
-      const combinedExtractions = combinePageExtractions(
-        pageExtractions,
-        secondTurnResult.pageExtractions
-      );
+      console.log(`[extractor:phase3] Second turn returned ${secondTurnResult.pageExtractions.length} extractions`);
       
-      console.log(`[extractor:phase3] Combined ${pageExtractions.length} first-turn + ${secondTurnResult.pageExtractions.length} second-turn = ${combinedExtractions.length} total`);
+      // Combine first + second turn
+      pageExtractions = combineExtractions(pageExtractions, secondTurnResult.pageExtractions);
       
-      // Re-merge with combined results
-      const secondMerge = mergePageExtractions(combinedExtractions);
+      console.log(`[extractor:phase3] Re-merging with second turn data...`);
+      const secondMerge = mergePageExtractions(pageExtractions);
       
-      finalTerms = secondMerge.finalTerms;
-      provenance = secondMerge.provenance;
-      pageExtractions = combinedExtractions;
-      needsReview = secondMerge.needsReview;
-      needsSecondTurn = secondMerge.needsSecondTurn;
-      mergeLog = [...mergeLog, '🔄 SECOND TURN APPLIED', ...secondMerge.mergeLog];
-      validationErrors = secondMerge.validationErrors;
-      validationWarnings = secondMerge.validationWarnings;
+      console.log(`[extractor:phase3] Second merge complete`);
+      console.log(`[extractor:phase3] Needs review: ${secondMerge.needsReview}`);
       
-      console.log(`[extractor:phase3] ✅ Second turn complete - errors resolved`);
+      // Return second merge results
+      console.log(`\n${"═".repeat(80)}`);
+      console.log(`║ ✅ UNIVERSAL EXTRACTION COMPLETE (SECOND TURN)`);
+      console.log(`${"═".repeat(80)}\n`);
+      
+      return {
+        universal: secondMerge.finalTerms,
+        details: {
+          provenance: secondMerge.provenance,
+          pageExtractions: secondMerge.pageExtractions,
+          mergeLog: secondMerge.mergeLog,
+          validationErrors: secondMerge.validationErrors,
+          validationWarnings: secondMerge.validationWarnings,
+        },
+        timelineEvents: [],
+        needsReview: secondMerge.needsReview,
+      };
     } else {
       console.error(`[extractor:phase3] ❌ Second turn failed:`, secondTurnResult.error);
-      mergeLog.push(`❌ Second turn failed: ${secondTurnResult.error}`);
+      // Continue with first-turn results
     }
-    
-    console.log(`[extractor:phase3] ${"─".repeat(60)}\n`);
   }
   
-  console.log(`${"═".repeat(80)}`);
-  console.log(`║ ✅ EXTRACTION COMPLETE`);
-  console.log(`${"═".repeat(80)}`);
-  console.log(`Needs Review: ${needsReview}`);
-  console.log(`Second Turn Used: ${needsSecondTurn}`);
-  console.log(`Validation Errors: ${validationErrors.length}`);
-  console.log(`Validation Warnings: ${validationWarnings.length}`);
-  console.log(`Merge Log Entries: ${mergeLog.length}`);
+  // Return first-pass results
+  console.log(`\n${"═".repeat(80)}`);
+  console.log(`║ ✅ UNIVERSAL EXTRACTION COMPLETE (SINGLE PASS)`);
   console.log(`${"═".repeat(80)}\n`);
   
   return {
-    universal: finalTerms,
+    universal: mergeResult.finalTerms,
     details: {
-      provenance,
-      pageExtractions,
-      mergeLog,
-      validationErrors,
-      validationWarnings,
+      provenance: mergeResult.provenance,
+      pageExtractions: mergeResult.pageExtractions,
+      mergeLog: mergeResult.mergeLog,
+      validationErrors: mergeResult.validationErrors,
+      validationWarnings: mergeResult.validationWarnings,
     },
     timelineEvents: [],
-    needsReview,
+    needsReview: mergeResult.needsReview,
   };
 }
 
 /**
- * Combine first-turn and second-turn page extractions
- * Second-turn extractions override first-turn for the same pages
+ * Combines first-turn and second-turn extractions
+ * Second-turn takes precedence for pages that were re-extracted
  */
-function combinePageExtractions(
+function combineExtractions(
   firstTurn: PerPageExtraction[],
   secondTurn: PerPageExtraction[]
 ): PerPageExtraction[] {
-  const secondTurnMap = new Map<number, PerPageExtraction>();
-  for (const extraction of secondTurn) {
-    secondTurnMap.set(extraction.pageNumber, extraction);
-  }
+  console.log(`[combineExtractions] Combining ${firstTurn.length} first-turn + ${secondTurn.length} second-turn`);
   
-  const combined = [...firstTurn];
+  const combined: PerPageExtraction[] = [];
+  const secondTurnMap = new Map(secondTurn.map(e => [e.pageNumber, e]));
   
-  for (let i = 0; i < combined.length; i++) {
-    const pageNum = combined[i].pageNumber;
-    if (secondTurnMap.has(pageNum)) {
-      console.log(`[combineExtractions] Overriding page ${pageNum} with second-turn data`);
-      combined[i] = secondTurnMap.get(pageNum)!;
-      secondTurnMap.delete(pageNum);
+  // Add all first-turn pages, replacing with second-turn where available
+  for (const extraction of firstTurn) {
+    if (secondTurnMap.has(extraction.pageNumber)) {
+      console.log(`[combineExtractions] Page ${extraction.pageNumber} overridden by second-turn`);
+      combined.push(secondTurnMap.get(extraction.pageNumber)!);
+      secondTurnMap.delete(extraction.pageNumber);
+    } else {
+      combined.push(extraction);
     }
   }
   
+  // Add any new pages from second-turn
   for (const [pageNum, extraction] of secondTurnMap.entries()) {
     console.log(`[combineExtractions] Adding new page ${pageNum} from second-turn`);
     combined.push(extraction);
@@ -185,6 +180,8 @@ function combinePageExtractions(
 /**
  * Extract data from each page independently
  * Pure OCR - no semantic context about document roles
+ * 
+ * FIXED v9.1.0: Uses classifier's proven bracket depth tracking algorithm
  */
 async function extractPerPage(
   criticalImages: LabeledCriticalImage[]
@@ -238,43 +235,86 @@ async function extractPerPage(
   }
   
   const data = await res.json();
-  const content = data.choices[0].message.content.trim();
+  const text = data.choices[0].message.content;
   
-  console.log(`[extractor:response] Raw response length: ${content.length} chars`);
-  console.log(`[extractor:response] First 500 chars: ${content.substring(0, 500)}`);
+  console.log(`[extractor:response] Raw response length: ${text.length} chars`);
+  console.log(`[extractor:response] First 300 chars:`, text.substring(0, 300));
+  console.log(`[extractor:response] Last 200 chars:`, text.substring(text.length - 200));
   
-  // Extract JSON array from markdown code blocks or raw response
-  let jsonText = content;
+  // ============================================================================
+  // FIX v9.1.0: Use classifier's proven bracket depth tracking algorithm
+  // ============================================================================
   
-  // Remove markdown code fences if present
-  const codeBlockMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (codeBlockMatch) {
-    jsonText = codeBlockMatch[1].trim();
-    console.log(`[extractor:parse] Extracted from markdown code block`);
+  let parsed: PerPageExtraction[] | null = null;
+  
+  let depth = 0;
+  let startIdx = text.indexOf('[');
+  
+  if (startIdx === -1) {
+    console.error(`[extractor:parse] ❌ No opening bracket found in response`);
+    throw new Error('No JSON array found in response');
+  }
+
+  console.log(`[extractor:parse] JSON array starts at index ${startIdx}`);
+  
+  // Walk through the string tracking bracket depth
+  for (let i = startIdx; i < text.length; i++) {
+    if (text[i] === '[') depth++;
+    if (text[i] === ']') depth--;
+    if (depth === 0) {
+      const jsonStr = text.substring(startIdx, i + 1);
+      console.log(`[extractor:parse] Extracted JSON string length: ${jsonStr.length}`);
+      
+      try {
+        parsed = JSON.parse(jsonStr);
+        console.log(`[extractor:parse] ✅ JSON parsed successfully`);
+        break;
+      } catch (e) {
+        console.warn(`[extractor:parse] ⚠️ Parse attempt failed at position ${i}`);
+        // Continue looking for next valid closing bracket
+      }
+    }
   }
   
-  // Try to find JSON array
-  const arrayMatch = jsonText.match(/\[[\s\S]*\]/);
-  if (arrayMatch) {
-    jsonText = arrayMatch[0];
-    console.log(`[extractor:parse] JSON array found, length: ${jsonText.length} chars`);
+  if (!parsed) {
+    console.error(`[extractor:parse] ❌ All parse attempts failed`);
+    console.error(`[extractor:parse] Raw response (first 2000):`, text.substring(0, 2000));
+    console.error(`[extractor:parse] Raw response (last 500):`, text.substring(text.length - 500));
+    throw new Error('Could not parse JSON array from response');
   }
   
-  let parsed: PerPageExtraction[];
-  try {
-    parsed = JSON.parse(jsonText);
-    console.log(`[extractor:parse] ✅ Parsed ${parsed.length} page extractions`);
-  } catch (e: any) {
-    console.error(`[extractor:parse] ❌ JSON parse failed:`, e.message);
-    console.error(`[extractor:parse] Attempted to parse:`, jsonText.substring(0, 1000));
-    throw new Error(`Failed to parse Grok response as JSON: ${e.message}`);
+  // ============================================================================
+  // FIX v9.1.0: Validate array structure
+  // ============================================================================
+  
+  if (!Array.isArray(parsed)) {
+    console.error(`[extractor:validation] ❌ Parsed result is not an array`);
+    console.error(`[extractor:validation] Type: ${typeof parsed}`);
+    throw new Error('Grok response is not an array');
   }
   
-  // Log sample for debugging
-  if (parsed.length > 0) {
-    console.log(`[extractor:sample] Sample extraction (page ${parsed[0].pageNumber}):`);
-    console.log(JSON.stringify(parsed[0], null, 2).substring(0, 500));
+  console.log(`[extractor:validation] ✅ Array validated: ${parsed.length} elements`);
+  
+  if (parsed.length === 0) {
+    console.error(`[extractor:validation] ❌ Array is empty`);
+    throw new Error('Grok returned empty array');
   }
+  
+  // Validate first element has required fields
+  const firstElement = parsed[0];
+  const requiredFields = ['pageNumber', 'pageLabel', 'formCode', 'pageRole'];
+  const missingFields = requiredFields.filter(field => !(field in firstElement));
+  
+  if (missingFields.length > 0) {
+    console.error(`[extractor:validation] ❌ First element missing fields: ${missingFields.join(', ')}`);
+    console.error(`[extractor:validation] First element:`, JSON.stringify(firstElement, null, 2).substring(0, 500));
+    throw new Error(`Invalid extraction format: missing ${missingFields.join(', ')}`);
+  }
+  
+  console.log(`[extractor:validation] Sample (page ${firstElement.pageNumber}):`);
+  console.log(JSON.stringify(firstElement, null, 2).substring(0, 500));
+  
+  console.log(`[extractor:parse] ✅ Successfully extracted ${parsed.length} page extractions`);
   
   return parsed;
 }

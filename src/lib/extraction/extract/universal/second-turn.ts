@@ -1,6 +1,6 @@
 // src/lib/extraction/extract/universal/second-turn.ts
-// Version: 1.0.0 - 2025-12-29
-// NEW: Second-turn extraction for low-confidence fields (FIX #5)
+// Version: 1.1.0 - 2025-12-30
+// FIXED: Applied same bracket depth tracking fix as index.ts
 
 import type { LabeledCriticalImage } from '@/types/classification';
 import type { PerPageExtraction } from './post-processor';
@@ -85,24 +85,52 @@ export async function runSecondTurnExtraction(
     }
     
     const data = await res.json();
-    const content = data.choices[0].message.content.trim();
+    const text = data.choices[0].message.content;
     
-    console.log(`[second-turn] Raw response length: ${content.length} chars`);
+    console.log(`[second-turn] Raw response length: ${text.length} chars`);
+    console.log(`[second-turn] First 300 chars:`, text.substring(0, 300));
+    console.log(`[second-turn] Last 200 chars:`, text.substring(text.length - 200));
     
-    // Extract JSON array
-    const jsonMatch = content.match(/\[[\s\S]*\]/);
-    if (!jsonMatch) {
-      console.error(`[second-turn] ❌ No JSON array found in response`);
+    // ============================================================================
+    // FIX v1.1.0: Use classifier's proven bracket depth tracking algorithm
+    // ============================================================================
+    
+    let parsed: PerPageExtraction[] | null = null;
+    
+    let depth = 0;
+    let startIdx = text.indexOf('[');
+    
+    if (startIdx === -1) {
+      console.error(`[second-turn:parse] ❌ No opening bracket found in response`);
       throw new Error('No JSON array found in second-turn response');
     }
+
+    console.log(`[second-turn:parse] JSON array starts at index ${startIdx}`);
     
-    let parsed: PerPageExtraction[];
-    try {
-      parsed = JSON.parse(jsonMatch[0]);
-      console.log(`[second-turn] ✅ Parsed ${parsed.length} page extractions`);
-    } catch (e: any) {
-      console.error(`[second-turn] ❌ JSON parse failed:`, e.message);
-      throw new Error(`Failed to parse second-turn response: ${e.message}`);
+    // Walk through the string tracking bracket depth
+    for (let i = startIdx; i < text.length; i++) {
+      if (text[i] === '[') depth++;
+      if (text[i] === ']') depth--;
+      if (depth === 0) {
+        const jsonStr = text.substring(startIdx, i + 1);
+        console.log(`[second-turn:parse] Extracted JSON string length: ${jsonStr.length}`);
+        
+        try {
+          parsed = JSON.parse(jsonStr);
+          console.log(`[second-turn:parse] ✅ JSON parsed successfully`);
+          break;
+        } catch (e) {
+          console.warn(`[second-turn:parse] ⚠️ Parse attempt failed at position ${i}`);
+          // Continue looking for next valid closing bracket
+        }
+      }
+    }
+    
+    if (!parsed) {
+      console.error(`[second-turn:parse] ❌ All parse attempts failed`);
+      console.error(`[second-turn:parse] Raw response (first 2000):`, text.substring(0, 2000));
+      console.error(`[second-turn:parse] Raw response (last 500):`, text.substring(text.length - 500));
+      throw new Error('Could not parse JSON array from second-turn response');
     }
     
     // Validate that problem fields were addressed
