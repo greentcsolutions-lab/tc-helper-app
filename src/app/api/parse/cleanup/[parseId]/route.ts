@@ -1,8 +1,7 @@
 // src/app/api/parse/cleanup/[parseId]/route.ts
-// Version: 3.0.0 - 2025-12-29
-// BREAKING: Fixed Issues #3 & #4
-// - Preserves high-res ZIP for previews (FIX #3)
-// - Clears classificationCache here instead of extract route (FIX #4)
+// Version: 2.0.1 - 2025-12-30
+// FIXED: Prisma null handling for JSON fields (use Prisma.DbNull instead of null)
+// UPDATED: Cleanup for single 200 DPI architecture
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
@@ -11,7 +10,6 @@ import { del } from "@vercel/blob";
 import { Prisma } from "@prisma/client";
 
 export const runtime = "nodejs";
-export const maxDuration = 300;
 
 export async function POST(
   request: NextRequest,
@@ -22,125 +20,136 @@ export async function POST(
 
   const { parseId } = await params;
 
-  console.log(`\n${"═".repeat(80)}`);
-  console.log(`║ 🧹 CLEANUP ROUTE STARTED`);
-  console.log(`║ ParseID: ${parseId}`);
-  console.log(`${"═".repeat(80)}\n`);
-
-  const parse = await db.parse.findUnique({
-    where: { id: parseId },
-    select: {
-      id: true,
-      userId: true,
-      lowResZipKey: true,
-      highResZipKey: true,
-      pdfBuffer: true,
-      classificationCache: true,
-      user: { select: { clerkId: true } },
-    },
-  });
-
-  if (!parse) {
-    console.error(`[cleanup:${parseId}] ❌ Parse not found`);
-    return Response.json({ error: "Parse not found" }, { status: 404 });
-  }
-
-  if (parse.user.clerkId !== clerkUserId) {
-    console.error(`[cleanup:${parseId}] ❌ Unauthorized access`);
-    return Response.json({ error: "Unauthorized" }, { status: 403 });
-  }
-
   try {
-    const cleanupTasks = [];
+    console.log(`[cleanup] START parseId=${parseId}`);
 
-    // ═══════════════════════════════════════════════════════════════════════
-    // STEP 1: Delete Vercel Blob ZIPs (LOW-RES ONLY - FIX #3)
-    // ═══════════════════════════════════════════════════════════════════════
+    // Fetch parse with all temporary storage fields
+    const parse = await db.parse.findUnique({
+      where: { id: parseId },
+      select: {
+        id: true,
+        userId: true,
+        user: { select: { clerkId: true } },
+        
+        // NEW: Universal 200 DPI fields
+        renderZipKey: true,
+        
+        // LEGACY: Dual-DPI fields (for backward compatibility)
+        lowResZipKey: true,
+        highResZipKey: true,
+        
+        // Other temporary data
+        pdfBuffer: true,
+        classificationCache: true,
+      },
+    });
+
+    if (!parse) {
+      console.error(`[cleanup] Parse not found: ${parseId}`);
+      return Response.json({ error: "Parse not found" }, { status: 404 });
+    }
+
+    if (parse.user.clerkId !== clerkUserId) {
+      console.error(`[cleanup] Unauthorized access attempt by ${clerkUserId}`);
+      return Response.json({ error: "Unauthorized" }, { status: 403 });
+    }
+
+    const deletions: string[] = [];
+    const errors: string[] = [];
+
+    // =========================================================================
+    // NEW ARCHITECTURE: Delete universal 200 DPI ZIP
+    // =========================================================================
+    if (parse.renderZipKey) {
+      try {
+        console.log(`[cleanup] Deleting universal 200 DPI ZIP: ${parse.renderZipKey}`);
+        await del(parse.renderZipKey);
+        deletions.push("renderZip");
+        console.log(`[cleanup] ✓ Deleted universal 200 DPI ZIP`);
+      } catch (error: any) {
+        console.error(`[cleanup] Failed to delete renderZipKey:`, error);
+        errors.push(`renderZip: ${error.message}`);
+      }
+    }
+
+    // =========================================================================
+    // LEGACY ARCHITECTURE: Delete dual-DPI ZIPs (for backward compatibility)
+    // =========================================================================
     if (parse.lowResZipKey) {
-      cleanupTasks.push(
-        del(parse.lowResZipKey)
-          .then(() => console.log(`[cleanup:${parseId}] ✓ Low-res ZIP deleted from Blob`))
-          .catch((err) => console.warn(`[cleanup:${parseId}] ⚠️ Low-res ZIP delete failed:`, err))
-      );
+      try {
+        console.log(`[cleanup] Deleting legacy low-res ZIP: ${parse.lowResZipKey}`);
+        await del(parse.lowResZipKey);
+        deletions.push("lowResZip");
+        console.log(`[cleanup] ✓ Deleted legacy low-res ZIP`);
+      } catch (error: any) {
+        console.error(`[cleanup] Failed to delete lowResZipKey:`, error);
+        errors.push(`lowResZip: ${error.message}`);
+      }
     }
 
-    // NOTE: High-res ZIP is PRESERVED for preview endpoint (FIX #3)
-    console.log(`[cleanup:${parseId}] ℹ️ Preserving high-res ZIP for preview endpoint`);
-
-    await Promise.allSettled(cleanupTasks);
-
-    // ═══════════════════════════════════════════════════════════════════════
-    // STEP 2: Clear temporary DB fields (FIX #4)
-    // ═══════════════════════════════════════════════════════════════════════
-    console.log(`[cleanup:${parseId}] 🗑️ Clearing temporary DB fields...`);
-    
-    // Log sizes before cleanup (for debugging)
-    if (parse.pdfBuffer) {
-      console.log(`[cleanup:${parseId}] pdfBuffer size: ${(parse.pdfBuffer.length / 1024 / 1024).toFixed(2)} MB`);
+    if (parse.highResZipKey) {
+      try {
+        console.log(`[cleanup] Deleting legacy high-res ZIP: ${parse.highResZipKey}`);
+        await del(parse.highResZipKey);
+        deletions.push("highResZip");
+        console.log(`[cleanup] ✓ Deleted legacy high-res ZIP`);
+      } catch (error: any) {
+        console.error(`[cleanup] Failed to delete highResZipKey:`, error);
+        errors.push(`highResZip: ${error.message}`);
+      }
     }
-    if (parse.classificationCache) {
-      const cacheStr = JSON.stringify(parse.classificationCache);
-      console.log(`[cleanup:${parseId}] classificationCache size: ${(cacheStr.length / 1024 / 1024).toFixed(2)} MB`);
-    }
+
+    // =========================================================================
+    // DATABASE CLEANUP: Remove all temporary data
+    // =========================================================================
+    console.log(`[cleanup] Clearing temporary database fields...`);
 
     await db.parse.update({
       where: { id: parseId },
       data: {
-        // Binary blob (can be 2-25MB)
-        pdfBuffer: null,
-        
-        // Large JSON with metadata (FIX #4 - now cleared here instead of extract)
-        classificationCache: Prisma.JsonNull,
-        
-        // Low-res ZIP URLs (no longer needed after extraction)
-        lowResZipUrl: null,
-        lowResZipKey: null,
-        
-        // PRESERVE high-res ZIP for previews (FIX #3)
-        // highResZipUrl: keep!
-        // highResZipKey: keep!
-        
-        // Legacy deprecated fields (for backward compat)
+        // NEW: Clear universal 200 DPI fields
         renderZipUrl: null,
         renderZipKey: null,
+        
+        // LEGACY: Clear dual-DPI fields
+        lowResZipUrl: null,
+        lowResZipKey: null,
+        highResZipUrl: null,
+        highResZipKey: null,
+        
+        // Clear other temporary data
+        pdfBuffer: null,
+        classificationCache: Prisma.DbNull, // FIXED: Use Prisma.DbNull for JSON fields
       },
     });
 
-    console.log(`[cleanup:${parseId}] ✓ Temporary DB fields cleared`);
+    console.log(`[cleanup] ✓ Database fields cleared`);
 
-    console.log(`\n${"═".repeat(80)}`);
-    console.log(`║ ✅ CLEANUP COMPLETE`);
-    console.log(`║ ParseID: ${parseId}`);
-    console.log(`║ Deleted: pdfBuffer + classificationCache + low-res ZIP`);
-    console.log(`║ Preserved: high-res ZIP (for previews)`);
-    console.log(`${"═".repeat(80)}\n`);
-
-    return Response.json({
+    // =========================================================================
+    // SUMMARY
+    // =========================================================================
+    const summary = {
       success: true,
-      message: "Temporary files cleaned up",
-      clearedFields: [
+      deletedFromBlob: deletions,
+      errors: errors.length > 0 ? errors : undefined,
+      clearedFromDB: [
+        "renderZipUrl/Key",
+        "lowResZipUrl/Key", 
+        "highResZipUrl/Key",
         "pdfBuffer",
-        "classificationCache", 
-        "lowResZipUrl",
-        "lowResZipKey",
-        "renderZipUrl",
-        "renderZipKey"
+        "classificationCache"
       ],
-      preservedFields: [
-        "highResZipUrl (for preview endpoint)",
-        "highResZipKey"
-      ]
-    });
-  } catch (error: any) {
-    console.error(`\n${"═".repeat(80)}`);
-    console.error(`║ ❌ CLEANUP FAILED`);
-    console.error(`║ ParseID: ${parseId}`);
-    console.error(`${"═".repeat(80)}`);
-    console.error(`[ERROR]`, error.message);
-    console.error(`[ERROR] Stack:`, error.stack);
+    };
 
+    console.log(`[cleanup] COMPLETE — Deleted ${deletions.length} blob(s), ${errors.length} error(s)`);
+    console.log(`[cleanup] Summary:`, JSON.stringify(summary, null, 2));
+
+    return Response.json(summary);
+
+  } catch (error: any) {
+    console.error(`[cleanup] ERROR:`, error);
     return Response.json(
-      { error: "Cleanup failed", message: error.message },
+      { error: error.message || "Cleanup failed" },
       { status: 500 }
     );
   }

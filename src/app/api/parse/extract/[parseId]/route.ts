@@ -1,6 +1,7 @@
 // src/app/api/parse/extract/[parseId]/route.ts
-// Version: 3.1.1 - 2025-12-30
-// OPTIMIZED: Minimal logging under 256 line limit
+// Version: 4.0.0 - 2025-12-30
+// BREAKING CHANGE: Uses single 200 DPI ZIP (renderZipUrl) instead of highResZipUrl
+// OPTIMIZED: Extraction now uses same 200 DPI images as classification
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
@@ -8,7 +9,7 @@ import { db } from "@/lib/prisma";
 import { route } from "@/lib/extraction/router";
 import { mapExtractionToParseResult } from "@/lib/parse/map-to-parse-result";
 import { extractSpecificPagesFromZip } from "@/lib/pdf/renderer";
-import { logDataShape, logStep, logSuccess, logError } from "@/lib/debug/parse-logger";
+import { logStep, logSuccess, logError } from "@/lib/debug/parse-logger";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -32,7 +33,7 @@ export async function POST(
         id: true,
         userId: true,
         status: true,
-        highResZipUrl: true,
+        renderZipUrl: true,  // CHANGED: Now using universal renderZipUrl
         classificationCache: true,
         user: { select: { clerkId: true } },
       },
@@ -53,8 +54,8 @@ export async function POST(
       return Response.json({ error: `Invalid status: ${parse.status}` }, { status: 400 });
     }
 
-    if (!parse.highResZipUrl) {
-      logError("EXTRACT:1", "Missing high-res ZIP");
+    if (!parse.renderZipUrl) {  // CHANGED: Check renderZipUrl instead of highResZipUrl
+      logError("EXTRACT:1", "Missing render ZIP");
       return Response.json({ error: "Rendering not complete" }, { status: 400 });
     }
 
@@ -70,54 +71,42 @@ export async function POST(
       state: string;
     };
 
-    // TEMPORARY DIAGNOSTIC LOGGING
     console.log(`\n${"=".repeat(80)}`);
     console.log(`[extract] 🔍 DIAGNOSTIC: Classification loaded from database`);
     console.log(`${"=".repeat(80)}`);
-    console.log(`[extract] 🔍 criticalPageNumbers type: ${typeof classificationMetadata.criticalPageNumbers}`);
-    console.log(`[extract] 🔍 criticalPageNumbers isArray: ${Array.isArray(classificationMetadata.criticalPageNumbers)}`);
-    console.log(`[extract] 🔍 criticalPageNumbers length: ${classificationMetadata.criticalPageNumbers?.length || 0}`);
     console.log(`[extract] 🔍 criticalPageNumbers: [${classificationMetadata.criticalPageNumbers?.join(', ') || 'EMPTY'}]`);
-    console.log(`[extract] 🔍 First 3 page numbers: ${JSON.stringify(classificationMetadata.criticalPageNumbers?.slice(0, 3))}`);
-    console.log(`[extract] 🔍 Last 3 page numbers: ${JSON.stringify(classificationMetadata.criticalPageNumbers?.slice(-3))}`);
     console.log(`[extract] 🔍 pageLabels keys: [${Object.keys(classificationMetadata.pageLabels || {}).join(', ')}]`);
-    console.log(`[extract] 🔍 Sample labels:`);
-    Object.entries(classificationMetadata.pageLabels || {}).slice(0, 3).forEach(([page, label]) => {
-      console.log(`[extract] 🔍   Page ${page}: "${label}"`);
-    });
     console.log(`[extract] 🔍 detectedFormCodes: [${classificationMetadata.packageMetadata?.detectedFormCodes?.join(', ') || 'NONE'}]`);
     console.log(`${"=".repeat(80)}\n`);
 
     console.log(`[extract] LOADED: ${classificationMetadata.criticalPageNumbers.length} pages [${classificationMetadata.criticalPageNumbers.join(',')}] forms=[${classificationMetadata.packageMetadata.detectedFormCodes.join(',')}]`);
     logSuccess("EXTRACT:1", `Loaded ${classificationMetadata.criticalPageNumbers.length} critical pages`);
 
-    logStep("EXTRACT:2", "Downloading high-res pages...");
+    logStep("EXTRACT:2", "Downloading 200 DPI pages...");
     
-    // TEMPORARY DIAGNOSTIC LOGGING
     console.log(`\n${"=".repeat(80)}`);
     console.log(`[extract] 🔍 DIAGNOSTIC: About to extract pages from ZIP`);
     console.log(`${"=".repeat(80)}`);
-    console.log(`[extract] 🔍 highResZipUrl: ${parse.highResZipUrl}`);
+    console.log(`[extract] 🔍 renderZipUrl: ${parse.renderZipUrl}`);  // CHANGED: Log renderZipUrl
     console.log(`[extract] 🔍 Requesting these page numbers: [${classificationMetadata.criticalPageNumbers.join(', ')}]`);
     console.log(`[extract] 🔍 Number of pages to extract: ${classificationMetadata.criticalPageNumbers.length}`);
     console.log(`${"=".repeat(80)}\n`);
     
-    const highResCriticalPages = await extractSpecificPagesFromZip(
-      parse.highResZipUrl,
+    const criticalPages = await extractSpecificPagesFromZip(
+      parse.renderZipUrl,  // CHANGED: Use universal renderZipUrl
       classificationMetadata.criticalPageNumbers
     );
 
-    // TEMPORARY DIAGNOSTIC LOGGING
     console.log(`\n${"=".repeat(80)}`);
     console.log(`[extract] 🔍 DIAGNOSTIC: Pages extracted from ZIP`);
     console.log(`${"=".repeat(80)}`);
-    console.log(`[extract] 🔍 Received ${highResCriticalPages.length} pages from extractSpecificPagesFromZip`);
-    console.log(`[extract] 🔍 Extracted page numbers: [${highResCriticalPages.map(p => p.pageNumber).join(', ')}]`);
+    console.log(`[extract] 🔍 Received ${criticalPages.length} pages from extractSpecificPagesFromZip`);
+    console.log(`[extract] 🔍 Extracted page numbers: [${criticalPages.map(p => p.pageNumber).join(', ')}]`);
     console.log(`[extract] 🔍 Expected page numbers: [${classificationMetadata.criticalPageNumbers.join(', ')}]`);
-    console.log(`[extract] 🔍 Match: ${highResCriticalPages.length === classificationMetadata.criticalPageNumbers.length ? '✅ YES' : '❌ NO'}`);
+    console.log(`[extract] 🔍 Match: ${criticalPages.length === classificationMetadata.criticalPageNumbers.length ? '✅ YES' : '❌ NO'}`);
     console.log(`${"=".repeat(80)}\n`);
 
-    const criticalImages = highResCriticalPages.map(page => ({
+    const criticalImages = criticalPages.map(page => ({
       pageNumber: page.pageNumber,
       base64: page.base64,
       label: classificationMetadata.pageLabels[page.pageNumber] || `Page ${page.pageNumber}`,
@@ -139,11 +128,10 @@ export async function POST(
       console.log(`[extract] VERIFY OK: All ${criticalImages.length} pages matched`);
     }
 
-    logSuccess("EXTRACT:2", `Downloaded ${criticalImages.length} high-res pages`);
+    logSuccess("EXTRACT:2", `Downloaded ${criticalImages.length} pages at 200 DPI`);
 
     logStep("EXTRACT:3", "Running extractor...");
     
-    // TEMPORARY DIAGNOSTIC LOGGING
     console.log(`\n${"=".repeat(80)}`);
     console.log(`[extract] 🔍 DIAGNOSTIC: About to send to extractor`);
     console.log(`${"=".repeat(80)}`);
@@ -159,7 +147,7 @@ export async function POST(
       await route({
         criticalImages,
         packageMetadata: classificationMetadata.packageMetadata,
-        highDpiPages: highResCriticalPages,
+        highDpiPages: criticalPages,  // Now 200 DPI instead of 300 DPI
       });
 
     logSuccess("EXTRACT:3", `Extraction via ${extractionRoute} — needsReview: ${needsReview}`);
@@ -189,39 +177,27 @@ export async function POST(
         contingencies: mappedFields.contingencies ?? undefined,
         closingCosts: mappedFields.closingCosts ?? undefined,
         brokers: mappedFields.brokers ?? undefined,
-        personalPropertyIncluded: mappedFields.personalPropertyIncluded ?? undefined,
         extractionDetails: extractionDetailsJson,
-        timelineEvents: mappedFields.timelineEvents ?? undefined,
-        rawJson: {
-          _extraction_route: extractionRoute,
-          _classifier_metadata: classificationMetadata.packageMetadata,
-          _critical_page_count: criticalImages.length,
-        },
-        finalizedAt: new Date(),
+        timelineEvents: timelineEvents ?? undefined,
       },
     });
 
-    logSuccess("EXTRACT:5", `Saved — Status: ${finalStatus}`);
-    console.log(`[extract] COMPLETE: ${finalStatus}`);
+    logSuccess("EXTRACT:5", `Saved — status: ${finalStatus}`);
+    logSuccess("EXTRACT:DONE", `Extraction complete — ${criticalImages.length} pages processed`);
 
     return Response.json({
       success: true,
       needsReview,
-      status: finalStatus,
-      extracted: universal,
-    });
-  } catch (error: any) {
-    console.error(`[extract] ERROR: ${error.message}`);
-    await db.parse.update({
-      where: { id: parseId },
-      data: {
-        status: "EXTRACTION_FAILED",
-        errorMessage: error.message || "Extraction failed",
-      },
-    }).catch((dbError) => {
-      console.error(`[extract] DB update failed:`, dbError);
+      criticalPageCount: criticalImages.length,
     });
 
-    return Response.json({ error: error.message || "Extraction failed" }, { status: 500 });
+  } catch (error: any) {
+    logError("EXTRACT:ERROR", error.message);
+    console.error("[Extract Route] Full error:", error);
+
+    return Response.json(
+      { error: error.message || "Extraction failed" },
+      { status: 500 }
+    );
   }
 }

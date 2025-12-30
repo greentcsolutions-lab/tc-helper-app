@@ -1,6 +1,8 @@
 // src/lib/pdf/renderer.ts
-// Version: 4.1.1 - 2025-12-30
-// CRITICAL FIX: Extract page number from PNG filename + Enhanced logging for verification
+// Version: 5.0.0 - 2025-12-30
+// BREAKING CHANGE: Single 200 DPI render for both classification AND extraction
+// REMOVED: Dual parallel rendering (180 DPI + 300 DPI)
+// ADDED: Universal 200 DPI render + extract specific pages function
 
 import { bufferToBlob } from "@/lib/utils";
 import { put } from "@vercel/blob";
@@ -20,24 +22,26 @@ export interface RenderResult {
 }
 
 /**
- * PHASE 1: Parallel dual-DPI render (with flatten)
+ * PHASE 1: Single 200 DPI render (with flatten)
+ * Used for BOTH classification and extraction
+ * 
+ * @param buffer - PDF buffer
+ * @param totalPages - Optional page count for validation
+ * @returns Single RenderResult with 200 DPI ZIP
  */
-export async function renderPdfParallel(
+export async function renderPdfSingle(
   buffer: Buffer,
   totalPages?: number
-): Promise<{
-  lowRes: RenderResult;
-  highRes: RenderResult;
-  pageCount: number;
-}> {
+): Promise<RenderResult> {
   const startTime = Date.now();
 
   console.log("\n" + "━".repeat(80));
-  console.log("[Nutrient:Parallel] 🚀 DUAL-DPI PARALLEL RENDER + FLATTEN");
+  console.log("[Nutrient:200DPI] 🚀 SINGLE UNIVERSAL RENDER + FLATTEN");
   console.log("━".repeat(80));
-  console.log(`[Nutrient:Parallel] PDF size: ${(buffer.length / 1024).toFixed(2)} KB`);
-  console.log(`[Nutrient:Parallel] Total pages: ${totalPages ?? "auto-detect"}`);
-  console.log(`[Nutrient:Parallel] Strategy: Flatten → 180 DPI (classify) + 300 DPI (extract) in parallel`);
+  console.log(`[Nutrient:200DPI] PDF size: ${(buffer.length / 1024).toFixed(2)} KB`);
+  console.log(`[Nutrient:200DPI] Total pages: ${totalPages ?? "auto-detect"}`);
+  console.log(`[Nutrient:200DPI] Strategy: Flatten → 200 DPI (classify + extract)`);
+  console.log(`[Nutrient:200DPI] DISCOVERY: 200 DPI is sufficient for Grok extraction quality`);
   console.log("━".repeat(80) + "\n");
 
   // Validate PDF
@@ -45,41 +49,27 @@ export async function renderPdfParallel(
     throw new Error("Invalid PDF");
   }
 
-  // Execute both renders in parallel
-  const [lowResResult, highResResult] = await Promise.all([
-    renderSingleDpi(buffer, 180, totalPages ?? undefined, "classify"),
-    renderSingleDpi(buffer, 300, totalPages ?? undefined, "extract"),
-  ]);
+  // Execute single 200 DPI render
+  const renderResult = await renderSingleDpi(buffer, 200, totalPages ?? undefined, "universal");
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
 
-  if (lowResResult.pageCount !== highResResult.pageCount) {
-    console.warn(`[Nutrient:Parallel] ⚠️ Page count mismatch: 150 DPI returned ${lowResResult.pageCount}, 300 DPI returned ${highResResult.pageCount}`);
-  }
-
-  const pageCount = Math.max(lowResResult.pageCount, highResResult.pageCount);
-
   console.log("\n" + "━".repeat(80));
-  console.log("[Nutrient:Parallel] ✅ PARALLEL RENDER + FLATTEN COMPLETE");
+  console.log("[Nutrient:200DPI] ✅ SINGLE RENDER + FLATTEN COMPLETE");
   console.log("━".repeat(80));
-  console.log(`[Nutrient:Parallel] Total time: ${elapsed}s (parallel execution)`);
-  console.log(`[Nutrient:Parallel] Pages rendered: ${pageCount}`);
-  console.log(`[Nutrient:Parallel] Low-res (180 DPI): ${lowResResult.pathname}`);
-  console.log(`[Nutrient:Parallel] High-res (300 DPI): ${highResResult.pathname}`);
+  console.log(`[Nutrient:200DPI] Total time: ${elapsed}s`);
+  console.log(`[Nutrient:200DPI] Pages rendered: ${renderResult.pageCount}`);
+  console.log(`[Nutrient:200DPI] Universal (200 DPI): ${renderResult.pathname}`);
   console.log("━".repeat(80) + "\n");
 
-  return {
-    lowRes: lowResResult,
-    highRes: highResResult,
-    pageCount,
-  };
+  return renderResult;
 }
 
 async function renderSingleDpi(
   buffer: Buffer,
-  dpi: 180 | 300,
+  dpi: 200,
   _totalPages: number | undefined,
-  purpose: "classify" | "extract"
+  purpose: "universal"
 ): Promise<RenderResult> {
   console.log(`[Nutrient:${dpi}dpi:${purpose}] Starting flatten + render...`);
 
@@ -139,7 +129,7 @@ async function renderSingleDpi(
 }
 
 // -----------------------------------------------------------------------------
-// PHASE 2: Download and extract pages from ZIP
+// PHASE 2: Download and extract ALL pages from ZIP
 // -----------------------------------------------------------------------------
 export async function downloadAndExtractZip(
   zipUrl: string
@@ -183,9 +173,7 @@ export async function downloadAndExtractZip(
 
   console.log(`[ZIP Download] Found ${pngFiles.length} PNGs:`, pngFiles.slice(0, 5));
 
-  // ============================================================================
-  // CRITICAL FIX (Version 4.1.0): Extract page number from PNG filename
-  // ============================================================================
+  // Extract page number from PNG filename
   const pages = await Promise.all(
     pngFiles.map(async (name) => {
       const file = zip.file(name)!;
@@ -202,45 +190,84 @@ export async function downloadAndExtractZip(
     })
   );
 
-  // ENHANCED LOGGING: Show actual page numbers assigned (proves fix is working)
+  // Enhanced logging: Show actual page numbers assigned
   const pageNumbers = pages.map(p => p.pageNumber);
   console.log(`[ZIP Download] ✓ Extracted ${pages.length} individual pages`);
-  console.log(`[ZIP Download] 🔍 Page numbers assigned: [${pageNumbers.slice(0, 5).join(', ')}${pageNumbers.length > 5 ? ', ...' : ''}]`);
-  console.log(`[ZIP Download] 🔍 Last 5 pages: [${pageNumbers.slice(-5).join(', ')}]`);
-  
+  console.log(`[ZIP Download] 🔍 Page numbers assigned: [${pageNumbers.slice(0, 5).join(', ')}${pageNumbers.length > 5 ? '...' : ''}]`);
+
   return pages;
 }
 
 // -----------------------------------------------------------------------------
-// HELPER: Extract specific pages from high-res ZIP
+// PHASE 3: Extract SPECIFIC pages from ZIP (for extraction route)
 // -----------------------------------------------------------------------------
 export async function extractSpecificPagesFromZip(
   zipUrl: string,
   pageNumbers: number[]
 ): Promise<{ pageNumber: number; base64: string }[]> {
-  console.log(`[Selective Extract] Fetching specific pages from ZIP: [${pageNumbers.join(", ")}]`);
+  console.log(`[ZIP Extract Specific] Fetching from Blob: ${zipUrl}`);
+  console.log(`[ZIP Extract Specific] Requested pages: [${pageNumbers.join(', ')}]`);
 
-  const allPages = await downloadAndExtractZip(zipUrl);
-
-  // ENHANCED LOGGING: Show what we're filtering
-  console.log(`[Selective Extract] 🔍 All pages available: [${allPages.map(p => p.pageNumber).join(', ')}]`);
-
-  const selectedPages = allPages.filter((page) => pageNumbers.includes(page.pageNumber));
-
-  // ENHANCED LOGGING: Show what actually got selected
-  console.log(`[Selective Extract] 🔍 Pages that matched filter: [${selectedPages.map(p => p.pageNumber).join(', ')}]`);
-
-  if (selectedPages.length === 0) {
-    throw new Error(`None of the requested pages [${pageNumbers.join(", ")}] found in ZIP`);
+  const res = await fetch(zipUrl);
+  if (!res.ok) {
+    throw new Error(`Failed to download render artifact: ${res.status} ${res.statusText}`);
   }
 
-  if (selectedPages.length < pageNumbers.length) {
-    const missing = pageNumbers.filter(
-      (num) => !selectedPages.some((p) => p.pageNumber === num)
-    );
-    console.warn(`[Selective Extract] ⚠️ Missing pages: [${missing.join(", ")}]`);
+  const arrayBuffer = await res.arrayBuffer();
+
+  let zip;
+  try {
+    zip = await JSZip.loadAsync(arrayBuffer);
+  } catch (e) {
+    console.error("[ZIP Extract Specific] Unzip failed", e);
+    throw new Error("Render artifact is not a valid ZIP");
   }
 
-  console.log(`[Selective Extract] ✓ Extracted ${selectedPages.length}/${pageNumbers.length} requested pages`);
-  return selectedPages;
+  const pngFiles = Object.keys(zip.files)
+    .filter((name) => name.match(/\.png$/i))
+    .sort((a, b) => {
+      const aNum = parseInt(a.match(/(\d+)\.png$/i)?.[1] || "0");
+      const bNum = parseInt(b.match(/(\d+)\.png$/i)?.[1] || "0");
+      return aNum - bNum;
+    });
+
+  console.log(`[ZIP Extract Specific] Total PNGs in ZIP: ${pngFiles.length}`);
+
+  // Create a set for O(1) lookup
+  const requestedSet = new Set(pageNumbers);
+
+  // Extract only requested pages
+  const pages = await Promise.all(
+    pngFiles
+      .filter((name) => {
+        const pngIndex = parseInt(name.match(/(\d+)\.png$/i)?.[1] || "0");
+        const pageNumber = pngIndex + 1;
+        return requestedSet.has(pageNumber);
+      })
+      .map(async (name) => {
+        const file = zip.file(name)!;
+        const buffer = await file.async("nodebuffer");
+
+        const pngIndex = parseInt(name.match(/(\d+)\.png$/i)?.[1] || "0");
+        const pageNumber = pngIndex + 1;
+
+        return {
+          pageNumber,
+          base64: `data:image/png;base64,${buffer.toString("base64")}`,
+        };
+      })
+  );
+
+  console.log(`[ZIP Extract Specific] ✓ Extracted ${pages.length}/${pageNumbers.length} requested pages`);
+  console.log(`[ZIP Extract Specific] 🔍 Extracted page numbers: [${pages.map(p => p.pageNumber).join(', ')}]`);
+
+  // Verify all requested pages were found
+  const extractedPageNumbers = new Set(pages.map(p => p.pageNumber));
+  const missingPages = pageNumbers.filter(p => !extractedPageNumbers.has(p));
+  
+  if (missingPages.length > 0) {
+    console.warn(`[ZIP Extract Specific] ⚠️ Missing pages: [${missingPages.join(', ')}]`);
+  }
+
+  return pages;
 }

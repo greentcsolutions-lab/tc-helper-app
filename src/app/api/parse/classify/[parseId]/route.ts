@@ -1,14 +1,14 @@
 // src/app/api/parse/classify/[parseId]/route.ts
-// Version: 2.2.0 - 2025-12-29
-// BREAKING: No longer stores base64 images in DB (only metadata)
-// SIMPLIFIED: Logging minimized to success states and errors only
+// Version: 2.0.0 - 2025-12-30
+// BREAKING CHANGE: Uses single 200 DPI ZIP (renderZipUrl) instead of lowResZipUrl
+// UPDATED: Reads from renderZipUrl field in database
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
 import { downloadAndExtractZip } from "@/lib/pdf/renderer";
 import { classifyCriticalPages } from "@/lib/extraction/classify/classifier";
-import { logStep, logSuccess, logError } from "@/lib/debug/parse-logger";
+import { logSuccess, logError, logStep } from "@/lib/debug/parse-logger";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -29,8 +29,8 @@ export async function GET(
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        // STEP 1: FETCH PARSE FROM DB
-        logStep("CLASSIFY:1", "🔍 Fetching parse from database...");
+        // STEP 1: VALIDATE PARSE
+        logStep("CLASSIFY:1", "Validating parse and render completion...");
 
         const parse = await db.parse.findUnique({
           where: { id: parseId },
@@ -38,7 +38,7 @@ export async function GET(
             id: true,
             userId: true,
             status: true,
-            lowResZipUrl: true,
+            renderZipUrl: true,  // CHANGED: Now using universal renderZipUrl
             pageCount: true,
             user: { select: { clerkId: true } },
           },
@@ -52,27 +52,27 @@ export async function GET(
         }
 
         if (parse.user.clerkId !== clerkUserId) {
-          logError("CLASSIFY:1", "Unauthorized access");
+          logError("CLASSIFY:1", "Unauthorized");
           emit(controller, { type: "error", message: "Unauthorized" });
           controller.close();
           return;
         }
 
         if (parse.status !== "PROCESSING") {
-          logError("CLASSIFY:1", `Invalid status: ${parse.status} (expected PROCESSING)`);
+          logError("CLASSIFY:1", `Invalid status: ${parse.status}`);
           emit(controller, { type: "error", message: `Invalid status: ${parse.status}` });
           controller.close();
           return;
         }
 
-        if (!parse.lowResZipUrl || !parse.pageCount) {
-          logError("CLASSIFY:1", "Missing render artifacts (ZIP URLs or page count)");
+        if (!parse.renderZipUrl) {  // CHANGED: Check renderZipUrl instead of lowResZipUrl
+          logError("CLASSIFY:1", "Rendering not complete");
           emit(controller, { type: "error", message: "Rendering not complete" });
           controller.close();
           return;
         }
 
-        logSuccess("CLASSIFY:1", `Validated — ${parse.pageCount} pages rendered`);
+        logSuccess("CLASSIFY:1", `Validated — ${parse.pageCount} pages rendered at 200 DPI`);
 
         emit(controller, {
           type: "progress",
@@ -80,16 +80,16 @@ export async function GET(
           phase: "classify"
         });
 
-        // STEP 2: DOWNLOAD AND EXTRACT ZIPS
-        logStep("CLASSIFY:2", "📥 Downloading and extracting low-DPI ZIP...");
+        // STEP 2: DOWNLOAD AND EXTRACT ZIP
+        logStep("CLASSIFY:2", "📥 Downloading and extracting 200 DPI ZIP...");
 
-        const lowDpiPages = await downloadAndExtractZip(parse.lowResZipUrl);
+        const pages = await downloadAndExtractZip(parse.renderZipUrl);  // CHANGED: Use universal ZIP
 
-        logSuccess("CLASSIFY:2", `Extracted ${lowDpiPages.length} low-DPI pages`);
+        logSuccess("CLASSIFY:2", `Extracted ${pages.length} pages at 200 DPI`);
 
         emit(controller, {
           type: "progress",
-          message: `Extracted ${lowDpiPages.length} pages, starting classification...`,
+          message: `Extracted ${pages.length} pages, starting classification...`,
           phase: "classify"
         });
 
@@ -101,7 +101,7 @@ export async function GET(
           state,
           criticalPageNumbers,
           packageMetadata,
-        } = await classifyCriticalPages(lowDpiPages, parse.pageCount);
+        } = await classifyCriticalPages(pages, parse.pageCount!);
 
         logSuccess("CLASSIFY:3", `Identified ${criticalPageNumbers.length} critical pages`);
 
@@ -128,47 +128,33 @@ export async function GET(
             criticalPageNumbers,
           },
         });
-        // RIGHT AFTER the db.parse.update() call
-console.log(`[classify] 🔍 DEBUG: Saved to DB:`);
-console.log(`[classify] 🔍 criticalPageNumbers: [${criticalPageNumbers.join(', ')}]`);
-console.log(`[classify] 🔍 criticalImages.length: ${criticalImages.length}`);
-console.log(`[classify] 🔍 criticalImages page numbers: [${criticalImages.map(i => i.pageNumber).join(', ')}]`);
+
+        console.log(`[classify] 🔍 DEBUG: Saved to DB:`);
+        console.log(`[classify] 🔍 criticalPageNumbers: [${criticalPageNumbers.join(', ')}]`);
+        console.log(`[classify] 🔍 criticalImages.length: ${criticalImages.length}`);
+        console.log(`[classify] 🔍 criticalImages page numbers: [${criticalImages.map(i => i.pageNumber).join(', ')}]`);
 
         const metadataSize = JSON.stringify(classificationMetadata).length;
         logSuccess("CLASSIFY:4", `Metadata saved (${(metadataSize / 1024).toFixed(1)} KB - no base64!)`);
 
-        // STEP 5: SEND COMPLETION EVENT
-        logStep("CLASSIFY:5", "📤 Sending completion event to client...");
-
-        const completeEvent = {
+        // STEP 5: COMPLETE
+        emit(controller, {
           type: "complete",
-          criticalPageCount: criticalImages.length,
-          criticalPageNumbers,
-          state,
+          criticalPageCount: criticalPageNumbers.length,
           detectedForms: packageMetadata.detectedFormCodes,
-          message: "Classification complete",
-        };
+          state,
+        });
 
-        emit(controller, completeEvent);
+        logSuccess("CLASSIFY:DONE", `Classification complete — ${criticalPageNumbers.length} critical pages`);
 
         controller.close();
       } catch (error: any) {
-        console.error(`[ERROR] ${error.message}`);
-        console.error(`[ERROR] Stack:`, error.stack);
-
-        await db.parse.update({
-          where: { id: parseId },
-          data: {
-            status: "CLASSIFICATION_FAILED",
-            errorMessage: error.message || "Classification failed",
-          },
-        }).catch((dbError) => {
-          console.error(`[ERROR] Failed to update error status:`, dbError);
-        });
+        logError("CLASSIFY:ERROR", error.message);
+        console.error("[Classify Route] Full error:", error);
 
         emit(controller, {
           type: "error",
-          message: error.message || "Classification failed",
+          message: error.message || "Classification failed"
         });
 
         controller.close();

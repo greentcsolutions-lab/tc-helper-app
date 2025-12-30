@@ -1,6 +1,8 @@
 // prisma/schema.prisma
-// Version: 2.0.0 - 2025-12-27
-// Updated: Added proper status enum, documented temporary fields
+// Version: 3.0.0 - 2025-12-30
+// BREAKING CHANGE: Simplified to single 200 DPI render storage
+// UPDATED: renderZipUrl/renderZipKey are now PRIMARY fields (not deprecated)
+// UPDATED: lowRes/highRes fields are now DEPRECATED (kept for migration)
 
 generator client {
   provider = "prisma-client-js"
@@ -75,19 +77,17 @@ model Parse {
   // Original PDF buffer - deleted after render completes
   pdfBuffer            Bytes?
   
-  // Low-res ZIP (150 DPI) - for classification
+  // UNIVERSAL 200 DPI ZIP - Used for BOTH classification AND extraction
   // Deleted after cleanup route runs
-  lowResZipUrl         String?
-  lowResZipKey         String?   // Vercel Blob key for deletion
+  renderZipUrl         String?   // PRIMARY: Single 200 DPI ZIP for all operations
+  renderZipKey         String?   // Vercel Blob key for deletion
   
-  // High-res ZIP (300 DPI) - for extraction
-  // Deleted after cleanup route runs
-  highResZipUrl        String?
-  highResZipKey        String?   // Vercel Blob key for deletion
-  
-  // DEPRECATED: Legacy single-DPI fields (keep for backward compatibility)
-  renderZipUrl         String?
-  renderZipKey         String?
+  // DEPRECATED: Legacy dual-DPI fields (kept for backward compatibility during migration)
+  // These should be NULL in all new parses
+  lowResZipUrl         String?   // DEPRECATED: Was 180 DPI for classification
+  lowResZipKey         String?   // DEPRECATED: Vercel Blob key for deletion
+  highResZipUrl        String?   // DEPRECATED: Was 300 DPI for extraction
+  highResZipKey        String?   // DEPRECATED: Vercel Blob key for deletion
 
   // ============================================================================
   // CLASSIFICATION & PAGE INFO
@@ -96,7 +96,7 @@ model Parse {
   pageCount            Int?                     // Total pages in PDF
   
   // TEMPORARY: Classification results (deleted after extraction)
-  classificationCache  Json?     // { criticalImages, packageMetadata } - deleted after extract
+  classificationCache  Json?     // { criticalPageNumbers, pageLabels, packageMetadata, state }
 
   // ============================================================================
   // UNIVERSAL CORE FIELDS (top-level for fast queries)
@@ -129,18 +129,10 @@ model Parse {
   extractionDetails    Json?     // { route: "california"|"universal", californiaSpecific: {...} }
   timelineEvents       Json?     // [{ date, title, type, description }]
 
-  // ============================================================================
-  // ERROR TRACKING
-  // ============================================================================
-  errorMessage         String?   // Error details if status = *_FAILED
-
-  // ============================================================================
-  // TIMESTAMPS
-  // ============================================================================
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
-  finalizedAt          DateTime? // When extraction completed
 
-  @@index([userId, createdAt])
+  @@index([userId])
+  @@index([status])
   @@map("parses")
 }

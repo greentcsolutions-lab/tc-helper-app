@@ -1,14 +1,14 @@
 // src/app/api/parse/render/[parseId]/route.ts
-// Version: 1.0.0 - 2025-12-27
-// Renders PDF to dual-DPI images via Nutrient, stores ZIPs in Vercel Blob + DB
-// UPDATED: Deduct user credits after successful rendering (before emitting complete)
-// SIMPLIFIED: Logging minimized to success states and errors only
+// Version: 2.0.0 - 2025-12-30
+// BREAKING CHANGE: Single 200 DPI render for both classification and extraction
+// REMOVED: Dual parallel rendering (lowRes/highRes split)
+// SIMPLIFIED: One ZIP URL stored in database
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
-import { renderPdfParallel } from "@/lib/pdf/renderer";
-import { logSuccess, logError } from "@/lib/debug/parse-logger";
+import { renderPdfSingle } from "@/lib/pdf/renderer";
+import { logSuccess, logError, logStep } from "@/lib/debug/parse-logger";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -30,6 +30,8 @@ export async function GET(
     async start(controller) {
       try {
         // STEP 1: FETCH PARSE FROM DB
+        logStep("RENDER:1", "Validating parse record...");
+
         const parse = await db.parse.findUnique({
           where: { id: parseId },
           select: {
@@ -74,14 +76,16 @@ export async function GET(
 
         emit(controller, { 
           type: "progress", 
-          message: "Starting dual-DPI rendering...",
+          message: "Starting 200 DPI rendering...",
           phase: "render"
         });
 
-        // STEP 2: RENDER PDF (PARALLEL DUAL-DPI)
-        const renderResult = await renderPdfParallel(parse.pdfBuffer);
+        // STEP 2: RENDER PDF (SINGLE 200 DPI)
+        logStep("RENDER:2", "Rendering PDF at 200 DPI...");
 
-        logSuccess("RENDER:2", `Rendered ${renderResult.pageCount} pages → ZIPs uploaded`);
+        const renderResult = await renderPdfSingle(parse.pdfBuffer);
+
+        logSuccess("RENDER:2", `Rendered ${renderResult.pageCount} pages → ZIP uploaded`);
 
         emit(controller, { 
           type: "progress", 
@@ -89,71 +93,74 @@ export async function GET(
           phase: "render"
         });
 
-        // STEP 3: SAVE ZIP URLs TO DB (TEMPORARY STORAGE)
+        // STEP 3: SAVE ZIP URL TO DB (SINGLE STORAGE)
+        logStep("RENDER:3", "Saving render metadata to database...");
+
         await db.parse.update({
           where: { id: parseId },
           data: {
-            lowResZipUrl: renderResult.lowRes.url,
-            lowResZipKey: renderResult.lowRes.pathname,
-            highResZipUrl: renderResult.highRes.url,
-            highResZipKey: renderResult.highRes.pathname,
+            // NEW: Single universal ZIP for both classification and extraction
+            renderZipUrl: renderResult.url,
+            renderZipKey: renderResult.pathname,
+            
+            // DEPRECATED: Keep these NULL for backward compatibility
+            lowResZipUrl: null,
+            lowResZipKey: null,
+            highResZipUrl: null,
+            highResZipKey: null,
+            
             pageCount: renderResult.pageCount,
             status: "PROCESSING", // Still processing, not done yet
           },
         });
 
-        logSuccess("RENDER:3", "ZIP URLs saved to database");
+        logSuccess("RENDER:3", "ZIP URL saved to database");
 
-        // NEW: Deduct credits after successful render
+        // STEP 4: DEDUCT USER CREDITS
+        logStep("RENDER:4", "Deducting user credits...");
+
         const user = await db.user.findUnique({
           where: { clerkId: clerkUserId },
-          select: { id: true, credits: true },
+          select: { credits: true },
         });
 
         if (!user) {
-          throw new Error("User not found for credit deduction");
+          logError("RENDER:4", "User not found");
+          emit(controller, { type: "error", message: "User not found" });
+          controller.close();
+          return;
         }
 
-        if (user.credits <= 0) {
-          logError("RENDER:3.5", "Insufficient credits, but allowing pipeline to continue");
-          // Note: We allow continuation as per instructions, but log the issue
-          // In production, you might want to add notifications or restrictions here
-        } else {
-          await db.user.update({
-            where: { id: user.id },
-            data: { credits: { decrement: 1 } },
-          });
-          logSuccess("RENDER:3.5", "Credit deducted successfully");
+        if (user.credits < 1) {
+          logError("RENDER:4", "Insufficient credits");
+          emit(controller, { type: "error", message: "Insufficient credits" });
+          controller.close();
+          return;
         }
 
-        // STEP 4: SEND COMPLETION EVENT
-        const completeEvent = {
-          type: "complete",
-          pageCount: renderResult.pageCount,
-          message: "Rendering complete",
-        };
-
-        emit(controller, completeEvent);
-
-        controller.close();
-      } catch (error: any) {
-        console.error(`[ERROR] ${error.message}`);
-        console.error(`[ERROR] Stack:`, error.stack);
-
-        // Update DB with error status
-        await db.parse.update({
-          where: { id: parseId },
-          data: {
-            status: "RENDER_FAILED",
-            errorMessage: error.message || "Rendering failed",
-          },
-        }).catch((dbError) => {
-          console.error(`[ERROR] Failed to update error status:`, dbError);
+        await db.user.update({
+          where: { clerkId: clerkUserId },
+          data: { credits: { decrement: 1 } },
         });
 
-        emit(controller, {
-          type: "error",
-          message: error.message || "Rendering failed",
+        logSuccess("RENDER:4", `Credits deducted (remaining: ${user.credits - 1})`);
+
+        // STEP 5: COMPLETE
+        emit(controller, { 
+          type: "complete", 
+          pageCount: renderResult.pageCount 
+        });
+
+        logSuccess("RENDER:DONE", `Render pipeline complete — ${renderResult.pageCount} pages ready`);
+        
+        controller.close();
+      } catch (error: any) {
+        logError("RENDER:ERROR", error.message);
+        console.error("[Render Route] Full error:", error);
+
+        emit(controller, { 
+          type: "error", 
+          message: error.message || "Rendering failed" 
         });
 
         controller.close();
