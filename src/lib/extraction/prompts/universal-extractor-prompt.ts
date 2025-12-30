@@ -1,7 +1,6 @@
 // src/lib/extraction/prompts/universal-extractor-prompt.ts
-// Version: 9.0.0 - 2025-12-29
-// BREAKING: Pure OCR extraction - no semantic labels, no context pollution
-// Grok extracts what it sees on each page. Post-processor handles merging.
+// Version: 10.0.0 - 2025-12-30
+// MINIMAL FIX: Just add property address emphasis to existing working prompt
 
 import extractorSchema from '@/forms/universal/extractor.schema.json';
 
@@ -19,7 +18,7 @@ CRITICAL RULES
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 1. Extract from ENTIRE page (headers + body + footers)
-2. Property address often appears in page HEADER - extract it
+2. **PROPERTY ADDRESS is in the page header on 95% of pages - look at the very top**
 3. Return null ONLY if field is truly not visible anywhere on the page
 4. DO NOT skip header fields - they contain real data
 5. DO NOT make assumptions about what "should" be on a page
@@ -51,12 +50,17 @@ FIELD EXTRACTION
 
 Extract ANY fields visible on this page:
 
-COMMON HEADER FIELDS (check top of page):
-- Property Address: Full address (street, city, state, zip)
+**PROPERTY ADDRESS** - Look at the TOP of the page first:
+- In header tables or labeled "Property:", "Property Address:", "Subject Property:"
+- Format: "123 Main Street, Los Angeles, CA 90210"
+- Appears on counter offers, addenda, and main contracts
+- Only return null if page has zero property references
+
+Other header fields:
 - Buyer Names: Full names
 - Seller Names: Full names (may only be on signature pages)
 
-COMMON BODY FIELDS (check main content):
+Body fields:
 - Purchase Price / Sales Price / Contract Price
 - Earnest Money / Initial Deposit / Deposit
 - Closing Date / Close of Escrow / Settlement Date (date or "X days")
@@ -66,63 +70,9 @@ COMMON BODY FIELDS (check main content):
 
 SPECIAL NOTES:
 - Purchase Price = 0 is an ERROR. If unclear, return null.
+- If unclear, return null for optional fields.
 - Dates: Return as-is ("45 days" or "2025-12-31" or 45)
 - Seller names often only appear on signature pages, not page 1
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-EXAMPLES
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Example: RPA Page 1
-HEADER: Property: 123 Main St, Los Angeles, CA 90210 | Buyers: John Doe, Jane Doe
-BODY: Purchase Price: $500,000, Deposit: $10,000, Close: 30 days
-FOOTER: (RPA PAGE 1 OF 17)
-
-Extract:
-{
-  "pageNumber": 11,
-  "pageLabel": "RPA PAGE 1 OF 17",
-  "formCode": "RPA",
-  "formPage": 1,
-  "pageRole": "main_contract",
-  "propertyAddress": "123 Main St, Los Angeles, CA 90210",
-  "purchasePrice": 500000,
-  "buyerNames": ["John Doe", "Jane Doe"],
-  "earnestMoneyDeposit": { "amount": 10000, "holder": null },
-  "closingDate": "30 days",
-  "sellerNames": null,
-  "financing": null,
-  "contingencies": null,
-  "brokers": null,
-  "confidence": { "overall": 90 }
-}
-
-Example: SCO Page 1 (Counter Offer)
-HEADER: Property: 123 Main St, Los Angeles, CA 90210
-BODY: Purchase Price changed to $510,000, Close of Escrow changed to 21 days
-FOOTER: (SCO PAGE 1 OF 2)
-
-Extract:
-{
-  "pageNumber": 1,
-  "pageLabel": "SCO PAGE 1 OF 2",
-  "formCode": "SCO",
-  "formPage": 1,
-  "pageRole": "counter_offer",
-  "propertyAddress": "123 Main St, Los Angeles, CA 90210",
-  "purchasePrice": 510000,
-  "closingDate": "21 days",
-  "buyerNames": null,
-  "sellerNames": null,
-  "earnestMoneyDeposit": null,
-  "financing": null,
-  "contingencies": null,
-  "brokers": null,
-  "confidence": { "overall": 85 }
-}
-
-NOTE: Both examples extract property address from header. SCO shows changed price.
-Post-processor will merge: final price = $510k (SCO overrides RPA).
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

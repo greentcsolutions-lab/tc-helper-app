@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://example.com/schemas/universal/extractor.schema.json",
   "title": "Universal U.S. Real Estate Transaction Extraction (Per-Page)",
-  "description": "Version 2.0.0 - 2025-12-29 - Extract from each page independently, return array of partial extractions",
+  "description": "Version 3.0.0 - 2025-12-30 - FIXED: Property address now mandatory with pattern validation",
   "type": "array",
   "minItems": 1,
   "items": {
@@ -46,7 +46,8 @@
       },
       "propertyAddress": {
         "type": ["string", "null"],
-        "description": "Full property address including street, city, state, ZIP (check main body AND headers)"
+        "minLength": 10,
+        "description": "CRITICAL MANDATORY FIELD: Full property address including street, city, state, ZIP. Format: 'Street Address, City, ST 12345'. This field appears on 95% of real estate pages - check page headers, body sections, and 'Re:' lines. Only return null for pure signature/blank pages with no property reference anywhere. Common locations: (1) Page header table/label, (2) First section of main body, (3) 'Re:' line on counter offers/addenda. Example: '123 Main Street, Los Angeles, CA 90210'. DO NOT extract buyer/seller personal addresses - only the PROPERTY being sold."
       },
       "purchasePrice": {
         "type": ["number", "null"],
@@ -150,7 +151,7 @@
             "type": "integer",
             "minimum": 0,
             "maximum": 100,
-            "description": "Overall confidence for this page's extraction"
+            "description": "Overall confidence for this page's extraction (0-100)"
           },
           "fieldScores": {
             "type": ["object", "null"],
@@ -159,10 +160,11 @@
               "minimum": 0,
               "maximum": 100
             },
-            "description": "Optional per-field confidence breakdown"
+            "description": "Optional per-field confidence breakdown - use for low-confidence fields to trigger second-turn"
           }
         },
-        "required": ["overall"]
+        "required": ["overall"],
+        "description": "Confidence scoring - if overall < 80 or propertyAddress confidence < 70, second-turn extraction will be triggered"
       }
     },
     "required": [

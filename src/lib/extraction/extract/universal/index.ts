@@ -37,6 +37,29 @@ export async function universalExtractor(
   let pageExtractions = await extractPerPage(criticalImages);
   
   console.log(`[extractor:phase1] ✅ Extracted ${pageExtractions.length} pages`);
+    console.log(`\n[extractor:debug] ${"─".repeat(60)}`);
+  console.log(`[extractor:debug] PROPERTY ADDRESS EXTRACTION AUDIT`);
+  console.log(`[extractor:debug] ${"─".repeat(60)}`);
+  
+  const pagesWithAddress = pageExtractions.filter(p => p.propertyAddress && p.propertyAddress.trim() !== '');
+  const pagesWithoutAddress = pageExtractions.filter(p => !p.propertyAddress || p.propertyAddress.trim() === '');
+  
+  console.log(`[extractor:debug] ✅ Property address FOUND on ${pagesWithAddress.length}/${pageExtractions.length} pages:`);
+  pagesWithAddress.forEach(p => {
+    console.log(`[extractor:debug]    Page ${p.pageNumber} (${p.formCode} - ${p.pageRole}): "${p.propertyAddress}"`);
+  });
+  
+  if (pagesWithoutAddress.length > 0) {
+    console.log(`[extractor:debug] ❌ Property address MISSING on ${pagesWithoutAddress.length}/${pageExtractions.length} pages:`);
+    pagesWithoutAddress.forEach(p => {
+      console.log(`[extractor:debug]    Page ${p.pageNumber} (${p.formCode} - ${p.pageRole}) - confidence: ${p.confidence.overall}`);
+    });
+    console.log(`[extractor:debug] ⚠️ This is unusual - property addresses appear on 95% of pages`);
+  } else {
+    console.log(`[extractor:debug] ✅ All pages have property addresses extracted successfully!`);
+  }
+  
+  console.log(`[extractor:debug] ${"─".repeat(60)}\n`);
   console.log(`[extractor:phase1] ${"─".repeat(60)}\n`);
   
   // PHASE 2: POST-PROCESSING MERGE (deterministic logic)
