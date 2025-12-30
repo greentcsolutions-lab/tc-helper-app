@@ -1,7 +1,7 @@
 // src/components/ui/upload/preview-gallery.tsx
-// Version: 2.0.0 - 2025-12-30
-// CRITICAL FIX: Extract page number from PNG filename instead of array index
-// Same bug as renderer.ts - preview was showing sequential pages
+// Version: 3.0.0 - 2025-12-30
+// CRITICAL FIX: Shows ONLY the critical pages that were actually extracted
+// Extracts page numbers from PNG filenames AND filters to critical pages only
 
 "use client";
 
@@ -18,75 +18,126 @@ type PreviewPage = {
 };
 
 type PreviewGalleryProps = {
-  zipUrl: string;
-  maxPages?: number;
+  parseId: string;  // Changed to use parseId instead of zipUrl
 };
 
 const BLUR_PLACEHOLDER =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
 
-export function PreviewGallery({ zipUrl, maxPages = 9 }: PreviewGalleryProps) {
+export function PreviewGallery({ parseId }: PreviewGalleryProps) {
   const [pages, setPages] = useState<PreviewPage[]>([]);
   const [selected, setSelected] = useState<PreviewPage | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!zipUrl) return;
+    if (!parseId) return;
 
-    async function loadZip() {
+    async function loadCriticalPages() {
       try {
         setLoading(true);
+        setError(null);
+        
+        // STEP 1: Get critical page numbers and ZIP URL from preview endpoint
+        console.log(`[PreviewGallery] Fetching preview data for parse ${parseId}`);
+        const previewRes = await fetch(`/api/parse/preview/${parseId}`);
+        
+        if (!previewRes.ok) {
+          const errorData = await previewRes.json();
+          throw new Error(errorData.error || "Failed to load preview data");
+        }
+        
+        const { zipUrl, criticalPageNumbers } = await previewRes.json();
+        
+        console.log(`[PreviewGallery] Critical pages to show: [${criticalPageNumbers.join(', ')}]`);
+        console.log(`[PreviewGallery] ZIP URL: ${zipUrl}`);
+        
+        if (!criticalPageNumbers || criticalPageNumbers.length === 0) {
+          throw new Error("No critical pages identified");
+        }
+        
+        // STEP 2: Download and extract ZIP
         const res = await fetch(zipUrl);
         if (!res.ok) throw new Error("Failed to fetch ZIP");
 
         const buffer = await res.arrayBuffer();
         const zip = await JSZip.loadAsync(buffer);
 
-        const keys = Object.keys(zip.files)
+        // STEP 3: Get all PNG files and sort by filename number
+        const allPngFiles = Object.keys(zip.files)
           .filter((k) => k.match(/\.png$/i))
           .sort((a, b) => {
             const aNum = parseInt(a.match(/(\d+)\.png$/)?.[1] || "0");
             const bNum = parseInt(b.match(/(\d+)\.png$/)?.[1] || "0");
             return aNum - bNum;
-          })
-          .slice(0, maxPages);
+          });
+
+        console.log(`[PreviewGallery] Found ${allPngFiles.length} total PNGs in ZIP`);
 
         const loadedPages: PreviewPage[] = [];
 
-        // CRITICAL FIX: Extract page number from PNG filename
-        for (const key of keys) {
-          const file = zip.file(key);
+        // STEP 4: Load ONLY the critical pages
+        for (const filename of allPngFiles) {
+          // Extract the PNG index from filename (0.png → 0, 10.png → 10)
+          const pngIndex = parseInt(filename.match(/(\d+)\.png$/i)?.[1] || "0");
+          const pageNumber = pngIndex + 1; // Convert to 1-indexed PDF page number
+          
+          // CRITICAL: Only load if this page is in the critical pages list
+          if (!criticalPageNumbers.includes(pageNumber)) {
+            continue;
+          }
+          
+          const file = zip.file(filename);
           if (!file) continue;
           
           const data = await file.async("arraybuffer");
-          
-          // BEFORE (BUGGY): pageNumber: i + 1 (sequential)
-          // AFTER (FIXED): Extract from filename
-          // "10.png" → pngIndex=10 → pageNumber=11 (PDF pages are 1-indexed)
-          const pngIndex = parseInt(key.match(/(\d+)\.png$/i)?.[1] || "0");
-          const pageNumber = pngIndex + 1;
           
           loadedPages.push({
             pageNumber,
             base64: `data:image/png;base64,${Buffer.from(data).toString("base64")}`,
           });
+          
+          console.log(`[PreviewGallery] Loaded critical page ${pageNumber} from ${filename}`);
         }
 
+        // Sort by page number to display in order
+        loadedPages.sort((a, b) => a.pageNumber - b.pageNumber);
+        
+        console.log(`[PreviewGallery] ✓ Loaded ${loadedPages.length} critical pages: [${loadedPages.map(p => p.pageNumber).join(', ')}]`);
+
         setPages(loadedPages);
-      } catch (err) {
-        console.error("Failed to load preview:", err);
+      } catch (err: any) {
+        console.error("[PreviewGallery] Failed to load preview:", err);
+        setError(err.message || "Failed to load preview");
       } finally {
         setLoading(false);
       }
     }
 
-    loadZip();
-  }, [zipUrl, maxPages]);
+    loadCriticalPages();
+  }, [parseId]);
 
   if (loading) {
     return (
       <div className="col-span-full py-12 text-center text-muted-foreground">
-        Loading preview...
+        Loading critical pages preview...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="col-span-full py-12 text-center">
+        <p className="text-destructive font-medium mb-2">Failed to load preview</p>
+        <p className="text-sm text-muted-foreground">{error}</p>
+      </div>
+    );
+  }
+
+  if (pages.length === 0) {
+    return (
+      <div className="col-span-full py-12 text-center text-muted-foreground">
+        No critical pages found
       </div>
     );
   }
