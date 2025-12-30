@@ -1,7 +1,6 @@
 // src/lib/extraction/classify/post-processor.ts
-// Version: 3.2.0 - 2025-12-29
-// FIXED: Override documents with hasFilledFields=true now ALWAYS included (resilient to Grok misclassification)
-// BREAKING: Removed contentCategory check for addenda - filled fields is the only requirement
+// Version: 3.3.1 - 2025-12-30
+// OPTIMIZED: Condensed logging only - NO LOGIC CHANGES
 
 import type { LabeledCriticalImage, GrokPageResult } from '@/types/classification';
 
@@ -32,12 +31,8 @@ export function getCriticalPageNumbers(detectedPages: GrokPageResult[]): number[
     'other',              // Unknown/blank
   ];
 
-  // DEBUG: Log full classification results
-  console.log('\n[post-processor] === FULL CLASSIFICATION RESULTS ===');
-  detectedPages.forEach((page) => {
-    console.log(`[post-processor] Page ${page.pdfPage}: ${page.formCode} ${page.formPage}/${page.totalPagesInForm} | ${page.role} | ${page.contentCategory} | filled=${page.hasFilledFields}`);
-  });
-  console.log('[post-processor] ======================================\n');
+  // Track stats compactly
+  const stats = { override: 0, main: 0, excluded: 0 };
 
   for (const page of detectedPages) {
     const role = page.role ?? '';
@@ -50,7 +45,7 @@ export function getCriticalPageNumbers(detectedPages: GrokPageResult[]): number[
     if (['counter_offer', 'addendum', 'local_addendum', 'contingency_release'].includes(role)) {
       // Primary requirement: Must have filled fields
       if (!hasFilled) {
-        console.log(`[post-processor] ✗ Page ${page.pdfPage}: ${role} (${formCode}) → EXCLUDED (no filled fields)`);
+        stats.excluded++;
         continue;
       }
 
@@ -73,8 +68,8 @@ export function getCriticalPageNumbers(detectedPages: GrokPageResult[]): number[
       //
       // If fields are filled, there's extractable data that modifies the contract.
       // contentCategory is just a hint - hasFilledFields is the truth.
-      console.log(`[post-processor] ✓ Page ${page.pdfPage}: ${role} (${formCode}) → INCLUDED (modifies terms, has filled fields)`);
       selected.add(page.pdfPage);
+      stats.override++;
       continue;
     }
 
@@ -83,35 +78,36 @@ export function getCriticalPageNumbers(detectedPages: GrokPageResult[]): number[
     if (role === 'main_contract') {
       // Must have extractable content
       if (EXCLUDED_CATEGORIES.includes(category)) {
-        console.log(`[post-processor] ✗ Page ${page.pdfPage}: ${category} → EXCLUDED (excluded category)`);
+        stats.excluded++;
         continue;
       }
 
       // Must be an extractable category
       if (!EXTRACTABLE_CATEGORIES.includes(category)) {
-        console.log(`[post-processor] ✗ Page ${page.pdfPage}: ${category} → EXCLUDED (non-extractable category)`);
+        stats.excluded++;
         continue;
       }
 
       // Must have filled fields
       if (!hasFilled) {
-        console.log(`[post-processor] ✗ Page ${page.pdfPage}: ${category} → EXCLUDED (no filled fields)`);
+        stats.excluded++;
         continue;
       }
 
-      console.log(`[post-processor] ✓ Page ${page.pdfPage}: ${category} + filled → INCLUDED`);
       selected.add(page.pdfPage);
+      stats.main++;
       continue;
     }
 
     // RULE 3: All other roles (disclosure, financing, broker_info, title_page, other)
     // Universal - always excluded
-    console.log(`[post-processor] ✗ Page ${page.pdfPage}: ${role} → EXCLUDED (non-critical role)`);
+    stats.excluded++;
   }
 
   const sortedPages = Array.from(selected).sort((a, b) => a - b);
   
-  console.log(`\n[post-processor] FINAL SELECTION: ${sortedPages.length} pages → [${sortedPages.join(', ')}]`);
+  // Condensed logging - single line with all key info
+  console.log(`[select] ${sortedPages.length} critical: [${sortedPages.join(',')}] main=${stats.main} override=${stats.override} excl=${stats.excluded}`);
   
   return sortedPages;
 }
