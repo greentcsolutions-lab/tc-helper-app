@@ -1,6 +1,6 @@
 // src/lib/extraction/extract/universal/index.ts
-// Version: 9.1.0 - 2025-12-30
-// FIXED: Robust JSON extraction using classifier's proven depth-tracking pattern
+// Version: 9.2.0 - 2025-12-30
+// FIXED: Removed semantic labels to match manual Grok test (pure OCR, numbered images only)
 
 import type { LabeledCriticalImage } from '@/types/classification';
 import type { UniversalExtractionResult } from '@/types/extraction';
@@ -181,7 +181,7 @@ function combineExtractions(
  * Extract data from each page independently
  * Pure OCR - no semantic context about document roles
  * 
- * FIXED v9.1.0: Uses classifier's proven bracket depth tracking algorithm
+ * v9.2.0: Removed semantic labels - matches manual test (pure numbered images)
  */
 async function extractPerPage(
   criticalImages: LabeledCriticalImage[]
@@ -200,12 +200,13 @@ async function extractPerPage(
         role: 'user',
         content: [
           { type: 'text', text: prompt },
-          // CRITICAL: Use pure page numbers like classifier does
-          // NO semantic labels like "COUNTER OFFER" - just page numbers
+          // v9.2.0 FIX: Match manual test - NO semantic labels, just numbered images
+          // "IMAGE 1 OF 11", "IMAGE 2 OF 11", etc.
+          // Grok reads the page itself to determine role/form/etc
           ...criticalImages.flatMap((img, idx) => [
             { 
               type: 'text', 
-              text: `\n━━━ IMAGE ${idx + 1} OF ${criticalImages.length} = PDF_Page_${img.pageNumber} ━━━\n` 
+              text: `\n━━━ IMAGE ${idx + 1} OF ${criticalImages.length} ━━━\n` 
             },
             { type: 'image_url', image_url: { url: img.base64 } },
           ]),
@@ -242,7 +243,7 @@ async function extractPerPage(
   console.log(`[extractor:response] Last 200 chars:`, text.substring(text.length - 200));
   
   // ============================================================================
-  // FIX v9.1.0: Use classifier's proven bracket depth tracking algorithm
+  // v9.1.0: Use classifier's proven bracket depth tracking algorithm
   // ============================================================================
   
   let parsed: PerPageExtraction[] | null = null;
@@ -284,7 +285,7 @@ async function extractPerPage(
   }
   
   // ============================================================================
-  // FIX v9.1.0: Validate array structure
+  // v9.1.0: Validate array structure
   // ============================================================================
   
   if (!Array.isArray(parsed)) {

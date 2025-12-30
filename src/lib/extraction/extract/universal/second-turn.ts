@@ -1,6 +1,6 @@
 // src/lib/extraction/extract/universal/second-turn.ts
-// Version: 1.1.0 - 2025-12-30
-// FIXED: Applied same bracket depth tracking fix as index.ts
+// Version: 1.2.0 - 2025-12-30
+// FIXED: Removed semantic labels to match manual test approach
 
 import type { LabeledCriticalImage } from '@/types/classification';
 import type { PerPageExtraction } from './post-processor';
@@ -53,10 +53,11 @@ export async function runSecondTurnExtraction(
               type: 'text', 
               text: `${enhancedPrompt}\n\nFocus on these problem fields: ${problemFields.join(', ')}\n\nRe-extract with EXTREME CARE:`
             },
+            // v1.2.0 FIX: Remove semantic labels, match manual test approach
             ...criticalImages.flatMap((img, idx) => [
               { 
                 type: 'text', 
-                text: `\n━━━ IMAGE ${idx + 1} OF ${criticalImages.length} ━━━\nPage ${img.pageNumber}: ${img.label}\n` 
+                text: `\n━━━ IMAGE ${idx + 1} OF ${criticalImages.length} ━━━\n` 
               },
               { type: 'image_url', image_url: { url: img.base64 } },
             ]),
@@ -92,7 +93,7 @@ export async function runSecondTurnExtraction(
     console.log(`[second-turn] Last 200 chars:`, text.substring(text.length - 200));
     
     // ============================================================================
-    // FIX v1.1.0: Use classifier's proven bracket depth tracking algorithm
+    // v1.1.0: Use classifier's proven bracket depth tracking algorithm
     // ============================================================================
     
     let parsed: PerPageExtraction[] | null = null;

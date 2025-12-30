@@ -1,14 +1,66 @@
 // src/lib/extraction/prompts/universal-extractor-prompt.ts
-// Version: 10.0.0 - 2025-12-30
-// MINIMAL FIX: Just add property address emphasis to existing working prompt
+// Version: 11.0.0 - 2025-12-30
+// BREAKING: Removed verbose schema embedding, using minimal example (matches manual test)
 
-import extractorSchema from '@/forms/universal/extractor.schema.json';
-
-const schemaString = JSON.stringify(extractorSchema, null, 2);
-
+/**
+ * Builds universal extractor prompt with minimal example structure
+ * Instead of embedding 2000+ char schema, shows concise example
+ * Matches manual Grok test approach where schema was attached as file
+ */
 export function buildUniversalExtractorPrompt(
   criticalImages: Array<{ pageNumber: number; label: string }>
 ): string {
+  
+  // Minimal example showing structure only (not verbose descriptions)
+  const exampleObject = {
+    pageNumber: 1,
+    pageLabel: "RPA PAGE 1 OF 17",
+    formCode: "RPA",
+    formPage: 1,
+    pageRole: "main_contract",
+    buyerNames: ["John Doe"],
+    sellerNames: ["Jane Smith"],
+    propertyAddress: "123 Main Street, Los Angeles, CA 90210",
+    purchasePrice: 500000,
+    earnestMoneyDeposit: {
+      amount: 5000,
+      holder: "Title Company"
+    },
+    closingDate: "2025-12-31",
+    financing: {
+      isAllCash: false,
+      loanType: "Conventional",
+      loanAmount: 400000
+    },
+    contingencies: {
+      inspectionDays: 17,
+      appraisalDays: 17,
+      loanDays: 21,
+      saleOfBuyerProperty: false
+    },
+    closingCosts: {
+      buyerPays: ["title insurance", "escrow fees"],
+      sellerPays: ["transfer tax"],
+      sellerCreditAmount: null
+    },
+    brokers: {
+      listingBrokerage: "ABC Realty",
+      listingAgent: "Jane Agent",
+      sellingBrokerage: "XYZ Realty",
+      sellingAgent: "John Agent"
+    },
+    personalPropertyIncluded: ["refrigerator", "washer", "dryer"],
+    effectiveDate: "2025-10-15",
+    escrowHolder: "Chicago Title",
+    confidence: {
+      overall: 95,
+      fieldScores: {
+        propertyAddress: 90,
+        purchasePrice: 100
+      }
+    }
+  };
+
   return `You are a document OCR specialist. Extract data from ${criticalImages.length} real estate contract page images.
 
 Your job: Extract EXACTLY what you see on each page. Nothing more, nothing less.
@@ -76,9 +128,11 @@ SPECIAL NOTES:
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Return a JSON array with one object per image, matching this schema:
+Return a JSON array with one object per image.
 
-${schemaString}
+Example structure (extract what you see, use null if not visible):
+
+${JSON.stringify([exampleObject], null, 2)}
 
 No explanatory text. No markdown. Just the JSON array.
 `.trim();
