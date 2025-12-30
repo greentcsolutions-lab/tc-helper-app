@@ -1,6 +1,7 @@
 // src/lib/pdf/renderer.ts
 // Version: 4.2.1 - 2025-12-30
 // OPTIMIZED: Minimal logging under 256 line limit
+//reverted
 
 import { bufferToBlob } from "@/lib/utils";
 import { put } from "@vercel/blob";
