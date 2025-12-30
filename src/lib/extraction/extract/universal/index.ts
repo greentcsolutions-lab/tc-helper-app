@@ -215,6 +215,17 @@ async function extractPerPage(
     ],
   };
   
+console.log(`[extractor:images] Validating image data before sending to Grok...`);
+criticalImages.forEach((img, idx) => {
+  const base64Length = img.base64?.length || 0;
+  const hasPrefix = img.base64?.startsWith('data:image/');
+  const firstChars = img.base64?.substring(0, 50) || 'MISSING';
+  console.log(`[extractor:images] Image ${idx + 1}: page=${img.pageNumber}, bytes=${base64Length}, hasPrefix=${hasPrefix}`);
+  if (idx === 0) {
+    console.log(`[extractor:images] First image preview: ${firstChars}...`);
+  }
+});
+
   console.log(`[extractor:api] Request content blocks: ${requestBody.messages[0].content.length}`);
   console.log(`[extractor:api] Sending request to Grok...`);
   
