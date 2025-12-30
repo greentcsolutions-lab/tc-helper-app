@@ -1,7 +1,6 @@
 // src/app/api/parse/preview/[parseId]/route.ts
-// Version: 1.0.0 - 2025-12-29
-// NEW: Preview endpoint for critical page thumbnails (FIX #3)
-// Uses high-res ZIP + identified critical pages for previews 
+// Version: 2.0.0 - 2025-12-30
+// UPDATED: Uses renderZipUrl (200 DPI) instead of deprecated highResZipUrl
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
@@ -26,7 +25,7 @@ export async function GET(
     select: {
       id: true,
       userId: true,
-      highResZipUrl: true,       // FIX #3: Use high-res ZIP for previews
+      renderZipUrl: true,            // CHANGED: Use universal 200 DPI ZIP
       criticalPageNumbers: true,
       pageCount: true,
       user: { select: { clerkId: true } },
@@ -43,8 +42,8 @@ export async function GET(
     return Response.json({ error: "Unauthorized" }, { status: 403 });
   }
 
-  if (!parse.highResZipUrl) {
-    console.warn(`[preview:${parseId}] ⚠️ High-res ZIP not available (may have been cleaned up)`);
+  if (!parse.renderZipUrl) {  // CHANGED: Check renderZipUrl
+    console.warn(`[preview:${parseId}] ⚠️ Render ZIP not available (may have been cleaned up)`);
     return Response.json({ 
       error: "Preview not available - files may have been cleaned up",
       hint: "Previews are only available during extraction. After cleanup, preview ZIPs are deleted to save storage."
@@ -52,13 +51,13 @@ export async function GET(
   }
 
   console.log(`[preview:${parseId}] ✓ Returning preview data:`);
-  console.log(`[preview:${parseId}]   ZIP URL: ${parse.highResZipUrl}`);
+  console.log(`[preview:${parseId}]   ZIP URL: ${parse.renderZipUrl}`);
   console.log(`[preview:${parseId}]   Critical pages: [${parse.criticalPageNumbers?.join(', ') || 'none'}]`);
   console.log(`[preview:${parseId}]   Total pages: ${parse.pageCount || 'unknown'}`);
 
   return Response.json({
     success: true,
-    zipUrl: parse.highResZipUrl,
+    zipUrl: parse.renderZipUrl,  // CHANGED: Return universal ZIP
     criticalPageNumbers: parse.criticalPageNumbers || [],
     totalPages: parse.pageCount,
     note: "This ZIP will be deleted after cleanup to save storage. Download critical pages during extraction if needed."
