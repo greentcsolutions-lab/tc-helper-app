@@ -1,7 +1,7 @@
 // src/app/api/parse/preview/[parseId]/route.ts
 // Version: 1.0.0 - 2025-12-29
 // NEW: Preview endpoint for critical page thumbnails (FIX #3)
-// Uses high-res ZIP + identified critical pages for previews
+// Uses high-res ZIP + identified critical pages for previews 
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";

@@ -1,4 +1,4 @@
-// src/lib/parse/map-to-parse-result.ts
+// src/lib/parse/map-to-parse-result.ts 
 // Version: 3.0.1 - 2025-12-29
 // FIX: Added defensive null checks for buyerNames/sellerNames to prevent .length on undefined
 
