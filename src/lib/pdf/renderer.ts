@@ -1,7 +1,6 @@
 // src/lib/pdf/renderer.ts
-// Version: 4.1.0 - 2025-12-29
-// CRITICAL FIX: Extract page number from PNG filename instead of array index
-// This fixes bug where extract was pulling wrong pages from ZIP
+// Version: 4.1.1 - 2025-12-30
+// CRITICAL FIX: Extract page number from PNG filename + Enhanced logging for verification
 
 import { bufferToBlob } from "@/lib/utils";
 import { put } from "@vercel/blob";
@@ -91,7 +90,7 @@ async function renderSingleDpi(
 
   const instructions = {
     parts: [{ file: "document" }],
-    actions: [{ type: "flatten" }], // Burns annotations/fields/signatures → static content
+    actions: [{ type: "flatten" }],
     output: {
       type: "image",
       format: "png",
@@ -119,14 +118,12 @@ async function renderSingleDpi(
   const arrayBuffer = await res.arrayBuffer();
   const zipBlob = new Blob([arrayBuffer], { type: "application/zip" });
 
-  // Upload to Vercel Blob
   const pathname = `renders/${purpose}-${dpi}dpi-${Date.now()}.zip`;
   const uploaded = await put(pathname, zipBlob, {
     access: "public",
     addRandomSuffix: false,
   });
 
-  // Determine page count from ZIP contents
   const zip = await JSZip.loadAsync(arrayBuffer);
   const pngFiles = Object.keys(zip.files).filter((name) => name.match(/\.png$/i));
   const pageCount = pngFiles.length;
@@ -194,15 +191,9 @@ export async function downloadAndExtractZip(
       const file = zip.file(name)!;
       const buffer = await file.async("nodebuffer");
 
-      // BEFORE (BUGGY): pageNumber: index + 1
-      // This gave sequential numbers 1, 2, 3, 4... regardless of actual PNG filenames
-      //
-      // AFTER (FIXED): Extract from filename
-      // "0.png" → pngIndex=0 → pageNumber=1
-      // "10.png" → pngIndex=10 → pageNumber=11
-      // "38.png" → pngIndex=38 → pageNumber=39
+      // Extract page number from filename
       const pngIndex = parseInt(name.match(/(\d+)\.png$/i)?.[1] || "0");
-      const pageNumber = pngIndex + 1; // Convert 0-indexed PNG to 1-indexed PDF page
+      const pageNumber = pngIndex + 1;
 
       return {
         pageNumber,
@@ -211,7 +202,12 @@ export async function downloadAndExtractZip(
     })
   );
 
+  // ENHANCED LOGGING: Show actual page numbers assigned (proves fix is working)
+  const pageNumbers = pages.map(p => p.pageNumber);
   console.log(`[ZIP Download] ✓ Extracted ${pages.length} individual pages`);
+  console.log(`[ZIP Download] 🔍 Page numbers assigned: [${pageNumbers.slice(0, 5).join(', ')}${pageNumbers.length > 5 ? ', ...' : ''}]`);
+  console.log(`[ZIP Download] 🔍 Last 5 pages: [${pageNumbers.slice(-5).join(', ')}]`);
+  
   return pages;
 }
 
@@ -226,7 +222,13 @@ export async function extractSpecificPagesFromZip(
 
   const allPages = await downloadAndExtractZip(zipUrl);
 
+  // ENHANCED LOGGING: Show what we're filtering
+  console.log(`[Selective Extract] 🔍 All pages available: [${allPages.map(p => p.pageNumber).join(', ')}]`);
+
   const selectedPages = allPages.filter((page) => pageNumbers.includes(page.pageNumber));
+
+  // ENHANCED LOGGING: Show what actually got selected
+  console.log(`[Selective Extract] 🔍 Pages that matched filter: [${selectedPages.map(p => p.pageNumber).join(', ')}]`);
 
   if (selectedPages.length === 0) {
     throw new Error(`None of the requested pages [${pageNumbers.join(", ")}] found in ZIP`);
