@@ -1,12 +1,11 @@
 // src/app/api/parse/classify/[parseId]/route.ts
-// Version: 3.0.0 - 2025-12-30
-// BREAKING: Deletes low-res ZIP immediately after classification completes (Step 4.5)
-// This ensures only ONE set of working images exists at a time
+// Version: 2.2.0 - 2025-12-29
+// BREAKING: No longer stores base64 images in DB (only metadata)
+// SIMPLIFIED: Logging minimized to success states and errors only
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
-import { del } from "@vercel/blob";
 import { downloadAndExtractZip } from "@/lib/pdf/renderer";
 import { classifyCriticalPages } from "@/lib/extraction/classify/classifier";
 import { logStep, logSuccess, logError } from "@/lib/debug/parse-logger";
@@ -29,9 +28,6 @@ export async function GET(
 
   const stream = new ReadableStream({
     async start(controller) {
-      // Store lowResZipKey in function scope so cleanup can access it
-      let lowResZipKeyToDelete: string | null = null;
-
       try {
         // STEP 1: FETCH PARSE FROM DB
         logStep("CLASSIFY:1", "🔍 Fetching parse from database...");
@@ -43,7 +39,6 @@ export async function GET(
             userId: true,
             status: true,
             lowResZipUrl: true,
-            lowResZipKey: true,  // ← Need this for deletion
             pageCount: true,
             user: { select: { clerkId: true } },
           },
@@ -77,9 +72,6 @@ export async function GET(
           return;
         }
 
-        // Store for cleanup
-        lowResZipKeyToDelete = parse.lowResZipKey;
-
         logSuccess("CLASSIFY:1", `Validated — ${parse.pageCount} pages rendered`);
 
         emit(controller, {
@@ -88,7 +80,7 @@ export async function GET(
           phase: "classify"
         });
 
-        // STEP 2: DOWNLOAD AND EXTRACT LOW-RES ZIP
+        // STEP 2: DOWNLOAD AND EXTRACT ZIPS
         logStep("CLASSIFY:2", "📥 Downloading and extracting low-DPI ZIP...");
 
         const lowDpiPages = await downloadAndExtractZip(parse.lowResZipUrl);
@@ -136,43 +128,14 @@ export async function GET(
             criticalPageNumbers,
           },
         });
+        // RIGHT AFTER the db.parse.update() call
+console.log(`[classify] 🔍 DEBUG: Saved to DB:`);
+console.log(`[classify] 🔍 criticalPageNumbers: [${criticalPageNumbers.join(', ')}]`);
+console.log(`[classify] 🔍 criticalImages.length: ${criticalImages.length}`);
+console.log(`[classify] 🔍 criticalImages page numbers: [${criticalImages.map(i => i.pageNumber).join(', ')}]`);
 
         const metadataSize = JSON.stringify(classificationMetadata).length;
         logSuccess("CLASSIFY:4", `Metadata saved (${(metadataSize / 1024).toFixed(1)} KB - no base64!)`);
-
-        // ═══════════════════════════════════════════════════════════════════
-        // STEP 4.5: DELETE LOW-RES ZIP IMMEDIATELY (CRITICAL!)
-        // ═══════════════════════════════════════════════════════════════════
-        // This ensures we only have ONE set of working images at a time
-        // After this point, only high-res ZIP remains for extraction
-        logStep("CLASSIFY:4.5", "🗑️ Deleting low-res ZIP from Blob storage...");
-
-        if (lowResZipKeyToDelete) {
-          try {
-            await del(lowResZipKeyToDelete);
-            logSuccess("CLASSIFY:4.5", "Low-res ZIP deleted from Blob storage");
-          } catch (err) {
-            console.warn(`[classify:${parseId}] ⚠️ Low-res ZIP deletion failed:`, err);
-            // Don't fail the whole pipeline - extraction can still proceed
-          }
-        }
-
-        // Clear low-res ZIP URLs from database
-        await db.parse.update({
-          where: { id: parseId },
-          data: {
-            lowResZipUrl: null,
-            lowResZipKey: null,
-          },
-        });
-
-        logSuccess("CLASSIFY:4.5", "Low-res ZIP URLs cleared from database");
-
-        console.log(`\n${"═".repeat(80)}`);
-        console.log(`║ ✅ LOW-RES CLEANUP COMPLETE`);
-        console.log(`║ ParseID: ${parseId}`);
-        console.log(`║ Remaining: Metadata (${(metadataSize / 1024).toFixed(1)} KB) + high-res ZIP only`);
-        console.log(`${"═".repeat(80)}\n`);
 
         // STEP 5: SEND COMPLETION EVENT
         logStep("CLASSIFY:5", "📤 Sending completion event to client...");
@@ -193,23 +156,11 @@ export async function GET(
         console.error(`[ERROR] ${error.message}`);
         console.error(`[ERROR] Stack:`, error.stack);
 
-        // Attempt to delete low-res ZIP even on failure (cleanup)
-        if (lowResZipKeyToDelete) {
-          try {
-            await del(lowResZipKeyToDelete);
-            console.log(`[classify:${parseId}] ✓ Cleaned up low-res ZIP despite error`);
-          } catch (cleanupErr) {
-            console.warn(`[classify:${parseId}] ⚠️ Cleanup failed:`, cleanupErr);
-          }
-        }
-
         await db.parse.update({
           where: { id: parseId },
           data: {
             status: "CLASSIFICATION_FAILED",
             errorMessage: error.message || "Classification failed",
-            lowResZipUrl: null,
-            lowResZipKey: null,
           },
         }).catch((dbError) => {
           console.error(`[ERROR] Failed to update error status:`, dbError);
