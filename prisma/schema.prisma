@@ -1,8 +1,6 @@
 // prisma/schema.prisma
-// Version: 3.0.0 - 2025-12-30
-// BREAKING CHANGE: Simplified to single 200 DPI render storage
-// UPDATED: renderZipUrl/renderZipKey are now PRIMARY fields (not deprecated)
-// UPDATED: lowRes/highRes fields are now DEPRECATED (kept for migration)
+// Version: 3.1.0 - 2025-12-30
+// UPDATED: Changed to single 200 DPI architecture (renderZipUrl is PRIMARY, lowRes/highRes are DEPRECATED)
 
 generator client {
   provider = "prisma-client-js"
@@ -77,13 +75,13 @@ model Parse {
   // Original PDF buffer - deleted after render completes
   pdfBuffer            Bytes?
   
-  // UNIVERSAL 200 DPI ZIP - Used for BOTH classification AND extraction
+  // PRIMARY: Single 200 DPI ZIP - Used for BOTH classification AND extraction
   // Deleted after cleanup route runs
-  renderZipUrl         String?   // PRIMARY: Single 200 DPI ZIP for all operations
+  renderZipUrl         String?
   renderZipKey         String?   // Vercel Blob key for deletion
   
-  // DEPRECATED: Legacy dual-DPI fields (kept for backward compatibility during migration)
-  // These should be NULL in all new parses
+  // DEPRECATED: Legacy dual-DPI fields (kept for backward compatibility)
+  // New parses should have these as NULL
   lowResZipUrl         String?   // DEPRECATED: Was 180 DPI for classification
   lowResZipKey         String?   // DEPRECATED: Vercel Blob key for deletion
   highResZipUrl        String?   // DEPRECATED: Was 300 DPI for extraction
@@ -96,7 +94,7 @@ model Parse {
   pageCount            Int?                     // Total pages in PDF
   
   // TEMPORARY: Classification results (deleted after extraction)
-  classificationCache  Json?     // { criticalPageNumbers, pageLabels, packageMetadata, state }
+  classificationCache  Json?     // { criticalImages, packageMetadata } - deleted after extract
 
   // ============================================================================
   // UNIVERSAL CORE FIELDS (top-level for fast queries)
@@ -129,10 +127,18 @@ model Parse {
   extractionDetails    Json?     // { route: "california"|"universal", californiaSpecific: {...} }
   timelineEvents       Json?     // [{ date, title, type, description }]
 
+  // ============================================================================
+  // ERROR TRACKING
+  // ============================================================================
+  errorMessage         String?   // Error details if status = *_FAILED
+
+  // ============================================================================
+  // TIMESTAMPS
+  // ============================================================================
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
+  finalizedAt          DateTime? // When extraction completed
 
-  @@index([userId])
-  @@index([status])
+  @@index([userId, createdAt])
   @@map("parses")
 }
