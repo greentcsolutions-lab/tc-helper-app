@@ -1,7 +1,6 @@
 // src/app/transactions/page.tsx
-// Version: 2.0.2 - 2025-12-29
-// FIXED: Properly cast JSON fields from Prisma to ParseResult type
-// Prisma returns Json type, but ParseResult expects typed objects
+// Version: 2.0.4 - 2025-12-30
+// FIXED: Proper null handling for finalizedAt and renderZipUrl
 
 import { currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
@@ -63,7 +62,7 @@ export default async function TransactionsPage() {
       timelineEvents: true,
 
       // === THUMBNAILS / PREVIEWS ===
-      lowResZipUrl: true,
+      renderZipUrl: true,
       criticalPageNumbers: true,
     },
   });
@@ -72,7 +71,7 @@ export default async function TransactionsPage() {
   const initialParses: ParseResult[] = dbParses.map((parse) => ({
     ...parse,
     createdAt: parse.createdAt.toISOString(),
-    finalizedAt: parse.finalizedAt?.toISOString() || null,
+    finalizedAt: parse.finalizedAt ? parse.finalizedAt.toISOString() : null,
     // JSON fields from Prisma are already properly typed
     earnestMoneyDeposit: parse.earnestMoneyDeposit as ParseResult['earnestMoneyDeposit'],
     financing: parse.financing as ParseResult['financing'],
@@ -81,6 +80,7 @@ export default async function TransactionsPage() {
     brokers: parse.brokers as ParseResult['brokers'],
     extractionDetails: parse.extractionDetails as ParseResult['extractionDetails'],
     timelineEvents: parse.timelineEvents as ParseResult['timelineEvents'],
+    lowResZipUrl: parse.renderZipUrl ?? null,
   }));
 
   return (
@@ -88,4 +88,4 @@ export default async function TransactionsPage() {
       <TransactionsClient initialParses={initialParses} />
     </div>
   );
-}// Note: The casting ensures that the JSON fields conform to the expected structure in ParseResult.
+}
