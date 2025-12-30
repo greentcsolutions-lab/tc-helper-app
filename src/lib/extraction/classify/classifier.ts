@@ -1,7 +1,9 @@
 // src/lib/extraction/classify/classifier.ts
-// Version: 6.3.1 - 2025-12-29
-// FIXED: Pass criticalPageNumbers to extractPackageMetadata
-// This ensures routing decisions are based only on critical forms (not disclosures)
+// Version: 7.0.0 - 2025-12-30
+// REFACTORED: Now uses centralized Grok client (minimal v2)
+// - Replaces all fetch/parse logic with callGrokAPI
+// - Maintains EXACT same behavior as v6.3.1
+// - Post-processing logic unchanged
 
 import { buildClassifierPrompt } from '../prompts';
 import {
@@ -11,6 +13,7 @@ import {
   buildLabeledCriticalImages,
   extractPackageMetadata,
 } from './post-processor';
+import { callGrokAPI, type GrokPage } from '@/lib/grok/client';
 
 import type { 
   GrokPageResult, 
@@ -48,6 +51,10 @@ const chunk = <T>(arr: T[], size: number): T[][] =>
     arr.slice(i * size, i * size + size)
   );
 
+/**
+ * Classifies a batch of pages using the centralized Grok client
+ * v7.0.0: Refactored to use callGrokAPI - removes all manual fetch/parse logic
+ */
 async function classifyBatch(
   batch: { pageNumber: number; base64: string }[],
   batchIndex: number,
@@ -63,112 +70,40 @@ async function classifyBatch(
   console.log(`[batch${batchIndex + 1}:prompt] Prompt length: ${batchPrompt.length} chars`);
 
   try {
-    console.log(`[batch${batchIndex + 1}:api] Sending request to Grok...`);
+    // Convert to GrokPage format
+    const grokPages: GrokPage[] = batch.map(p => ({
+      pageNumber: p.pageNumber,
+      base64: p.base64,
+    }));
     
-    const requestBody = {
-      model: 'grok-4-1-fast-reasoning',
-      temperature: 0,
-      max_tokens: 4096,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: batchPrompt },
-            ...batch.flatMap((p, idx) => [
-              { 
-                type: 'text', 
-                text: `\n━━━ IMAGE ${idx + 1} OF ${batch.length} = PDF_Page_${p.pageNumber} (of ${totalPages} total) ━━━` 
-              },
-              { type: 'image_url', image_url: { url: p.base64 } },
-            ]),
-          ],
-        },
-      ],
-    };
-
-    console.log(`[batch${batchIndex + 1}:api] Request content blocks: ${requestBody.messages[0].content.length}`);
-
-    const res = await fetch('https://api.x.ai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${process.env.XAI_API_KEY}`,
+    // v7.0.0: Use centralized Grok client instead of manual fetch/parse
+    // This replaces 80+ lines of boilerplate with a single function call
+    const json = await callGrokAPI<GrokClassifierOutput>(
+      batchPrompt,
+      grokPages,
+      {
+        logPrefix: `[batch${batchIndex + 1}`,
+        model: 'grok-4-1-fast-reasoning',
+        temperature: 0,
+        maxTokens: 4096,
+        expectObject: true, // Expecting object { pages: [...] }
       },
-      body: JSON.stringify(requestBody),
-    });
-
-    console.log(`[batch${batchIndex + 1}:api] Response status: ${res.status}`);
-
-    if (!res.ok) {
-      const text = await res.text();
-      console.error(`[batch${batchIndex + 1}:api] ❌ Grok error ${res.status}:`, text.substring(0, 500));
-      return null;
+      totalPages // Include total document context
+    );
+    
+    // Validate schema (same as before)
+    if (!json.pages || !Array.isArray(json.pages)) {
+      console.error(`[batch${batchIndex + 1}:validate] ❌ Missing or invalid pages array`);
+      console.error(`[batch${batchIndex + 1}:validate] Parsed object:`, JSON.stringify(json, null, 2).substring(0, 500));
+      throw new Error('Invalid schema — missing pages array');
     }
 
-    const data = await res.json();
-    const text = data.choices[0].message.content;
+    const detectedCount = json.pages.filter((p) => p !== null).length;
+    console.log(`[batch${batchIndex + 1}:validate] ✅ Schema valid`);
+    console.log(`[batch${batchIndex + 1}:summary] Detected ${detectedCount} out of ${json.pages.length} pages`);
 
-    console.log(`[batch${batchIndex + 1}:response] Raw response length: ${text.length} chars`);
-    console.log(`[batch${batchIndex + 1}:response] First 300 chars:`, text.substring(0, 300));
-    console.log(`[batch${batchIndex + 1}:response] Last 200 chars:`, text.substring(text.length - 200));
-
-    let json: GrokClassifierOutput;
-    try {
-      let parsed = null;
-      
-      let depth = 0;
-      let startIdx = text.indexOf('{');
-      
-      if (startIdx === -1) {
-        console.error(`[batch${batchIndex + 1}:parse] ❌ No opening brace found in response`);
-        throw new Error('No JSON found in response');
-      }
-
-      console.log(`[batch${batchIndex + 1}:parse] JSON starts at index ${startIdx}`);
-      
-      for (let i = startIdx; i < text.length; i++) {
-        if (text[i] === '{') depth++;
-        if (text[i] === '}') depth--;
-        if (depth === 0) {
-          const jsonStr = text.substring(startIdx, i + 1);
-          console.log(`[batch${batchIndex + 1}:parse] Extracted JSON string length: ${jsonStr.length}`);
-          
-          try {
-            parsed = JSON.parse(jsonStr);
-            console.log(`[batch${batchIndex + 1}:parse] ✅ JSON parsed successfully`);
-            break;
-          } catch (e) {
-            console.warn(`[batch${batchIndex + 1}:parse] ⚠️ Parse attempt failed at position ${i}`);
-          }
-        }
-      }
-      
-      if (!parsed) {
-        console.error(`[batch${batchIndex + 1}:parse] ❌ All parse attempts failed`);
-        throw new Error('Could not parse JSON from response');
-      }
-      
-      json = parsed;
-
-      if (!json.pages || !Array.isArray(json.pages)) {
-        console.error(`[batch${batchIndex + 1}:validate] ❌ Missing or invalid pages array`);
-        console.error(`[batch${batchIndex + 1}:validate] Parsed object:`, JSON.stringify(json, null, 2).substring(0, 500));
-        throw new Error('Invalid schema — missing pages array');
-      }
-
-      const detectedCount = json.pages.filter((p) => p !== null).length;
-      console.log(`[batch${batchIndex + 1}:validate] ✅ Schema valid`);
-      console.log(`[batch${batchIndex + 1}:summary] Detected ${detectedCount} out of ${json.pages.length} pages`);
-
-      if (batchIndex === 0 && json.pages[0] !== null) {
-        console.log(`\n[batch${batchIndex + 1}:sample] Sample first page:\n${JSON.stringify(json.pages[0], null, 2)}`);
-      }
-
-    } catch (err: any) {
-      console.error(`[batch${batchIndex + 1}:parse] ❌ JSON parse/validation failed:`, err.message);
-      console.error(`[batch${batchIndex + 1}:parse] Raw response (first 2000):`, text.substring(0, 2000));
-      console.error(`[batch${batchIndex + 1}:parse] Raw response (last 500):`, text.substring(text.length - 500));
-      return null;
+    if (batchIndex === 0 && json.pages[0] !== null) {
+      console.log(`\n[batch${batchIndex + 1}:sample] Sample first page:\n${JSON.stringify(json.pages[0], null, 2)}`);
     }
 
     console.log(`[batch${batchIndex + 1}] ✅ Batch complete\n`);
@@ -266,7 +201,7 @@ export async function classifyCriticalPages(
   const nonNullCount = allGrokPages.filter(p => p !== null).length;
   console.log(`[classifier:merge] Non-null pages: ${nonNullCount}/${totalPages}`);
 
-  // Post-processing
+  // Post-processing (unchanged from v6.3.1)
   console.log(`[classifier:post] Running post-processing...`);
   
   const detectedPages = mergeDetectedPages(allGrokPages);
@@ -282,7 +217,7 @@ export async function classifyCriticalPages(
   const criticalImages = buildLabeledCriticalImages(pages, criticalPageNumbers, labelMap);
   console.log(`[classifier:post] Critical images ready: ${criticalImages.length}`);
 
-  // FIXED: Pass criticalPageNumbers to extractPackageMetadata
+  // FIXED v6.3.1: Pass criticalPageNumbers to extractPackageMetadata
   const packageMetadata = extractPackageMetadata(detectedPages, criticalPageNumbers);
 
   console.log(`\n[classifier] ✅ Classification complete`);
