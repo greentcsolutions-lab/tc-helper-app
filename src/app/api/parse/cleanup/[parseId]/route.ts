@@ -1,7 +1,7 @@
 // src/app/api/parse/cleanup/[parseId]/route.ts
 // Version: 2.0.1 - 2025-12-30
 // FIXED: Prisma null handling for JSON fields (use Prisma.DbNull instead of null)
-// UPDATED: Cleanup for single 200 DPI architecture
+// UPDATED: Cleanup for single 200 DPI architecture.
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
