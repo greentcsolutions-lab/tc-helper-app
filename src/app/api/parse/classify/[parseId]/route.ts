@@ -128,6 +128,11 @@ export async function GET(
             criticalPageNumbers,
           },
         });
+        // RIGHT AFTER the db.parse.update() call
+console.log(`[classify] 🔍 DEBUG: Saved to DB:`);
+console.log(`[classify] 🔍 criticalPageNumbers: [${criticalPageNumbers.join(', ')}]`);
+console.log(`[classify] 🔍 criticalImages.length: ${criticalImages.length}`);
+console.log(`[classify] 🔍 criticalImages page numbers: [${criticalImages.map(i => i.pageNumber).join(', ')}]`);
 
         const metadataSize = JSON.stringify(classificationMetadata).length;
         logSuccess("CLASSIFY:4", `Metadata saved (${(metadataSize / 1024).toFixed(1)} KB - no base64!)`);
