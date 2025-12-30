@@ -1,7 +1,6 @@
 // src/components/ui/upload/preview-gallery.tsx
-// Version: 3.0.0 - 2025-12-30
-// CRITICAL FIX: Shows ONLY the critical pages that were actually extracted
-// Extracts page numbers from PNG filenames AND filters to critical pages only
+// Version: 3.0.1 - 2025-12-30
+// FIX: Better error logging to debug preview issues
 
 "use client";
 
@@ -18,7 +17,7 @@ type PreviewPage = {
 };
 
 type PreviewGalleryProps = {
-  parseId: string;  // Changed to use parseId instead of zipUrl
+  parseId: string;
 };
 
 const BLUR_PLACEHOLDER =
@@ -31,7 +30,12 @@ export function PreviewGallery({ parseId }: PreviewGalleryProps) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!parseId) return;
+    if (!parseId) {
+      console.error('[PreviewGallery] ❌ No parseId provided');
+      setError('No parse ID provided');
+      setLoading(false);
+      return;
+    }
 
     async function loadCriticalPages() {
       try {
@@ -39,27 +43,49 @@ export function PreviewGallery({ parseId }: PreviewGalleryProps) {
         setError(null);
         
         // STEP 1: Get critical page numbers and ZIP URL from preview endpoint
-        console.log(`[PreviewGallery] Fetching preview data for parse ${parseId}`);
+        console.log(`[PreviewGallery] 🔍 Fetching preview data for parse ${parseId}`);
         const previewRes = await fetch(`/api/parse/preview/${parseId}`);
+        
+        console.log(`[PreviewGallery] Preview response status: ${previewRes.status}`);
         
         if (!previewRes.ok) {
           const errorData = await previewRes.json();
-          throw new Error(errorData.error || "Failed to load preview data");
+          console.error(`[PreviewGallery] ❌ Preview endpoint error:`, errorData);
+          throw new Error(errorData.error || errorData.hint || "Failed to load preview data");
         }
         
-        const { zipUrl, criticalPageNumbers } = await previewRes.json();
+        const previewData = await previewRes.json();
+        console.log(`[PreviewGallery] ✓ Preview data received:`, {
+          hasZipUrl: !!previewData.zipUrl,
+          criticalPageCount: previewData.criticalPageNumbers?.length || 0,
+          totalPages: previewData.totalPages
+        });
         
-        console.log(`[PreviewGallery] Critical pages to show: [${criticalPageNumbers.join(', ')}]`);
-        console.log(`[PreviewGallery] ZIP URL: ${zipUrl}`);
+        const { zipUrl, criticalPageNumbers } = previewData;
+        
+        if (!zipUrl) {
+          console.error(`[PreviewGallery] ❌ No ZIP URL in response`);
+          throw new Error("Preview ZIP URL not available");
+        }
         
         if (!criticalPageNumbers || criticalPageNumbers.length === 0) {
+          console.warn(`[PreviewGallery] ⚠️ No critical pages identified`);
           throw new Error("No critical pages identified");
         }
         
+        console.log(`[PreviewGallery] 📋 Critical pages to show: [${criticalPageNumbers.join(', ')}]`);
+        console.log(`[PreviewGallery] 🔗 ZIP URL: ${zipUrl}`);
+        
         // STEP 2: Download and extract ZIP
+        console.log(`[PreviewGallery] 📥 Downloading ZIP from Vercel Blob...`);
         const res = await fetch(zipUrl);
-        if (!res.ok) throw new Error("Failed to fetch ZIP");
-
+        
+        if (!res.ok) {
+          console.error(`[PreviewGallery] ❌ Failed to fetch ZIP: ${res.status}`);
+          throw new Error(`Failed to fetch ZIP (${res.status})`);
+        }
+        
+        console.log(`[PreviewGallery] ✓ ZIP downloaded, extracting...`);
         const buffer = await res.arrayBuffer();
         const zip = await JSZip.loadAsync(buffer);
 
@@ -72,7 +98,8 @@ export function PreviewGallery({ parseId }: PreviewGalleryProps) {
             return aNum - bNum;
           });
 
-        console.log(`[PreviewGallery] Found ${allPngFiles.length} total PNGs in ZIP`);
+        console.log(`[PreviewGallery] 📦 Found ${allPngFiles.length} total PNGs in ZIP`);
+        console.log(`[PreviewGallery] 📄 Files in ZIP:`, allPngFiles.slice(0, 5).join(', '), '...');
 
         const loadedPages: PreviewPage[] = [];
 
@@ -88,8 +115,12 @@ export function PreviewGallery({ parseId }: PreviewGalleryProps) {
           }
           
           const file = zip.file(filename);
-          if (!file) continue;
+          if (!file) {
+            console.warn(`[PreviewGallery] ⚠️ Could not access file ${filename} in ZIP`);
+            continue;
+          }
           
+          console.log(`[PreviewGallery] 🖼️  Loading critical page ${pageNumber} from ${filename}...`);
           const data = await file.async("arraybuffer");
           
           loadedPages.push({
@@ -97,17 +128,24 @@ export function PreviewGallery({ parseId }: PreviewGalleryProps) {
             base64: `data:image/png;base64,${Buffer.from(data).toString("base64")}`,
           });
           
-          console.log(`[PreviewGallery] Loaded critical page ${pageNumber} from ${filename}`);
+          console.log(`[PreviewGallery] ✓ Loaded page ${pageNumber} (${(data.byteLength / 1024).toFixed(1)} KB)`);
         }
 
         // Sort by page number to display in order
         loadedPages.sort((a, b) => a.pageNumber - b.pageNumber);
         
-        console.log(`[PreviewGallery] ✓ Loaded ${loadedPages.length} critical pages: [${loadedPages.map(p => p.pageNumber).join(', ')}]`);
+        console.log(`[PreviewGallery] ✅ Successfully loaded ${loadedPages.length} critical pages`);
+        console.log(`[PreviewGallery] 📊 Page numbers: [${loadedPages.map(p => p.pageNumber).join(', ')}]`);
+
+        if (loadedPages.length === 0) {
+          console.error(`[PreviewGallery] ❌ No pages were loaded (had ${criticalPageNumbers.length} expected)`);
+          throw new Error("No preview images could be loaded from ZIP");
+        }
 
         setPages(loadedPages);
       } catch (err: any) {
-        console.error("[PreviewGallery] Failed to load preview:", err);
+        console.error("[PreviewGallery] ❌ Failed to load preview:", err);
+        console.error("[PreviewGallery] Error details:", err.message, err.stack);
         setError(err.message || "Failed to load preview");
       } finally {
         setLoading(false);
@@ -120,7 +158,8 @@ export function PreviewGallery({ parseId }: PreviewGalleryProps) {
   if (loading) {
     return (
       <div className="col-span-full py-12 text-center text-muted-foreground">
-        Loading critical pages preview...
+        <p className="mb-2">Loading critical pages preview...</p>
+        <p className="text-xs">This may take a moment while downloading images</p>
       </div>
     );
   }
@@ -129,7 +168,10 @@ export function PreviewGallery({ parseId }: PreviewGalleryProps) {
     return (
       <div className="col-span-full py-12 text-center">
         <p className="text-destructive font-medium mb-2">Failed to load preview</p>
-        <p className="text-sm text-muted-foreground">{error}</p>
+        <p className="text-sm text-muted-foreground mb-4">{error}</p>
+        <p className="text-xs text-muted-foreground">
+          Check the browser console for detailed error logs
+        </p>
       </div>
     );
   }
@@ -137,7 +179,8 @@ export function PreviewGallery({ parseId }: PreviewGalleryProps) {
   if (pages.length === 0) {
     return (
       <div className="col-span-full py-12 text-center text-muted-foreground">
-        No critical pages found
+        <p className="mb-2">No critical pages found</p>
+        <p className="text-xs">The classifier may not have identified any critical pages</p>
       </div>
     );
   }

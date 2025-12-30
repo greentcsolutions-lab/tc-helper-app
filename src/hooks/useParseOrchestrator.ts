@@ -1,12 +1,22 @@
 // src/hooks/useParseOrchestrator.ts
-// Version: 2.0.1 - 2025-12-29
-// FIXED: Ensure cleanup always runs, even if there are issues
+// Version: 4.0.0 - 2025-12-30
+// BREAKING: Cleanup NO LONGER runs automatically after extraction
+// Now cleanup only runs when user clicks "Complete" button or exits
 
-import { useState, useCallback } from 'react';
+"use client";
 
-export type ParsePhase = 'idle' | 'render' | 'classify' | 'extract' | 'cleanup' | 'complete' | 'error';
+import { useState, useCallback } from "react";
 
-interface ParseState {
+export type ParsePhase = 
+  | "idle" 
+  | "render" 
+  | "classify" 
+  | "extract" 
+  | "cleanup"
+  | "complete" 
+  | "error";
+
+export type ParseState = {
   phase: ParsePhase;
   message: string;
   pageCount?: number;
@@ -71,26 +81,19 @@ export function useParseOrchestrator() {
 
       console.log('[orchestrator] Extraction complete, needsReview:', extractResult.needsReview);
 
-      // PHASE 4: CLEANUP (ALWAYS RUN, EVEN IF EXTRACTION HAD ISSUES)
-      setState({
-        phase: 'cleanup',
-        message: 'Cleaning up temporary files...',
-        pageCount: renderResult.pageCount,
-        criticalPageCount: classifyResult.criticalPageCount,
-        detectedForms: classifyResult.detectedForms,
-        needsReview: extractResult.needsReview,
-      });
+      // ═══════════════════════════════════════════════════════════════════════
+      // CRITICAL CHANGE: DO NOT RUN CLEANUP HERE
+      // ═══════════════════════════════════════════════════════════════════════
+      // Cleanup will be triggered manually by:
+      // 1. User clicking "Complete" button
+      // 2. User navigating away (useEffect cleanup in upload-zone)
+      // 3. Window unload event
+      //
+      // This preserves highResZipUrl for the preview gallery
+      console.log('[orchestrator] ⏸️  Skipping auto-cleanup - preview images preserved');
+      console.log('[orchestrator] 💡 Cleanup will run when user clicks Complete or exits');
 
-      const cleanupResult = await runCleanup(parseId);
-      
-      if (!cleanupResult.success) {
-        console.warn('[orchestrator] Cleanup had issues but continuing:', cleanupResult.error);
-        // Don't throw - cleanup issues shouldn't block the user
-      } else {
-        console.log('[orchestrator] Cleanup complete');
-      }
-
-      // COMPLETE
+      // COMPLETE (without cleanup)
       setState({
         phase: 'complete',
         message: extractResult.needsReview 
@@ -106,7 +109,7 @@ export function useParseOrchestrator() {
     } catch (error: any) {
       console.error('[orchestrator] Pipeline failed:', error);
       
-      // CRITICAL: Run cleanup even on failure
+      // CRITICAL: Still run cleanup on failure to avoid leaving temp files
       try {
         console.log('[orchestrator] Running cleanup after failure...');
         await runCleanup(parseId);
@@ -123,7 +126,29 @@ export function useParseOrchestrator() {
     }
   }, []);
 
-  return { state, runPipeline };
+  // NEW: Manual cleanup function for user-triggered cleanup
+  const triggerCleanup = useCallback(async (parseId: string) => {
+    console.log('[orchestrator] 🧹 User-triggered cleanup starting...');
+    
+    setState((prev) => ({
+      ...prev,
+      phase: 'cleanup',
+      message: 'Cleaning up temporary files...',
+    }));
+
+    const cleanupResult = await runCleanup(parseId);
+    
+    if (!cleanupResult.success) {
+      console.warn('[orchestrator] Cleanup had issues:', cleanupResult.error);
+      // Don't throw - cleanup issues shouldn't block the user
+    } else {
+      console.log('[orchestrator] ✓ Cleanup complete');
+    }
+
+    return cleanupResult;
+  }, []);
+
+  return { state, runPipeline, triggerCleanup };
 }
 
 // ============================================================================
