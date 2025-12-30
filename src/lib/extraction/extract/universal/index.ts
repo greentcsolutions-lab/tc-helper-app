@@ -4,7 +4,7 @@
 
 import type { LabeledCriticalImage } from '@/types/classification';
 import type { UniversalExtractionResult } from '@/types/extraction';
-import { buildPerPageExtractorPrompt } from '../../prompts/universal-extractor-prompt';
+import { buildUniversalExtractorPrompt } from '../../prompts/universal-extractor-prompt';
 import { mergePageExtractions, type PerPageExtraction } from './post-processor';
 import { runSecondTurnExtraction } from './second-turn';
 
@@ -166,7 +166,7 @@ function combinePageExtractions(
 async function extractPerPage(
   criticalImages: LabeledCriticalImage[]
 ): Promise<PerPageExtraction[]> {
-  const prompt = buildPerPageExtractorPrompt(criticalImages);
+  const prompt = buildUniversalExtractorPrompt(criticalImages);
   
   console.log(`[extractor:api] Prompt length: ${prompt.length} chars`);
   console.log(`[extractor:api] Sending ${criticalImages.length} images to Grok`);

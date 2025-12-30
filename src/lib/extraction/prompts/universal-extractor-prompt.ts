@@ -7,7 +7,7 @@ import extractorSchema from '@/forms/universal/extractor.schema.json';
 
 const schemaString = JSON.stringify(extractorSchema, null, 2);
 
-export function buildPerPageExtractorPrompt(
+export function buildUniversalExtractorPrompt(
   criticalImages: Array<{ pageNumber: number; label: string }>
 ): string {
   return `You are a document OCR specialist. Extract data from ${criticalImages.length} real estate contract page images.
@@ -134,4 +134,4 @@ No explanatory text. No markdown. Just the JSON array.
 `.trim();
 }
 
-export const PER_PAGE_EXTRACTOR_PROMPT = buildPerPageExtractorPrompt;
+export const UNIVERSAL_EXTRACTOR_PROMPT = buildUniversalExtractorPrompt;
