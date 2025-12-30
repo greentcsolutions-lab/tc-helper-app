@@ -1,11 +1,7 @@
 // src/lib/grok/client.ts
-// Version: 2.0.0 - 2025-12-30
-// MINIMAL & PROVEN: Extracts ONLY the working parts from classifier
-// NO extra features - just the exact pattern that works 90% of the time
-
-// ============================================================================
-// CORE PRINCIPLE: Copy the classifier's exact approach, nothing more
-// ============================================================================
+// Version: 2.1.0 - 2025-12-30
+// OPTIMIZED: Token limits adjusted for $0.05-0.10 per call budget
+// UPDATED: Default maxTokens reduced from 16384 to 6144
 
 export interface GrokPage {
   pageNumber: number;
@@ -118,7 +114,7 @@ export function extractJSONFromGrokResponse<T>(
  * Sends images to Grok using the EXACT pattern from the working classifier
  * Returns parsed JSON or throws error
  * 
- * This function is a direct extraction of classifyBatch() logic
+ * v2.1.0: Default maxTokens reduced to 6144 for cost optimization
  */
 export async function callGrokAPI<T>(
   prompt: string,
@@ -131,7 +127,7 @@ export async function callGrokAPI<T>(
     logPrefix,
     model = 'grok-4-1-fast-reasoning',
     temperature = 0,
-    maxTokens = 16384,
+    maxTokens = 6144, // CHANGED: Reduced from 16384 to 6144 for cost optimization
     expectObject = false,
   } = options;
   
@@ -154,6 +150,7 @@ export async function callGrokAPI<T>(
   };
   
   console.log(`${logPrefix}:api] Request content blocks: ${requestBody.messages[0].content.length}`);
+  console.log(`${logPrefix}:api] Max tokens: ${maxTokens}`); // Log for debugging
   
   // STEP 2: Fetch EXACTLY like classifier
   const res = await fetch('https://api.x.ai/v1/chat/completions', {
@@ -194,9 +191,7 @@ export async function callGrokAPI<T>(
 
 /**
  * Validates response has finish_reason = "stop"
- * This is NOT in the current classifier, but would catch truncation bugs
- * 
- * ONLY USE if you want to add validation to the working pattern
+ * Catches truncation bugs if output hits max_tokens
  */
 export function validateFinishReason(
   data: any,
@@ -241,7 +236,7 @@ export async function callGrokAPIWithValidation<T>(
     logPrefix,
     model = 'grok-4-1-fast-reasoning',
     temperature = 0,
-    maxTokens = 16384,
+    maxTokens = 6144, // CHANGED: Reduced from 16384 to 6144
     expectObject = false,
   } = options;
   
@@ -263,6 +258,7 @@ export async function callGrokAPIWithValidation<T>(
   };
   
   console.log(`${logPrefix}:api] Request content blocks: ${requestBody.messages[0].content.length}`);
+  console.log(`${logPrefix}:api] Max tokens: ${maxTokens}`);
   
   const res = await fetch('https://api.x.ai/v1/chat/completions', {
     method: 'POST',
