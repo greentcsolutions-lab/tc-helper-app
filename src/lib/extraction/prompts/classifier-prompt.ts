@@ -95,7 +95,7 @@ When determining contentCategory and hasFilledFields:
    - Even if there are 1-2 minor fields at the bottom (like initials or dates)
    
 5. hasFilledFields: true ONLY if:
-   - The MAIN BODY has 3+ substantive filled fields OR checked boxes
+   - The MAIN BODY has 3+ substantive filled fields OR checked boxes OR a single large, multi-line text field with one or multiple entries
    - Examples: price, deposit, dates, loan type checkboxes, contingency dates
    - Do NOT count: property address in header, single initial field, form codes
 
