@@ -1,4 +1,8 @@
-// src/components/upload/preview-gallery.tsx
+// src/components/ui/upload/preview-gallery.tsx
+// Version: 2.0.0 - 2025-12-30
+// CRITICAL FIX: Extract page number from PNG filename instead of array index
+// Same bug as renderer.ts - preview was showing sequential pages
+
 "use client";
 
 import { useState, useEffect } from "react";
@@ -49,12 +53,21 @@ export function PreviewGallery({ zipUrl, maxPages = 9 }: PreviewGalleryProps) {
 
         const loadedPages: PreviewPage[] = [];
 
-        for (const [i, key] of keys.entries()) {
+        // CRITICAL FIX: Extract page number from PNG filename
+        for (const key of keys) {
           const file = zip.file(key);
           if (!file) continue;
+          
           const data = await file.async("arraybuffer");
+          
+          // BEFORE (BUGGY): pageNumber: i + 1 (sequential)
+          // AFTER (FIXED): Extract from filename
+          // "10.png" → pngIndex=10 → pageNumber=11 (PDF pages are 1-indexed)
+          const pngIndex = parseInt(key.match(/(\d+)\.png$/i)?.[1] || "0");
+          const pageNumber = pngIndex + 1;
+          
           loadedPages.push({
-            pageNumber: i + 1,
+            pageNumber,
             base64: `data:image/png;base64,${Buffer.from(data).toString("base64")}`,
           });
         }
