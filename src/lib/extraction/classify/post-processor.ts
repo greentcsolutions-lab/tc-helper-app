@@ -1,6 +1,6 @@
 // src/lib/extraction/classify/post-processor.ts
-// Version: 3.3.1 - 2025-12-30
-// OPTIMIZED: Condensed logging only - NO LOGIC CHANGES
+// Version: 3.4.0 - 2025-12-31
+// CRITICAL FIX: Signature and broker pages now included even when hasFilledFields=false
 
 import type { LabeledCriticalImage, GrokPageResult } from '@/types/classification';
 
@@ -13,6 +13,9 @@ export function mergeDetectedPages(
 /**
  * Selects critical pages for extraction using universal logic
  * Works for CA, TX, FL, NV, and all other U.S. states
+ * 
+ * v3.4.0: CRITICAL FIX - Signature and broker pages now ALWAYS included,
+ * even when hasFilledFields=false (unsigned contracts, empty broker fields)
  */
 export function getCriticalPageNumbers(detectedPages: GrokPageResult[]): number[] {
   const selected = new Set<number>();
@@ -20,13 +23,13 @@ export function getCriticalPageNumbers(detectedPages: GrokPageResult[]): number[
   // Categories that contain extractable data (universal)
   const EXTRACTABLE_CATEGORIES = [
     'transaction_terms',  // Any fillable transaction data
-    'signatures',         // Final acceptance dates
-    'broker_info',        // Agent contact info
+    'signatures',         // Final acceptance dates (even if unsigned)
+    'broker_info',        // Agent contact info (even if partially filled)
   ];
 
   // Categories to always exclude (universal)
   const EXCLUDED_CATEGORIES = [
-    'disclosures',        // Standard disclosures
+    'disclosures',        // Standard disclosures (AD, BIA, PRL, etc.)
     'boilerplate',        // Dense legal text
     'other',              // Unknown/blank
   ];
@@ -40,8 +43,11 @@ export function getCriticalPageNumbers(detectedPages: GrokPageResult[]): number[
     const hasFilled = page.hasFilledFields ?? false;
     const formCode = page.formCode ?? '';
 
-    // RULE 1: Override documents (counters, addenda, contingency releases)
-    // Universal - works for all states
+    // ========================================================================
+    // RULE 1: Override documents (counters, addenda, amendments)
+    // ========================================================================
+    // These are NOT disclosures - they modify contract terms
+    // Examples: SCO, BCO, ADM, FVAC, APR, RR, amendments
     if (['counter_offer', 'addendum', 'local_addendum', 'contingency_release'].includes(role)) {
       // Primary requirement: Must have filled fields
       if (!hasFilled) {
@@ -49,46 +55,40 @@ export function getCriticalPageNumbers(detectedPages: GrokPageResult[]): number[
         continue;
       }
 
-      // CRITICAL FIX (v3.2.0): For override documents with hasFilledFields=true,
+      // CRITICAL (v3.2.0): For override documents with hasFilledFields=true,
       // ALWAYS include regardless of contentCategory.
       // 
       // Rationale: Grok sometimes misclassifies addenda with critical timeline terms
-      // as "boilerplate" when they have:
-      // - Lots of blank lines for writing
-      // - Legal text surrounding the important terms
-      // - Mixed content (some boilerplate + some critical terms)
-      //
-      // Real-world example: Page 39 (ADM Addendum #1) had:
-      // - "Post Inspection and Section 1 Clearance to be completed at Seller's 
-      //    expense within 10 days after acceptance"
-      // - "Section 1 Clearance must be delivered to Buyer and Buyer's VA lender 
-      //    at least 5 days prior to close of escrow"
-      // → These are CRITICAL timeline terms, but Grok classified as "boilerplate"
-      //    because of blank lines and legal text
-      //
+      // as "boilerplate" when they have lots of blank lines + legal text.
       // If fields are filled, there's extractable data that modifies the contract.
-      // contentCategory is just a hint - hasFilledFields is the truth.
       selected.add(page.pdfPage);
       stats.override++;
       continue;
     }
 
+    // ========================================================================
     // RULE 2: Main contract pages
-    // Universal - works for all states
+    // ========================================================================
     if (role === 'main_contract') {
-      // Must have extractable content
+      // v3.4.0 FIX: Check for signature/broker pages FIRST
+      // These pages are ALWAYS critical, even when empty
+      if (category === 'signatures' || category === 'broker_info') {
+        selected.add(page.pdfPage);
+        stats.main++;
+        continue;
+      }
+
+      // For other main contract pages, apply standard filtering
       if (EXCLUDED_CATEGORIES.includes(category)) {
         stats.excluded++;
         continue;
       }
 
-      // Must be an extractable category
       if (!EXTRACTABLE_CATEGORIES.includes(category)) {
         stats.excluded++;
         continue;
       }
 
-      // Must have filled fields
       if (!hasFilled) {
         stats.excluded++;
         continue;
@@ -99,8 +99,12 @@ export function getCriticalPageNumbers(detectedPages: GrokPageResult[]): number[
       continue;
     }
 
-    // RULE 3: All other roles (disclosure, financing, broker_info, title_page, other)
-    // Universal - always excluded
+    // ========================================================================
+    // RULE 3: All other roles
+    // ========================================================================
+    // (disclosure, financing, title_page, other)
+    // Note: True disclosures (AD, BIA, PRL, FPFA) have role="disclosure"
+    // They are NEVER included, even if they say "addendum" in the title
     stats.excluded++;
   }
 
@@ -180,7 +184,7 @@ export function buildUniversalPageLabels(
 
     // Use display code if available, otherwise use raw code
     const displayCode = ADDENDUM_DISPLAY_CODES[rawCode] ?? rawCode;
-
+    
     // Build category display
     let categoryDisplay = category.toUpperCase().replace('_', ' ');
     

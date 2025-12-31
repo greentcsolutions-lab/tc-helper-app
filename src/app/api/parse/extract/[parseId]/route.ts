@@ -1,6 +1,6 @@
 // src/app/api/parse/extract/[parseId]/route.ts
-// Version: 4.1.0 - 2025-12-31
-// UPDATED: Simplified logging - only confirms page matching, delegates Grok response logging to client
+// Version: 4.2.0 - 2025-12-31
+// UPDATED: Now passes classification metadata to router for lean extraction
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
@@ -70,7 +70,6 @@ export async function POST(
       state: string;
     };
 
-    // SIMPLIFIED: Just confirm we have the right pages
     console.log(`[extract] LOADED: ${classificationMetadata.criticalPageNumbers.length} pages [${classificationMetadata.criticalPageNumbers.join(',')}] forms=[${classificationMetadata.packageMetadata.detectedFormCodes.join(',')}]`);
     logSuccess("EXTRACT:1", `Loaded ${classificationMetadata.criticalPageNumbers.length} critical pages`);
 
@@ -81,7 +80,6 @@ export async function POST(
       classificationMetadata.criticalPageNumbers
     );
 
-    // SIMPLIFIED: Just verify page numbers match
     const expectedPages = new Set(classificationMetadata.criticalPageNumbers);
     const receivedPages = new Set(criticalPages.map(p => p.pageNumber));
     const pagesMatch = expectedPages.size === receivedPages.size && 
@@ -111,6 +109,7 @@ export async function POST(
         criticalImages,
         packageMetadata: classificationMetadata.packageMetadata,
         highDpiPages: criticalPages,
+        classificationMetadata,  // v4.2.0: Pass classification metadata for lean extraction
       });
 
     logSuccess("EXTRACT:3", `Extraction via ${extractionRoute} — needsReview: ${needsReview}`);

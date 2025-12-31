@@ -1,10 +1,6 @@
 // src/lib/extraction/extract/universal/index.ts
-// Version: 12.0.0 - 2025-12-30
-// CRITICAL FIX: Now uses EXACT same API pattern as working classifier
-// - Copies proven callGrokAPI function
-// - Uses identical image formatting with page numbers
-// - Same JSON extraction algorithm
-// - Second-turn DISABLED (95% first-pass accuracy)
+// Version: 13.0.0 - 2025-12-31
+// LEAN: Extraction now returns pure data, post-processor enriches with classification metadata
 
 import type { LabeledCriticalImage } from '@/types/classification';
 import type { UniversalExtractionResult } from '@/types/extraction';
@@ -14,12 +10,17 @@ import { callGrokAPI, type GrokPage } from '@/lib/grok/client';
 
 export async function universalExtractor(
   criticalImages: LabeledCriticalImage[],
-  packageMetadata: any
+  packageMetadata: any,
+  classificationMetadata: {
+    criticalPageNumbers: number[];
+    pageLabels: Record<number, string>;
+    packageMetadata: any;
+  }
 ): Promise<{
   universal: UniversalExtractionResult;
   details: {
     provenance: Record<string, number>;
-    pageExtractions: PerPageExtraction[];
+    pageExtractions: any[];
     mergeLog: string[];
     validationErrors: string[];
     validationWarnings: string[];
@@ -32,7 +33,7 @@ export async function universalExtractor(
   console.log(`${"═".repeat(80)}`);
   console.log(`[extractor] Critical images: ${criticalImages.length}`);
   
-  // PHASE 1: PER-PAGE EXTRACTION (Pure OCR - no context pollution)
+  // PHASE 1: PER-PAGE EXTRACTION (Pure OCR - no classification metadata)
   console.log(`\n[extractor:phase1] ${"─".repeat(60)}`);
   console.log(`[extractor:phase1] PHASE 1: PURE PER-PAGE EXTRACTION`);
   console.log(`[extractor:phase1] ${"─".repeat(60)}`);
@@ -42,19 +43,18 @@ export async function universalExtractor(
   
   console.log(`[extractor:phase1] ✅ Extracted ${pageExtractions.length} pages`);
   console.log(`\n[extractor:debug] ${"─".repeat(60)}`);
-  console.log(`[extractor:debug] RAW PER-PAGE EXTRACTIONS`);
+  console.log(`[extractor:debug] RAW PER-PAGE EXTRACTIONS (LEAN)`);
   console.log(`[extractor:debug] ${"─".repeat(60)}`);
   
   pageExtractions.forEach((extraction, idx) => {
-    console.log(`\n[extractor:debug] Page ${extraction.pageNumber}:`);
-    console.log(`  Label: ${extraction.pageLabel}`);
-    console.log(`  Role: ${extraction.pageRole}`);
-    console.log(`  Form: ${extraction.formCode} (page ${extraction.formPage})`);
+    console.log(`\n[extractor:debug] Array index ${idx}:`);
+    console.log(`  Corresponds to PDF page: ${classificationMetadata.criticalPageNumbers[idx]}`);
+    console.log(`  Label: ${classificationMetadata.pageLabels[classificationMetadata.criticalPageNumbers[idx]]}`);
     console.log(`  Confidence: ${extraction.confidence.overall}`);
     
     const fieldsWithData = Object.entries(extraction)
       .filter(([key, value]) => 
-        !['pageNumber', 'pageLabel', 'formCode', 'formPage', 'pageRole', 'confidence'].includes(key) &&
+        key !== 'confidence' &&
         value != null &&
         (typeof value !== 'object' || Object.keys(value).length > 0) &&
         (!Array.isArray(value) || value.length > 0)
@@ -68,40 +68,18 @@ export async function universalExtractor(
     }
   });
   
-  // PHASE 2: MERGE + POST-PROCESS
+  // PHASE 2: MERGE + POST-PROCESS (now passes classification metadata)
   console.log(`\n[extractor:phase2] ${"─".repeat(60)}`);
   console.log(`[extractor:phase2] PHASE 2: MERGE & POST-PROCESS`);
   console.log(`[extractor:phase2] ${"─".repeat(60)}`);
-  console.log(`[extractor:phase2] Starting merge process...`);
+  console.log(`[extractor:phase2] Starting merge process with classification metadata...`);
   
-  const mergeResult = mergePageExtractions(pageExtractions);
+  const mergeResult = mergePageExtractions(pageExtractions, classificationMetadata);
   
   console.log(`[extractor:phase2] ✅ Merge complete`);
   console.log(`[extractor:phase2] Needs review: ${mergeResult.needsReview}`);
   console.log(`[extractor:phase2] Validation errors: ${mergeResult.validationErrors.length}`);
   console.log(`[extractor:phase2] Validation warnings: ${mergeResult.validationWarnings.length}`);
-  
-  // v12.0.0: SECOND TURN DISABLED - 95% accuracy on first pass
-  if (mergeResult.needsSecondTurn) {
-    console.log(`\n[extractor:phase3] ${"─".repeat(60)}`);
-    console.log(`[extractor:phase3] SECOND TURN DISABLED (95% first-pass accuracy)`);
-    console.log(`[extractor:phase3] ${"─".repeat(60)}`);
-    console.log(`[extractor:phase3] Validation errors detected but second turn is disabled:`);
-    mergeResult.validationErrors.forEach(err => console.log(`  - ${err}`));
-  }
-  
-  // v12.0.0: Log full validation failures for debugging
-  if (mergeResult.validationErrors.length > 0) {
-    console.error(`\n[extractor:validation] ❌ VALIDATION ERRORS DETECTED`);
-    console.error(`[extractor:validation] ${"─".repeat(60)}`);
-    mergeResult.validationErrors.forEach(err => console.error(`  - ${err}`));
-    console.error(`[extractor:validation] ${"─".repeat(60)}`);
-    console.error(`[extractor:validation] Full merged result:`);
-    console.error(JSON.stringify(mergeResult.finalTerms, null, 2));
-    console.error(`[extractor:validation] ${"─".repeat(60)}`);
-    console.error(`[extractor:validation] Page extractions:`);
-    console.error(JSON.stringify(mergeResult.pageExtractions, null, 2));
-  }
   
   // Return first-pass results
   console.log(`\n${"═".repeat(80)}`);
@@ -123,8 +101,8 @@ export async function universalExtractor(
 }
 
 /**
- * Extract data using EXACT same pattern as working classifier
- * v12.0.0: Now calls callGrokAPI with identical formatting
+ * Extract data using LEAN schema (no classification fields)
+ * v13.0.0: Grok only returns data fields, classification metadata comes from cache
  */
 async function extractPerPage(
   criticalImages: LabeledCriticalImage[]
@@ -150,7 +128,7 @@ async function extractPerPage(
       logPrefix: '[extractor',
       model: 'grok-4-1-fast-reasoning',
       temperature: 0,
-      maxTokens: 16384,
+      maxTokens: 4096,
       expectObject: false, // Expecting array []
     }
     // totalPagesInDocument is undefined - only classifier knows this

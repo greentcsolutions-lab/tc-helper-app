@@ -1,35 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://example.com/schemas/universal/extractor.schema.json",
-  "title": "Universal U.S. Real Estate Transaction Extraction (Per-Page)",
-  "description": "Version 4.0.0 - 2025-12-30 - UPDATED: Examples instead of descriptions, aligned with ParseResult types",
+  "title": "Universal U.S. Real Estate Transaction Extraction (Pure Data Extraction)",
+  "description": "Version 6.0.0 - 2025-12-31 - LEAN: Removed classification fields (already known from classifier), pure extraction only",
   "type": "array",
   "minItems": 1,
   "items": {
     "type": "object",
     "properties": {
-      "pageNumber": {
-        "type": "integer",
-        "minimum": 1,
-        "example": 1
-      },
-      "pageLabel": {
-        "type": "string",
-        "example": "RPA PAGE 1 - TRANSACTION TERMS"
-      },
-      "formCode": {
-        "type": "string",
-        "example": "RPA"
-      },
-      "formPage": {
-        "type": ["integer", "null"],
-        "example": 1
-      },
-      "pageRole": {
-        "type": "string",
-        "enum": ["main_contract", "counter_offer", "addendum", "signatures", "broker_info"],
-        "example": "main_contract"
-      },
       "buyerNames": {
         "type": ["array", "null"],
         "items": { "type": "string", "minLength": 1 },
@@ -58,124 +36,86 @@
         "type": ["object", "null"],
         "properties": {
           "amount": { "type": ["number", "null"], "example": 15000 },
-          "holder": { "type": ["string", "null"], "example": "First American Title Company" }
-        },
-        "example": { "amount": 15000, "holder": "First American Title Company" }
+          "holder": { "type": ["string", "null"], "example": "First American Title" }
+        }
       },
       "closingDate": {
-        "oneOf": [
-          { "type": "string", "example": "2025-03-15" },
-          { "type": "integer", "example": 45 },
-          { "type": "null" }
-        ]
+        "type": ["string", "number", "null"],
+        "example": "2024-03-15"
       },
       "financing": {
         "type": ["object", "null"],
         "properties": {
-          "isAllCash": { "type": "boolean", "example": false },
-          "loanType": {
-            "type": ["string", "null"],
-            "enum": ["Conventional", "FHA", "VA", "USDA", "Other", null],
-            "example": "Conventional"
-          },
+          "isAllCash": { "type": ["boolean", "null"], "example": false },
+          "loanType": { "type": ["string", "null"], "example": "Conventional" },
           "loanAmount": { "type": ["number", "null"], "example": 600000 }
-        },
-        "required": ["isAllCash"],
-        "example": { "isAllCash": false, "loanType": "Conventional", "loanAmount": 600000 }
+        }
       },
       "contingencies": {
         "type": ["object", "null"],
         "properties": {
-          "inspectionDays": {
-            "oneOf": [
-              { "type": "integer", "example": 17 },
-              { "type": "string", "example": "Waived" },
-              { "type": "null" }
-            ]
-          },
-          "appraisalDays": {
-            "oneOf": [
-              { "type": "integer", "example": 17 },
-              { "type": "string", "example": "2025-02-15" },
-              { "type": "null" }
-            ]
-          },
-          "loanDays": {
-            "oneOf": [
-              { "type": "integer", "example": 21 },
-              { "type": "string", "example": "Waived" },
-              { "type": "null" }
-            ]
-          },
-          "saleOfBuyerProperty": { "type": "boolean", "example": false }
-        },
-        "required": ["saleOfBuyerProperty"],
-        "example": { "inspectionDays": 17, "appraisalDays": 17, "loanDays": 21, "saleOfBuyerProperty": false }
+          "inspectionDays": { "type": ["number", "string", "null"], "example": 17 },
+          "appraisalDays": { "type": ["number", "string", "null"], "example": 17 },
+          "loanDays": { "type": ["number", "string", "null"], "example": 21 },
+          "saleOfBuyerProperty": { "type": ["boolean", "null"], "example": false }
+        }
       },
       "closingCosts": {
         "type": ["object", "null"],
         "properties": {
-          "buyerPays": { "type": "array", "items": { "type": "string" }, "example": ["title", "escrow"] },
-          "sellerPays": { "type": "array", "items": { "type": "string" }, "example": ["transfer tax"] },
+          "buyerPays": { 
+            "type": ["array", "null"],
+            "items": { "type": "string" },
+            "example": ["Escrow fees", "Title insurance"]
+          },
+          "sellerPays": { 
+            "type": ["array", "null"],
+            "items": { "type": "string" },
+            "example": ["Transfer tax", "HOA documents"]
+          },
           "sellerCreditAmount": { "type": ["number", "null"], "example": 5000 }
-        },
-        "required": ["buyerPays", "sellerPays"],
-        "example": { "buyerPays": ["title", "escrow"], "sellerPays": ["transfer tax"], "sellerCreditAmount": 5000 }
+        }
       },
       "brokers": {
         "type": ["object", "null"],
         "properties": {
-          "listingBrokerage": { "type": ["string", "null"], "example": "Coldwell Banker" },
+          "listingBrokerage": { "type": ["string", "null"], "example": "Keller Williams" },
           "listingAgent": { "type": ["string", "null"], "example": "Sarah Johnson" },
-          "sellingBrokerage": { "type": ["string", "null"], "example": "Keller Williams" },
+          "sellingBrokerage": { "type": ["string", "null"], "example": "Compass Real Estate" },
           "sellingAgent": { "type": ["string", "null"], "example": "Michael Chen" }
-        },
-        "example": { "listingBrokerage": "Coldwell Banker", "listingAgent": "Sarah Johnson", "sellingBrokerage": "Keller Williams", "sellingAgent": "Michael Chen" }
+        }
       },
       "personalPropertyIncluded": {
-        "type": "array",
+        "type": ["array", "null"],
         "items": { "type": "string" },
-        "example": ["Refrigerator", "Washer", "Dryer", "Window coverings"]
+        "example": ["Refrigerator", "Washer/Dryer", "Window coverings"]
       },
-      "effectiveDate": {
-        "type": ["string", "null"],
-        "format": "date",
-        "example": "2025-01-15"
+      "buyerSignatureDates": {
+        "type": ["array", "null"],
+        "items": { "type": "string" },
+        "example": ["1/15/24", "1/15/24"]
+      },
+      "sellerSignatureDates": {
+        "type": ["array", "null"],
+        "items": { "type": "string" },
+        "example": ["1/10/24"]
       },
       "escrowHolder": {
         "type": ["string", "null"],
-        "example": "Chicago Title Company"
+        "example": "First American Title Company"
       },
       "confidence": {
         "type": "object",
         "properties": {
-          "overall": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 100,
-            "example": 95
-          },
+          "overall": { "type": "integer", "minimum": 0, "maximum": 100 },
           "fieldScores": {
-            "type": ["object", "null"],
-            "additionalProperties": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 100
-            },
-            "example": { "propertyAddress": 100, "purchasePrice": 98, "buyerNames": 95 }
+            "type": "object",
+            "additionalProperties": { "type": "integer", "minimum": 0, "maximum": 100 }
           }
         },
-        "required": ["overall"],
-        "example": { "overall": 95, "fieldScores": { "propertyAddress": 100, "purchasePrice": 98 } }
+        "required": ["overall"]
       }
     },
-    "required": [
-      "pageNumber",
-      "pageLabel",
-      "formCode",
-      "pageRole",
-      "confidence"
-    ],
-    "additionalProperties": false
+    "required": ["confidence"]
   }
 }

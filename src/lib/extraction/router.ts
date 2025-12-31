@@ -1,6 +1,6 @@
 // src/lib/extraction/router.ts
-// Version: 2.0.0 - 2025-12-27
-// Pure routing logic: Receives classification results, decides extractor, returns extraction
+// Version: 2.1.0 - 2025-12-31
+// UPDATED: Now passes classification metadata to universal extractor
 
 import { californiaExtractor } from './extract/california/index';
 import { universalExtractor } from './extract/universal/index';
@@ -17,6 +17,11 @@ export interface RouterInput {
     hasMultipleForms: boolean;
   };
   highDpiPages: { pageNumber: number; base64: string }[];
+  classificationMetadata: {
+    criticalPageNumbers: number[];
+    pageLabels: Record<number, string>;
+    packageMetadata: any;
+  };
 }
 
 export interface RouterOutput {
@@ -37,7 +42,7 @@ export interface RouterOutput {
  * Does NOT run classification — only receives results and decides strategy
  */
 export async function route(input: RouterInput): Promise<RouterOutput> {
-  const { criticalImages, packageMetadata, highDpiPages } = input;
+  const { criticalImages, packageMetadata, highDpiPages, classificationMetadata } = input;
   const { detectedFormCodes } = packageMetadata;
 
   console.log('[router] Received classification results');
@@ -62,32 +67,16 @@ export async function route(input: RouterInput): Promise<RouterOutput> {
   // ROUTE 1: California-specific extraction (if enabled and detected)
   if (isCalifornia && highResCriticalImages.length > 0) {
     console.log('[router] Routing to California extractor');
-    
-    // NOTE: California extractor currently disabled in your codebase
-    // Uncomment when ready to use:
-    /*
-    try {
-      const result = await californiaExtractor(highResCriticalImages, packageMetadata);
-      console.log('[router] California extraction succeeded');
-      return {
-        universal: result.universal,
-        details: result.details ?? null,
-        timelineEvents: result.timelineEvents ?? [],
-        needsReview: result.needsReview,
-        route: 'california',
-      };
-    } catch (error: any) {
-      console.error('[router] California extractor failed, falling back to universal:', error);
-      // Fall through to universal
-    }
-    */
-    
     console.log('[router] California extractor disabled, using universal fallback');
   }
 
   // ROUTE 2: Universal extraction (fallback or primary)
   console.log('[router] Routing to universal extractor');
-  const universalResult = await universalExtractor(highResCriticalImages, packageMetadata);
+  const universalResult = await universalExtractor(
+    highResCriticalImages, 
+    packageMetadata,
+    classificationMetadata  // v2.1.0: Pass classification metadata
+  );
 
   return {
     universal: universalResult.universal,
@@ -97,9 +86,3 @@ export async function route(input: RouterInput): Promise<RouterOutput> {
     route: isCalifornia ? 'california-fallback-universal' : 'universal',
   };
 }
-
-// Future routes can be added here:
-// - texasExtractor (TREC forms)
-// - floridaExtractor (FAR/BAR forms)
-// - nevadaExtractor (NV RPA)
-// etc.
