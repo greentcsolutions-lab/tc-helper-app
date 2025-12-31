@@ -1,6 +1,6 @@
 // src/lib/extraction/extract/universal/post-processor.ts
-// Version: 4.0.0 - 2025-12-31
-// MODULAR: Main orchestration only, logic in helpers/
+// Version: 5.0.0 - 2025-12-31
+// ENHANCED: Field-specific override rules with buyer/seller counter detection
 
 import type { PerPageExtraction, EnrichedPageExtraction, MergeResult } from '@/types/extraction';
 import { enrichWithMetadata } from './helpers/enrichment';
@@ -64,7 +64,7 @@ function executeMergePipeline(
   provenance: Record<string, number>,
   mergeLog: string[]
 ): Record<string, any> {
-  // Pipeline: RPA → Counters → Addenda → Signatures → Brokers → Coercion → Dates
+  // Pipeline: Main Contract → Counters → Addenda → Signatures → Brokers → Coercion → Dates
   
   const steps = [
     { filter: (p: EnrichedPageExtraction) => p.pageRole === 'main_contract', name: 'MAIN_CONTRACT', isOverride: false },
@@ -87,7 +87,7 @@ function executeMergePipeline(
     console.log(`[post-processor] Step ${index + 1}: ${step.isOverride ? 'Applying' : 'Found'} ${pages.length} ${step.name.toLowerCase()} pages`);
     
     finalTerms = step.isOverride
-      ? applyOverrides(finalTerms, pages, step.name, provenance, mergeLog)
+      ? applyOverrides(finalTerms, pages, step.name, provenance, mergeLog, enrichedPages)
       : mergePages(pages, step.name, provenance, mergeLog);
   });
   
