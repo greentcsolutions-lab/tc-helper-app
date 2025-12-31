@@ -1,7 +1,6 @@
 // src/app/api/parse/extract/[parseId]/route.ts
-// Version: 4.0.0 - 2025-12-30
-// BREAKING CHANGE: Uses single 200 DPI ZIP (renderZipUrl) instead of highResZipUrl
-// OPTIMIZED: Extraction now uses same 200 DPI images as classification
+// Version: 4.1.0 - 2025-12-31
+// UPDATED: Simplified logging - only confirms page matching, delegates Grok response logging to client
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
@@ -33,7 +32,7 @@ export async function POST(
         id: true,
         userId: true,
         status: true,
-        renderZipUrl: true,  // CHANGED: Now using universal renderZipUrl
+        renderZipUrl: true,
         classificationCache: true,
         user: { select: { clerkId: true } },
       },
@@ -54,7 +53,7 @@ export async function POST(
       return Response.json({ error: `Invalid status: ${parse.status}` }, { status: 400 });
     }
 
-    if (!parse.renderZipUrl) {  // CHANGED: Check renderZipUrl instead of highResZipUrl
+    if (!parse.renderZipUrl) {
       logError("EXTRACT:1", "Missing render ZIP");
       return Response.json({ error: "Rendering not complete" }, { status: 400 });
     }
@@ -71,40 +70,31 @@ export async function POST(
       state: string;
     };
 
-    console.log(`\n${"=".repeat(80)}`);
-    console.log(`[extract] 🔍 DIAGNOSTIC: Classification loaded from database`);
-    console.log(`${"=".repeat(80)}`);
-    console.log(`[extract] 🔍 criticalPageNumbers: [${classificationMetadata.criticalPageNumbers?.join(', ') || 'EMPTY'}]`);
-    console.log(`[extract] 🔍 pageLabels keys: [${Object.keys(classificationMetadata.pageLabels || {}).join(', ')}]`);
-    console.log(`[extract] 🔍 detectedFormCodes: [${classificationMetadata.packageMetadata?.detectedFormCodes?.join(', ') || 'NONE'}]`);
-    console.log(`${"=".repeat(80)}\n`);
-
+    // SIMPLIFIED: Just confirm we have the right pages
     console.log(`[extract] LOADED: ${classificationMetadata.criticalPageNumbers.length} pages [${classificationMetadata.criticalPageNumbers.join(',')}] forms=[${classificationMetadata.packageMetadata.detectedFormCodes.join(',')}]`);
     logSuccess("EXTRACT:1", `Loaded ${classificationMetadata.criticalPageNumbers.length} critical pages`);
 
     logStep("EXTRACT:2", "Downloading 200 DPI pages...");
     
-    console.log(`\n${"=".repeat(80)}`);
-    console.log(`[extract] 🔍 DIAGNOSTIC: About to extract pages from ZIP`);
-    console.log(`${"=".repeat(80)}`);
-    console.log(`[extract] 🔍 renderZipUrl: ${parse.renderZipUrl}`);  // CHANGED: Log renderZipUrl
-    console.log(`[extract] 🔍 Requesting these page numbers: [${classificationMetadata.criticalPageNumbers.join(', ')}]`);
-    console.log(`[extract] 🔍 Number of pages to extract: ${classificationMetadata.criticalPageNumbers.length}`);
-    console.log(`${"=".repeat(80)}\n`);
-    
     const criticalPages = await extractSpecificPagesFromZip(
-      parse.renderZipUrl,  // CHANGED: Use universal renderZipUrl
+      parse.renderZipUrl,
       classificationMetadata.criticalPageNumbers
     );
 
-    console.log(`\n${"=".repeat(80)}`);
-    console.log(`[extract] 🔍 DIAGNOSTIC: Pages extracted from ZIP`);
-    console.log(`${"=".repeat(80)}`);
-    console.log(`[extract] 🔍 Received ${criticalPages.length} pages from extractSpecificPagesFromZip`);
-    console.log(`[extract] 🔍 Extracted page numbers: [${criticalPages.map(p => p.pageNumber).join(', ')}]`);
-    console.log(`[extract] 🔍 Expected page numbers: [${classificationMetadata.criticalPageNumbers.join(', ')}]`);
-    console.log(`[extract] 🔍 Match: ${criticalPages.length === classificationMetadata.criticalPageNumbers.length ? '✅ YES' : '❌ NO'}`);
-    console.log(`${"=".repeat(80)}\n`);
+    // SIMPLIFIED: Just verify page numbers match
+    const expectedPages = new Set(classificationMetadata.criticalPageNumbers);
+    const receivedPages = new Set(criticalPages.map(p => p.pageNumber));
+    const pagesMatch = expectedPages.size === receivedPages.size && 
+                       [...expectedPages].every(p => receivedPages.has(p));
+
+    console.log(`[extract] VERIFY: ${pagesMatch ? '✅' : '❌'} Pages match (expected ${expectedPages.size}, got ${receivedPages.size})`);
+    
+    if (!pagesMatch) {
+      const missing = [...expectedPages].filter(p => !receivedPages.has(p));
+      const unexpected = [...receivedPages].filter(p => !expectedPages.has(p));
+      if (missing.length > 0) console.error(`[extract] Missing pages: [${missing.join(',')}]`);
+      if (unexpected.length > 0) console.warn(`[extract] Unexpected pages: [${unexpected.join(',')}]`);
+    }
 
     const criticalImages = criticalPages.map(page => ({
       pageNumber: page.pageNumber,
@@ -112,42 +102,15 @@ export async function POST(
       label: classificationMetadata.pageLabels[page.pageNumber] || `Page ${page.pageNumber}`,
     }));
 
-    // Verify reconstruction
-    const expectedPages = new Set(classificationMetadata.criticalPageNumbers);
-    const reconstructedPages = new Set(criticalImages.map(img => img.pageNumber));
-    const missing = [...expectedPages].filter(p => !reconstructedPages.has(p));
-    const unexpected = [...reconstructedPages].filter(p => !expectedPages.has(p));
-
-    if (missing.length > 0) {
-      console.error(`[extract] MISSING PAGES: [${missing.join(',')}]`);
-    }
-    if (unexpected.length > 0) {
-      console.warn(`[extract] UNEXPECTED PAGES: [${unexpected.join(',')}]`);
-    }
-    if (missing.length === 0 && unexpected.length === 0) {
-      console.log(`[extract] VERIFY OK: All ${criticalImages.length} pages matched`);
-    }
-
     logSuccess("EXTRACT:2", `Downloaded ${criticalImages.length} pages at 200 DPI`);
 
     logStep("EXTRACT:3", "Running extractor...");
-    
-    console.log(`\n${"=".repeat(80)}`);
-    console.log(`[extract] 🔍 DIAGNOSTIC: About to send to extractor`);
-    console.log(`${"=".repeat(80)}`);
-    console.log(`[extract] 🔍 criticalImages count: ${criticalImages.length}`);
-    console.log(`[extract] 🔍 criticalImages page numbers: [${criticalImages.map(i => i.pageNumber).join(', ')}]`);
-    console.log(`[extract] 🔍 Sample labels:`);
-    criticalImages.slice(0, 3).forEach(img => {
-      console.log(`[extract] 🔍   Page ${img.pageNumber}: "${img.label}"`);
-    });
-    console.log(`${"=".repeat(80)}\n`);
     
     const { universal, details, timelineEvents, needsReview, route: extractionRoute } = 
       await route({
         criticalImages,
         packageMetadata: classificationMetadata.packageMetadata,
-        highDpiPages: criticalPages,  // Now 200 DPI instead of 300 DPI
+        highDpiPages: criticalPages,
       });
 
     logSuccess("EXTRACT:3", `Extraction via ${extractionRoute} — needsReview: ${needsReview}`);

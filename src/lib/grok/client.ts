@@ -1,7 +1,6 @@
 // src/lib/grok/client.ts
-// Version: 2.1.0 - 2025-12-30
-// OPTIMIZED: Token limits adjusted for $0.05-0.10 per call budget
-// UPDATED: Default maxTokens reduced from 16384 to 6144
+// Version: 2.2.0 - 2025-12-31
+// ENHANCED: Expanded response logging to show full JSON objects for debugging
 
 export interface GrokPage {
   pageNumber: number;
@@ -114,7 +113,7 @@ export function extractJSONFromGrokResponse<T>(
  * Sends images to Grok using the EXACT pattern from the working classifier
  * Returns parsed JSON or throws error
  * 
- * v2.1.0: Default maxTokens reduced to 6144 for cost optimization
+ * v2.2.0: Enhanced response logging to show full JSON objects
  */
 export async function callGrokAPI<T>(
   prompt: string,
@@ -150,7 +149,7 @@ export async function callGrokAPI<T>(
   };
   
   console.log(`${logPrefix}:api] Request content blocks: ${requestBody.messages[0].content.length}`);
-  console.log(`${logPrefix}:api] Max tokens: ${maxTokens}`); // Log for debugging
+  console.log(`${logPrefix}:api] Max tokens: ${maxTokens}`);
   
   // STEP 2: Fetch EXACTLY like classifier
   const res = await fetch('https://api.x.ai/v1/chat/completions', {
@@ -181,6 +180,53 @@ export async function callGrokAPI<T>(
   
   // STEP 5: Extract JSON EXACTLY like classifier
   const json = extractJSONFromGrokResponse<T>(text, logPrefix, expectObject);
+  
+  // ============================================================================
+  // v2.2.0: ENHANCED LOGGING - Show actual parsed JSON structure
+  // ============================================================================
+  console.log(`\n${logPrefix}:parsed] ${"═".repeat(70)}`);
+  console.log(`${logPrefix}:parsed] PARSED JSON STRUCTURE`);
+  console.log(`${logPrefix}:parsed] ${"═".repeat(70)}`);
+  
+  if (Array.isArray(json)) {
+    console.log(`${logPrefix}:parsed] Type: Array with ${json.length} items`);
+    
+    // Show first 2 complete objects to respect Vercel limits
+    const itemsToShow = Math.min(2, json.length);
+    for (let i = 0; i < itemsToShow; i++) {
+      console.log(`${logPrefix}:parsed] ─────────────────────────────────────────`);
+      console.log(`${logPrefix}:parsed] Item ${i + 1}/${json.length}:`);
+      console.log(JSON.stringify(json[i], null, 2));
+    }
+    
+    if (json.length > 2) {
+      console.log(`${logPrefix}:parsed] ─────────────────────────────────────────`);
+      console.log(`${logPrefix}:parsed] ... ${json.length - 2} more items not shown (Vercel log limit)`);
+    }
+    
+    // Show summary of all items
+    console.log(`${logPrefix}:parsed] ─────────────────────────────────────────`);
+    console.log(`${logPrefix}:parsed] Summary of all ${json.length} items:`);
+    json.forEach((item: any, idx: number) => {
+      if (typeof item === 'object' && item !== null) {
+        const keys = Object.keys(item);
+        const nonNullKeys = keys.filter(k => item[k] !== null && item[k] !== undefined);
+        console.log(`${logPrefix}:parsed]   [${idx}] ${nonNullKeys.length}/${keys.length} fields with data`);
+        if (item.pageNumber) console.log(`${logPrefix}:parsed]       pageNumber: ${item.pageNumber}`);
+        if (item.pageLabel) console.log(`${logPrefix}:parsed]       pageLabel: "${item.pageLabel}"`);
+        if (item.pageRole) console.log(`${logPrefix}:parsed]       pageRole: ${item.pageRole}`);
+      }
+    });
+    
+  } else if (typeof json === 'object' && json !== null) {
+    console.log(`${logPrefix}:parsed] Type: Object`);
+    console.log(JSON.stringify(json, null, 2));
+  } else {
+    console.log(`${logPrefix}:parsed] Type: ${typeof json}`);
+    console.log(`${logPrefix}:parsed] Value:`, json);
+  }
+  
+  console.log(`${logPrefix}:parsed] ${"═".repeat(70)}\n`);
   
   return json;
 }
