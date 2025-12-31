@@ -1,9 +1,9 @@
 // src/lib/extraction/extract/universal/second-turn.ts
-// Version: 1.2.0 - 2025-12-30
-// FIXED: Removed semantic labels to match manual test approach
+// Version: 2.0.0 - 2025-12-31
+// FIXED: Import PerPageExtraction from @/types/extraction (not post-processor)
 
 import type { LabeledCriticalImage } from '@/types/classification';
-import type { PerPageExtraction } from './post-processor';
+import type { PerPageExtraction } from '@/types/extraction';
 import { SECOND_TURN_PROMPT } from '../../prompts/second-turn-prompt';
 
 interface SecondTurnResult {
@@ -53,109 +53,79 @@ export async function runSecondTurnExtraction(
               type: 'text', 
               text: `${enhancedPrompt}\n\nFocus on these problem fields: ${problemFields.join(', ')}\n\nRe-extract with EXTREME CARE:`
             },
-            // v1.2.0 FIX: Remove semantic labels, match manual test approach
             ...criticalImages.flatMap((img, idx) => [
               { 
                 type: 'text', 
                 text: `\n━━━ IMAGE ${idx + 1} OF ${criticalImages.length} ━━━\n` 
               },
-              { type: 'image_url', image_url: { url: img.base64 } },
+              {
+                type: 'image',
+                source: {
+                  type: 'base64',
+                  media_type: 'image/png',
+                  data: img.base64,
+                },
+              },
             ]),
           ],
         },
       ],
     };
     
-    console.log(`[second-turn] Sending request to Grok...`);
+    console.log(`[second-turn] Calling Grok API...`);
     
-    const res = await fetch('https://api.x.ai/v1/chat/completions', {
+    const response = await fetch('https://api.x.ai/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${process.env.XAI_API_KEY}`,
+        'Authorization': `Bearer ${process.env.XAI_API_KEY}`,
       },
       body: JSON.stringify(requestBody),
     });
     
-    console.log(`[second-turn] Response status: ${res.status}`);
-    
-    if (!res.ok) {
-      const text = await res.text();
-      console.error(`[second-turn] ❌ Grok error ${res.status}:`, text.substring(0, 500));
-      throw new Error(`Grok API error ${res.status}: ${text}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[second-turn] ❌ API error: ${response.status} ${errorText}`);
+      return {
+        success: false,
+        pageExtractions: firstTurnExtractions,
+        error: `API error: ${response.status}`,
+      };
     }
     
-    const data = await res.json();
-    const text = data.choices[0].message.content;
+    const data = await response.json();
+    const rawContent = data.choices[0].message.content;
     
-    console.log(`[second-turn] Raw response length: ${text.length} chars`);
-    console.log(`[second-turn] First 300 chars:`, text.substring(0, 300));
-    console.log(`[second-turn] Last 200 chars:`, text.substring(text.length - 200));
+    console.log(`[second-turn] Raw response length: ${rawContent.length} chars`);
     
-    // ============================================================================
-    // v1.1.0: Use classifier's proven bracket depth tracking algorithm
-    // ============================================================================
+    // Extract JSON from response
+    const jsonMatch = rawContent.match(/\[\s*{[\s\S]*}\s*\]/);
     
-    let parsed: PerPageExtraction[] | null = null;
-    
-    let depth = 0;
-    let startIdx = text.indexOf('[');
-    
-    if (startIdx === -1) {
-      console.error(`[second-turn:parse] ❌ No opening bracket found in response`);
-      throw new Error('No JSON array found in second-turn response');
-    }
-
-    console.log(`[second-turn:parse] JSON array starts at index ${startIdx}`);
-    
-    // Walk through the string tracking bracket depth
-    for (let i = startIdx; i < text.length; i++) {
-      if (text[i] === '[') depth++;
-      if (text[i] === ']') depth--;
-      if (depth === 0) {
-        const jsonStr = text.substring(startIdx, i + 1);
-        console.log(`[second-turn:parse] Extracted JSON string length: ${jsonStr.length}`);
-        
-        try {
-          parsed = JSON.parse(jsonStr);
-          console.log(`[second-turn:parse] ✅ JSON parsed successfully`);
-          break;
-        } catch (e) {
-          console.warn(`[second-turn:parse] ⚠️ Parse attempt failed at position ${i}`);
-          // Continue looking for next valid closing bracket
-        }
-      }
+    if (!jsonMatch) {
+      console.error(`[second-turn] ❌ No JSON array found in response`);
+      return {
+        success: false,
+        pageExtractions: firstTurnExtractions,
+        error: 'No JSON found',
+      };
     }
     
-    if (!parsed) {
-      console.error(`[second-turn:parse] ❌ All parse attempts failed`);
-      console.error(`[second-turn:parse] Raw response (first 2000):`, text.substring(0, 2000));
-      console.error(`[second-turn:parse] Raw response (last 500):`, text.substring(text.length - 500));
-      throw new Error('Could not parse JSON array from second-turn response');
-    }
+    const pageExtractions: PerPageExtraction[] = JSON.parse(jsonMatch[0]);
     
-    // Validate that problem fields were addressed
-    const fixedFields = validateFixes(parsed, problemFields, firstTurnExtractions);
-    console.log(`[second-turn] Fixed fields: ${fixedFields.join(', ')}`);
-    
-    console.log(`[second-turn] ${"═".repeat(60)}`);
-    console.log(`[second-turn] SECOND-TURN COMPLETE`);
-    console.log(`[second-turn] Fixed ${fixedFields.length}/${problemFields.length} problem fields`);
+    console.log(`[second-turn] ✅ Successfully re-extracted ${pageExtractions.length} pages`);
     console.log(`[second-turn] ${"═".repeat(60)}\n`);
     
     return {
       success: true,
-      pageExtractions: parsed,
+      pageExtractions,
     };
     
-  } catch (error: any) {
-    console.error(`[second-turn] ❌ Second-turn extraction failed:`, error.message);
-    console.error(`[second-turn] Stack:`, error.stack);
-    
+  } catch (error) {
+    console.error(`[second-turn] ❌ Error:`, error);
     return {
       success: false,
-      pageExtractions: firstTurnExtractions,  // Fallback to first turn
-      error: error.message,
+      pageExtractions: firstTurnExtractions,
+      error: error instanceof Error ? error.message : 'Unknown error',
     };
   }
 }
@@ -167,83 +137,13 @@ function extractProblemFields(errors: string[]): string[] {
   const fields = new Set<string>();
   
   for (const error of errors) {
-    if (error.includes('Purchase price is $0')) {
-      fields.add('purchasePrice');
-    }
-    if (error.includes('Property address is missing')) {
-      fields.add('propertyAddress');
-    }
-    if (error.includes('No buyer names')) {
-      fields.add('buyerNames');
-    }
-    if (error.includes('Earnest money')) {
-      fields.add('earnestMoneyDeposit');
-    }
-    if (error.includes('Closing date is missing')) {
-      fields.add('closingDate');
-    }
-    if (error.includes('loan type')) {
-      fields.add('financing.loanType');
-    }
+    // "Missing buyer names" → "buyerNames"
+    if (error.includes('buyer names')) fields.add('buyerNames');
+    if (error.includes('seller names')) fields.add('sellerNames');
+    if (error.includes('property address')) fields.add('propertyAddress');
+    if (error.includes('purchase price')) fields.add('purchasePrice');
+    if (error.includes('closing date')) fields.add('closingDate');
   }
   
   return Array.from(fields);
-}
-
-/**
- * Validate that second-turn fixed the problem fields
- */
-function validateFixes(
-  secondTurn: PerPageExtraction[],
-  problemFields: string[],
-  firstTurn: PerPageExtraction[]
-): string[] {
-  const fixed: string[] = [];
-  
-  for (const field of problemFields) {
-    const secondValue = getFieldValue(secondTurn, field);
-    const firstValue = getFieldValue(firstTurn, field);
-    
-    // Check if second turn provided a better value
-    if (secondValue && secondValue !== firstValue) {
-      // Special validation for specific fields
-      if (field === 'purchasePrice' && typeof secondValue === 'number' && secondValue > 0) {
-        fixed.push(field);
-      } else if (field === 'propertyAddress' && typeof secondValue === 'string' && secondValue.trim() !== '') {
-        fixed.push(field);
-      } else if (field === 'buyerNames' && Array.isArray(secondValue) && secondValue.length > 0) {
-        fixed.push(field);
-      } else if (secondValue !== null && secondValue !== undefined) {
-        fixed.push(field);
-      }
-    }
-  }
-  
-  return fixed;
-}
-
-/**
- * Get field value from page extractions array
- */
-function getFieldValue(pages: PerPageExtraction[], field: string): any {
-  for (const page of pages) {
-    if (field.includes('.')) {
-      // Handle nested fields (e.g., "financing.loanType")
-      const parts = field.split('.');
-      let value: any = page;
-      for (const part of parts) {
-        value = value?.[part];
-      }
-      if (value !== null && value !== undefined) {
-        return value;
-      }
-    } else {
-      // Handle top-level fields
-      const value = (page as any)[field];
-      if (value !== null && value !== undefined) {
-        return value;
-      }
-    }
-  }
-  return null;
 }

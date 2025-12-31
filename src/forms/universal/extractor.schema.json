@@ -93,11 +93,13 @@
       "buyerSignatureDates": {
         "type": ["array", "null"],
         "items": { "type": "string" },
+        "description": "Buyer signature dates EXACTLY as written on THIS page. Do NOT normalize format. Extract ALL buyer signatures visible. Examples: '1/15/24', '01-15-2024', 'January 15, 2024'",
         "example": ["1/15/24", "1/15/24"]
       },
       "sellerSignatureDates": {
         "type": ["array", "null"],
         "items": { "type": "string" },
+        "description": "Seller signature dates EXACTLY as written on THIS page. Do NOT normalize format. Extract ALL seller signatures visible. Examples: '1/10/24', '01-10-2024', 'January 10, 2024'",
         "example": ["1/10/24"]
       },
       "escrowHolder": {
