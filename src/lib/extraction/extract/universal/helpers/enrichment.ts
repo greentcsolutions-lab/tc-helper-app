@@ -1,6 +1,7 @@
+// TC Helper App
 // src/lib/extraction/extract/universal/helpers/enrichment.ts
-// Version: 1.0.0 - 2025-12-31
-// Classification metadata enrichment logic
+// Version: 2.0.0 - 2025-12-31
+// FIXED: Removed 'signatures' pageRole - signature sections are always part of their parent document
 
 import type { PerPageExtraction, EnrichedPageExtraction } from '@/types/extraction';
 
@@ -42,8 +43,12 @@ function inferPageRole(label: string): EnrichedPageExtraction['pageRole'] {
   
   if (lower.includes('counter')) return 'counter_offer';
   if (lower.includes('addendum') || lower.includes('adm') || lower.includes('fvac')) return 'addendum';
-  if (lower.includes('signature') || lower.includes('acceptance')) return 'signatures';
   if (lower.includes('broker')) return 'broker_info';
+  
+  // IMPORTANT: Signature pages are NEVER standalone - they're always part of their parent document
+  // RPA signature pages → main_contract
+  // Counter offer signature pages → counter_offer
+  // Addendum signature pages → addendum
   
   return 'main_contract';
 }

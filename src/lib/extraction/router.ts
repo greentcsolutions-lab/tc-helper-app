@@ -1,6 +1,7 @@
+// TC Helper App
 // src/lib/extraction/router.ts
-// Version: 2.1.0 - 2025-12-31
-// UPDATED: Now passes classification metadata to universal extractor
+// Version: 3.0.0 - 2025-12-31
+// FIXED: Updated universalExtractor call signature (removed packageMetadata parameter)
 
 import { californiaExtractor } from './extract/california/index';
 import { universalExtractor } from './extract/universal/index';
@@ -72,10 +73,13 @@ export async function route(input: RouterInput): Promise<RouterOutput> {
 
   // ROUTE 2: Universal extraction (fallback or primary)
   console.log('[router] Routing to universal extractor');
+  
+  // FIXED v3.0.0: universalExtractor now only takes 2 parameters:
+  // 1. criticalImages (with high-DPI base64)
+  // 2. classificationMetadata (contains criticalPageNumbers, pageLabels, packageMetadata)
   const universalResult = await universalExtractor(
-    highResCriticalImages, 
-    packageMetadata,
-    classificationMetadata  // v2.1.0: Pass classification metadata
+    highResCriticalImages,
+    classificationMetadata
   );
 
   return {

@@ -1,6 +1,7 @@
+// TC Helper App
 // src/lib/extraction/extract/universal/post-processor.ts
-// Version: 5.0.0 - 2025-12-31
-// ENHANCED: Field-specific override rules with buyer/seller counter detection
+// Version: 6.0.0 - 2025-12-31
+// FIXED: Removed 'signatures' step - signature sections are part of their parent documents
 
 import type { PerPageExtraction, EnrichedPageExtraction, MergeResult } from '@/types/extraction';
 import { enrichWithMetadata } from './helpers/enrichment';
@@ -64,13 +65,13 @@ function executeMergePipeline(
   provenance: Record<string, number>,
   mergeLog: string[]
 ): Record<string, any> {
-  // Pipeline: Main Contract → Counters → Addenda → Signatures → Brokers → Coercion → Dates
+  // Pipeline: Main Contract → Counters → Addenda → Brokers → Coercion → Dates
+  // REMOVED: Signatures step - signatures are part of their parent documents
   
   const steps = [
     { filter: (p: EnrichedPageExtraction) => p.pageRole === 'main_contract', name: 'MAIN_CONTRACT', isOverride: false },
     { filter: (p: EnrichedPageExtraction) => p.pageRole === 'counter_offer', name: 'COUNTER_OFFER', isOverride: true },
     { filter: (p: EnrichedPageExtraction) => p.pageRole === 'addendum', name: 'ADDENDUM', isOverride: true },
-    { filter: (p: EnrichedPageExtraction) => p.pageRole === 'signatures', name: 'SIGNATURES', isOverride: true },
     { filter: (p: EnrichedPageExtraction) => p.pageRole === 'broker_info', name: 'BROKER_INFO', isOverride: true },
   ];
   
@@ -92,18 +93,18 @@ function executeMergePipeline(
   });
   
   // Type coercion
-  console.log(`[post-processor] Step 6: Coercing types...`);
+  console.log(`[post-processor] Step ${steps.length + 1}: Coercing types...`);
   finalTerms = coerceAllTypes(finalTerms, mergeLog);
   
   // Effective date calculation
-  console.log(`[post-processor] Step 7: Calculating effective date...`);
+  console.log(`[post-processor] Step ${steps.length + 2}: Calculating effective date...`);
   finalTerms.effectiveDate = calculateEffectiveDate(enrichedPages, mergeLog);
   if (finalTerms.effectiveDate) {
     mergeLog.push(`📅 effectiveDate calculated: ${finalTerms.effectiveDate}`);
   }
   
   // Date normalization
-  console.log(`[post-processor] Step 8: Normalizing dates...`);
+  console.log(`[post-processor] Step ${steps.length + 3}: Normalizing dates...`);
   finalTerms = normalizeDates(finalTerms, mergeLog);
   
   return finalTerms;

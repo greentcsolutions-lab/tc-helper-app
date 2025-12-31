@@ -1,47 +1,11 @@
+// TC Helper App
 // src/types/extraction.ts
-// Version: 3.0.0 - 2025-12-31
-// UPDATED: Added PerPageExtraction and EnrichedPageExtraction types
-
-export interface UniversalExtractionResult {
-  buyerNames: string[];
-  sellerNames: string[];
-  propertyAddress: string;
-  purchasePrice: number;
-  earnestMoneyDeposit: {
-    amount: number | null;
-    holder: string | null;
-  };
-  closingDate: string | number | null;
-  financing: {
-    isAllCash: boolean;
-    loanType: "Conventional" | "FHA" | "VA" | "USDA" | "Other" | null;
-    loanAmount: number | null;
-  };
-  contingencies: {
-    inspectionDays: number | string | null;
-    appraisalDays: number | string | null;
-    loanDays: number | string | null;
-    saleOfBuyerProperty: boolean;
-  };
-  closingCosts: {
-    buyerPays: string[];
-    sellerPays: string[];
-    sellerCreditAmount: number | null;
-  };
-  brokers: {
-    listingBrokerage: string | null;
-    listingAgent: string | null;
-    sellingBrokerage: string | null;
-    sellingAgent: string | null;
-  };
-  personalPropertyIncluded: string[];
-  effectiveDate: string | null;
-  escrowHolder: string | null;
-}
+// Version: 2.0.0 - 2025-12-31
+// FIXED: Removed 'signatures' from pageRole - signature sections are part of their parent documents
 
 /**
- * Per-page extraction result (LEAN - no classification metadata)
- * This is what Grok returns for each page
+ * Per-page extraction result from Grok (pure OCR extraction)
+ * No classification metadata - just raw field extraction
  */
 export interface PerPageExtraction {
   buyerNames?: string[] | null;
@@ -52,7 +16,7 @@ export interface PerPageExtraction {
     amount: number | null;
     holder: string | null;
   } | null;
-  closingDate?: string | number | null;
+  closingDate?: string | null;
   financing?: {
     isAllCash: boolean | null;
     loanType: string | null;
@@ -62,7 +26,7 @@ export interface PerPageExtraction {
     inspectionDays: number | string | null;
     appraisalDays: number | string | null;
     loanDays: number | string | null;
-    saleOfBuyerProperty: boolean | null;
+    saleOfBuyerProperty: boolean;
   } | null;
   closingCosts?: {
     buyerPays: string[] | null;
@@ -88,13 +52,58 @@ export interface PerPageExtraction {
 /**
  * Enriched per-page extraction WITH classification metadata
  * Internal use only - combines Grok extraction with classification cache
+ * 
+ * IMPORTANT: 'signatures' role removed - signature sections are always part of their parent document:
+ * - RPA signature pages → 'main_contract'
+ * - Counter offer signature pages → 'counter_offer'
+ * - Addendum signature pages → 'addendum'
  */
 export interface EnrichedPageExtraction extends PerPageExtraction {
   pageNumber: number;
   pageLabel: string;
   formCode: string;
   formPage: number | null;
-  pageRole: 'main_contract' | 'counter_offer' | 'addendum' | 'signatures' | 'broker_info';
+  pageRole: 'main_contract' | 'counter_offer' | 'addendum' | 'broker_info';
+}
+
+/**
+ * Final merged result across all critical pages
+ */
+export interface UniversalExtractionResult {
+  buyerNames: string[] | null;
+  sellerNames: string[] | null;
+  propertyAddress: string | null;
+  purchasePrice: number | null;
+  earnestMoneyDeposit: {
+    amount: number | null;
+    holder: string | null;
+  } | null;
+  closingDate: string | null;
+  effectiveDate: string | null;
+  financing: {
+    isAllCash: boolean;
+    loanType: "Conventional" | "FHA" | "VA" | "USDA" | "Other" | null;
+    loanAmount: number | null;
+  } | null;
+  contingencies: {
+    inspectionDays: number | string | null;
+    appraisalDays: number | string | null;
+    loanDays: number | string | null;
+    saleOfBuyerProperty: boolean;
+  } | null;
+  closingCosts: {
+    buyerPays: string[];
+    sellerPays: string[];
+    sellerCreditAmount: number | null;
+  } | null;
+  brokers: {
+    listingBrokerage: string | null;
+    listingAgent: string | null;
+    sellingBrokerage: string | null;
+    sellingAgent: string | null;
+  } | null;
+  personalPropertyIncluded: string[] | null;
+  escrowHolder: string | null;
 }
 
 /**
