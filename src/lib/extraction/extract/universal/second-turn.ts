@@ -1,10 +1,15 @@
 // src/lib/extraction/extract/universal/second-turn.ts
-// Version: 2.0.0 - 2025-12-31
-// FIXED: Import PerPageExtraction from @/types/extraction (not post-processor)
+// Version: 3.0.0 - 2026-01-01
+// MAJOR UPDATE: Refactored to use centralized Grok client with retry logic and validation
+// - Replaced direct fetch() call with callGrokAPIWithRetryAndValidation()
+// - Fixed image format to match centralized client (image_url instead of Anthropic format)
+// - Inherits JSON mode, retry logic, and enhanced logging from centralized client
+// Previous: 2.0.0 - Import fix for PerPageExtraction
 
 import type { LabeledCriticalImage } from '@/types/classification';
 import type { PerPageExtraction } from '@/types/extraction';
 import { SECOND_TURN_PROMPT } from '../../prompts/second-turn-prompt';
+import { callGrokAPIWithRetryAndValidation, type GrokPage } from '@/lib/grok/client';
 
 interface SecondTurnResult {
   success: boolean;
@@ -39,79 +44,31 @@ export async function runSecondTurnExtraction(
     .replace('{{PROBLEM_FIELDS}}', problemFields.join(', '));
   
   console.log(`[second-turn] Enhanced prompt length: ${enhancedPrompt.length} chars`);
-  
+
+  // Convert critical images to GrokPage format
+  const grokPages: GrokPage[] = criticalImages.map(img => ({
+    pageNumber: img.pageNumber,
+    base64: `data:image/png;base64,${img.base64}`,
+  }));
+
+  // Build final prompt with problem field focus
+  const finalPrompt = `${enhancedPrompt}\n\nFocus on these problem fields: ${problemFields.join(', ')}\n\nRe-extract with EXTREME CARE:`;
+
   try {
-    const requestBody = {
-      model: 'grok-4-1-fast-reasoning',
-      temperature: 0,
-      max_tokens: 8192,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { 
-              type: 'text', 
-              text: `${enhancedPrompt}\n\nFocus on these problem fields: ${problemFields.join(', ')}\n\nRe-extract with EXTREME CARE:`
-            },
-            ...criticalImages.flatMap((img, idx) => [
-              { 
-                type: 'text', 
-                text: `\n━━━ IMAGE ${idx + 1} OF ${criticalImages.length} ━━━\n` 
-              },
-              {
-                type: 'image',
-                source: {
-                  type: 'base64',
-                  media_type: 'image/png',
-                  data: img.base64,
-                },
-              },
-            ]),
-          ],
-        },
-      ],
-    };
-    
-    console.log(`[second-turn] Calling Grok API...`);
-    
-    const response = await fetch('https://api.x.ai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.XAI_API_KEY}`,
+    console.log(`[second-turn] Calling Grok API via centralized client...`);
+
+    // Use centralized client with retry logic and validation
+    const pageExtractions = await callGrokAPIWithRetryAndValidation<PerPageExtraction[]>(
+      finalPrompt,
+      grokPages,
+      {
+        logPrefix: '[second-turn]',
+        maxTokens: 8192,
+        expectObject: false, // Expecting array of extractions
       },
-      body: JSON.stringify(requestBody),
-    });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[second-turn] ❌ API error: ${response.status} ${errorText}`);
-      return {
-        success: false,
-        pageExtractions: firstTurnExtractions,
-        error: `API error: ${response.status}`,
-      };
-    }
-    
-    const data = await response.json();
-    const rawContent = data.choices[0].message.content;
-    
-    console.log(`[second-turn] Raw response length: ${rawContent.length} chars`);
-    
-    // Extract JSON from response
-    const jsonMatch = rawContent.match(/\[\s*{[\s\S]*}\s*\]/);
-    
-    if (!jsonMatch) {
-      console.error(`[second-turn] ❌ No JSON array found in response`);
-      return {
-        success: false,
-        pageExtractions: firstTurnExtractions,
-        error: 'No JSON found',
-      };
-    }
-    
-    const pageExtractions: PerPageExtraction[] = JSON.parse(jsonMatch[0]);
-    
+      criticalImages.length // total pages in document context
+    );
+
     console.log(`[second-turn] ✅ Successfully re-extracted ${pageExtractions.length} pages`);
     console.log(`[second-turn] ${"═".repeat(60)}\n`);
     
