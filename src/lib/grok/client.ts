@@ -211,14 +211,16 @@ export async function callGrokAPI<T>(
   if (Array.isArray(json)) {
     console.log(`${logPrefix}:parsed] Type: Array with ${json.length} items`);
 
-    // DEBUGGING MODE: Show ALL items (temporarily - remove after debugging)
+    // DEBUGGING MODE: Show ALL items (split across multiple log lines for Vercel 4KB limit)
     console.log(`${logPrefix}:parsed] ⚠️ DEBUG MODE: Showing all ${json.length} items`);
-    console.log(`${logPrefix}:parsed] FULL JSON OUTPUT:`);
-    console.log(JSON.stringify(json, null, 2));
-    console.log(`${logPrefix}:parsed] END FULL JSON`)
-    
-    // Show summary of all items
+    for (let i = 0; i < json.length; i++) {
+      console.log(`${logPrefix}:parsed] ─────────────────────────────────────────`);
+      console.log(`${logPrefix}:parsed] Item ${i + 1}/${json.length}:`);
+      console.log(JSON.stringify(json[i], null, 2));
+    }
     console.log(`${logPrefix}:parsed] ─────────────────────────────────────────`);
+
+    // Show summary of all items
     console.log(`${logPrefix}:parsed] Summary of all ${json.length} items:`);
     json.forEach((item: any, idx: number) => {
       if (typeof item === 'object' && item !== null) {
