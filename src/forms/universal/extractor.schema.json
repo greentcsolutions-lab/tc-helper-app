@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://example.com/schemas/universal/extractor.schema.json",
   "title": "Universal U.S. Real Estate Transaction Extraction (Pure Data Extraction)",
-  "description": "Version 6.0.0 - 2025-12-31 - LEAN: Removed classification fields (already known from classifier), pure extraction only",
+  "description": "Version 7.0.0 - 2026-01-01 - Added 'sources' field to confidence object for extraction accountability",
   "type": "array",
   "minItems": 1,
   "items": {
@@ -109,13 +109,33 @@
       "confidence": {
         "type": "object",
         "properties": {
-          "overall": { "type": "integer", "minimum": 0, "maximum": 100 },
+          "overall": { 
+            "type": "integer", 
+            "minimum": 0, 
+            "maximum": 100,
+            "description": "Overall confidence score for this page extraction (0-100)"
+          },
           "fieldScores": {
             "type": "object",
-            "additionalProperties": { "type": "integer", "minimum": 0, "maximum": 100 }
+            "additionalProperties": { 
+              "type": "integer", 
+              "minimum": 0, 
+              "maximum": 100 
+            },
+            "description": "Individual confidence scores for each extracted field"
+          },
+          "sources": {
+            "type": "object",
+            "additionalProperties": { "type": "string" },
+            "description": "REQUIRED: Location on THIS PAGE where each non-null field was found. Prevents hallucination by forcing citation. Example: { 'propertyAddress': 'header table, top 10% of page', 'purchasePrice': 'Section 1A, bold text' }",
+            "example": {
+              "propertyAddress": "top header table labeled 'Property Address'",
+              "purchasePrice": "Section 1A, bold number",
+              "buyerNames": "Print Name field below buyer signature block"
+            }
           }
         },
-        "required": ["overall"]
+        "required": ["overall", "sources"]
       }
     },
     "required": ["confidence"]
