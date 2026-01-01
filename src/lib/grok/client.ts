@@ -1,6 +1,22 @@
 // src/lib/grok/client.ts
-// Version: 2.2.0 - 2025-12-31
-// ENHANCED: Expanded response logging to show full JSON objects for debugging
+// Version: 5.0.0 - 2026-01-01
+// COMPLETE GROK API BEST PRACTICES IMPLEMENTATION
+// Changes in this version:
+// - Migrated to OpenAI SDK for better reliability (v4.0.0)
+// - Added output prefilling (assistant message with '{' or '[') to force immediate JSON
+// - Combined with JSON mode for maximum reliability
+// Previous versions:
+// - 4.0.0: Migrated to OpenAI SDK
+// - 3.0.0: Added JSON mode and retry logic with exponential backoff
+// - 2.2.0: Enhanced response logging
+
+import OpenAI from 'openai';
+
+// Initialize OpenAI SDK configured for xAI endpoint
+const openai = new OpenAI({
+  apiKey: process.env.XAI_API_KEY || '',
+  baseURL: 'https://api.x.ai/v1',
+});
 
 export interface GrokPage {
   pageNumber: number;
@@ -132,11 +148,15 @@ export async function callGrokAPI<T>(
   
   console.log(`${logPrefix}:api] Sending request to Grok...`);
   
-  // STEP 1: Build request body EXACTLY like classifier
+  // STEP 1: Build request body with output prefilling
+  // Output prefilling forces the model to start with JSON immediately (no preamble)
+  const prefillChar = expectObject ? '{' : '[';
+
   const requestBody = {
     model,
     temperature,
     max_tokens: maxTokens,
+    response_format: { type: 'json_object' }, // Enable JSON mode for guaranteed JSON output
     messages: [
       {
         role: 'user',
@@ -145,40 +165,38 @@ export async function callGrokAPI<T>(
           ...formatImagesForGrokAPI(pages, totalPagesInDocument),
         ],
       },
+      {
+        role: 'assistant',
+        content: prefillChar, // Prefill to force immediate JSON output
+      },
     ],
   };
   
   console.log(`${logPrefix}:api] Request content blocks: ${requestBody.messages[0].content.length}`);
   console.log(`${logPrefix}:api] Max tokens: ${maxTokens}`);
-  
-  // STEP 2: Fetch EXACTLY like classifier
-  const res = await fetch('https://api.x.ai/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${process.env.XAI_API_KEY}`,
-    },
-    body: JSON.stringify(requestBody),
-  });
-  
-  console.log(`${logPrefix}:api] Response status: ${res.status}`);
-  
-  // STEP 3: Error handling EXACTLY like classifier
-  if (!res.ok) {
-    const text = await res.text();
-    console.error(`${logPrefix}:api] ❌ Grok error ${res.status}:`, text.substring(0, 500));
-    throw new Error(`Grok API error ${res.status}: ${text}`);
+
+  // STEP 2: Call Grok API via OpenAI SDK
+  let data;
+  try {
+    data = await openai.chat.completions.create(requestBody as any);
+    console.log(`${logPrefix}:api] Response received successfully`);
+  } catch (error: any) {
+    const errorMessage = error?.message || String(error);
+    const statusCode = error?.status || 'unknown';
+    console.error(`${logPrefix}:api] ❌ Grok API error ${statusCode}:`, errorMessage);
+    throw new Error(`Grok API error ${statusCode}: ${errorMessage}`);
   }
-  
-  // STEP 4: Parse response EXACTLY like classifier
-  const data = await res.json();
-  const text = data.choices[0].message.content;
-  
+
+  // STEP 3: Extract response content and prepend prefill character
+  const rawText = data.choices[0].message.content;
+  // Prepend the prefill character since API continues from where we started
+  const text = prefillChar + rawText;
+
   console.log(`${logPrefix}:response] Raw response length: ${text.length} chars`);
   console.log(`${logPrefix}:response] First 300 chars:`, text.substring(0, 300));
   console.log(`${logPrefix}:response] Last 200 chars:`, text.substring(text.length - 200));
-  
-  // STEP 5: Extract JSON EXACTLY like classifier
+
+  // STEP 4: Extract JSON from response (now includes prefill character)
   const json = extractJSONFromGrokResponse<T>(text, logPrefix, expectObject);
   
   // ============================================================================
@@ -229,6 +247,108 @@ export async function callGrokAPI<T>(
   console.log(`${logPrefix}:parsed] ${"═".repeat(70)}\n`);
   
   return json;
+}
+
+// ============================================================================
+// RETRY LOGIC WITH EXPONENTIAL BACKOFF
+// ============================================================================
+
+/**
+ * Calls Grok API with retry logic and exponential backoff
+ * Retries on network errors and rate limits (429)
+ * Does NOT retry on validation errors (content_filter, invalid prompts)
+ *
+ * v3.0.0: Added retry logic for production reliability
+ */
+export async function callGrokAPIWithRetry<T>(
+  prompt: string,
+  pages: GrokPage[],
+  options: GrokCallOptions,
+  totalPagesInDocument?: number,
+  maxRetries: number = 3
+): Promise<T> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await callGrokAPI<T>(prompt, pages, options, totalPagesInDocument);
+    } catch (error) {
+      lastError = error as Error;
+      const errorMessage = error instanceof Error ? error.message : String(error);
+
+      // Don't retry on validation/content errors - these won't fix themselves
+      if (
+        errorMessage.includes('content_filter') ||
+        errorMessage.includes('invalid') ||
+        errorMessage.includes('bad request')
+      ) {
+        console.error(`${options.logPrefix}:retry] Non-retryable error: ${errorMessage}`);
+        throw error;
+      }
+
+      // Retry on network/rate limit errors
+      if (attempt < maxRetries) {
+        const backoffMs = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s, 8s
+        console.warn(
+          `${options.logPrefix}:retry] Attempt ${attempt + 1}/${maxRetries} failed: ${errorMessage}`
+        );
+        console.warn(`${options.logPrefix}:retry] Retrying in ${backoffMs}ms...`);
+        await new Promise(resolve => setTimeout(resolve, backoffMs));
+      } else {
+        console.error(`${options.logPrefix}:retry] All ${maxRetries + 1} attempts failed`);
+      }
+    }
+  }
+
+  throw lastError!;
+}
+
+/**
+ * Enhanced version with both retry AND validation
+ * Use this for maximum reliability
+ */
+export async function callGrokAPIWithRetryAndValidation<T>(
+  prompt: string,
+  pages: GrokPage[],
+  options: GrokCallOptions,
+  totalPagesInDocument?: number,
+  maxRetries: number = 3
+): Promise<T> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await callGrokAPIWithValidation<T>(prompt, pages, options, totalPagesInDocument);
+    } catch (error) {
+      lastError = error as Error;
+      const errorMessage = error instanceof Error ? error.message : String(error);
+
+      // Don't retry on validation/content errors
+      if (
+        errorMessage.includes('content_filter') ||
+        errorMessage.includes('invalid') ||
+        errorMessage.includes('bad request') ||
+        errorMessage.includes('truncated') // Don't retry truncation - need to increase max_tokens
+      ) {
+        console.error(`${options.logPrefix}:retry] Non-retryable error: ${errorMessage}`);
+        throw error;
+      }
+
+      // Retry on network/rate limit errors
+      if (attempt < maxRetries) {
+        const backoffMs = Math.pow(2, attempt) * 1000;
+        console.warn(
+          `${options.logPrefix}:retry] Attempt ${attempt + 1}/${maxRetries} failed: ${errorMessage}`
+        );
+        console.warn(`${options.logPrefix}:retry] Retrying in ${backoffMs}ms...`);
+        await new Promise(resolve => setTimeout(resolve, backoffMs));
+      } else {
+        console.error(`${options.logPrefix}:retry] All ${maxRetries + 1} attempts failed`);
+      }
+    }
+  }
+
+  throw lastError!;
 }
 
 // ============================================================================
@@ -288,10 +408,14 @@ export async function callGrokAPIWithValidation<T>(
   
   console.log(`${logPrefix}:api] Sending request to Grok...`);
   
+  // Build request body with output prefilling
+  const prefillChar = expectObject ? '{' : '[';
+
   const requestBody = {
     model,
     temperature,
     max_tokens: maxTokens,
+    response_format: { type: 'json_object' }, // Enable JSON mode for guaranteed JSON output
     messages: [
       {
         role: 'user',
@@ -300,40 +424,39 @@ export async function callGrokAPIWithValidation<T>(
           ...formatImagesForGrokAPI(pages, totalPagesInDocument),
         ],
       },
+      {
+        role: 'assistant',
+        content: prefillChar, // Prefill to force immediate JSON output
+      },
     ],
   };
   
   console.log(`${logPrefix}:api] Request content blocks: ${requestBody.messages[0].content.length}`);
   console.log(`${logPrefix}:api] Max tokens: ${maxTokens}`);
-  
-  const res = await fetch('https://api.x.ai/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${process.env.XAI_API_KEY}`,
-    },
-    body: JSON.stringify(requestBody),
-  });
-  
-  console.log(`${logPrefix}:api] Response status: ${res.status}`);
-  
-  if (!res.ok) {
-    const text = await res.text();
-    console.error(`${logPrefix}:api] ❌ Grok error ${res.status}:`, text.substring(0, 500));
-    throw new Error(`Grok API error ${res.status}: ${text}`);
+
+  // Call Grok API via OpenAI SDK
+  let data;
+  try {
+    data = await openai.chat.completions.create(requestBody as any);
+    console.log(`${logPrefix}:api] Response received successfully`);
+  } catch (error: any) {
+    const errorMessage = error?.message || String(error);
+    const statusCode = error?.status || 'unknown';
+    console.error(`${logPrefix}:api] ❌ Grok API error ${statusCode}:`, errorMessage);
+    throw new Error(`Grok API error ${statusCode}: ${errorMessage}`);
   }
-  
-  const data = await res.json();
-  
+
   // ✨ ADDED: Validation check (not in original classifier)
   validateFinishReason(data, logPrefix);
-  
-  const text = data.choices[0].message.content;
-  
+
+  // Extract response content and prepend prefill character
+  const rawText = data.choices[0].message.content;
+  const text = prefillChar + rawText;
+
   console.log(`${logPrefix}:response] Raw response length: ${text.length} chars`);
   console.log(`${logPrefix}:response] First 300 chars:`, text.substring(0, 300));
   console.log(`${logPrefix}:response] Last 200 chars:`, text.substring(text.length - 200));
-  
+
   const json = extractJSONFromGrokResponse<T>(text, logPrefix, expectObject);
   
   return json;

@@ -1,6 +1,7 @@
 // src/lib/extraction/prompts/classifier-prompt.ts
-// Version: 6.0.0 - 2025-12-29
-// Classifier prompt for universal U.S. real estate document page classification
+// Version: 7.0.0 - 2026-01-01
+// MAJOR UPDATE: Added few-shot examples for improved classification accuracy
+// Previous: 6.0.0 - Universal U.S. real estate document page classification
 
 import classifierSchema from '@/forms/classifier.schema.json';
 
@@ -219,6 +220,213 @@ Special rules:
 - **If page has ANY critical timeline terms, classify as transaction_terms regardless of blank space**
 - formRevision: Extract exactly as visible; if unclear → null
 - Prioritize footer for formCode, formRevision, formPage/totalPagesInForm
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+### FEW-SHOT CLASSIFICATION EXAMPLES (LEARN FROM THESE)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**Example 1: Main Contract Page with Transaction Terms**
+
+Visual content:
+┌────────────────────────────────────────────────────────┐
+│ Property: 123 Main St, Los Angeles, CA 90210         │
+└────────────────────────────────────────────────────────┘
+
+CALIFORNIA RESIDENTIAL PURCHASE AGREEMENT (RPA)
+
+1. PURCHASE PRICE: $750,000
+2. INITIAL DEPOSIT: $25,000
+3. CLOSE OF ESCROW: 30 days from acceptance
+4. FINANCING: ☑ Conventional  ☐ FHA  ☐ VA
+5. CONTINGENCIES:
+   - Loan Contingency: 21 days
+   - Appraisal Contingency: 17 days
+
+Footer: (RPA PAGE 1 OF 17, Revised 6/25)
+
+Expected classification:
+{
+  "pdfPage": 1,
+  "state": "CA",
+  "formCode": "RPA",
+  "formRevision": "6/25",
+  "formPage": 1,
+  "totalPagesInForm": 17,
+  "role": "main_contract",
+  "titleSnippet": "CALIFORNIA RESIDENTIAL PURCHASE AGREEMENT (RPA)",
+  "confidence": 95,
+  "contentCategory": "transaction_terms",
+  "hasFilledFields": true
+}
+
+Reasoning: Main contract with multiple filled transaction terms. Header property address is ignored for hasFilledFields - we count the 5 substantive fields in the body.
+
+---
+
+**Example 2: Boilerplate Page with Only Header Fields**
+
+Visual content:
+┌────────────────────────────────────────────────────────┐
+│ Property: 123 Main St, Los Angeles, CA 90210         │
+│ Buyer: John Doe        Seller: Jane Smith            │
+└────────────────────────────────────────────────────────┘
+
+MEDIATION AND ARBITRATION: The Parties agree that any
+dispute or claim in law or equity arising between them
+regarding the obligation to purchase or sell the property
+or any other obligation arising from this Agreement which
+is not settled through negotiation shall first be submitted
+to mediation. If the dispute is not resolved by mediation,
+the Parties agree to binding arbitration...
+
+[Dense legal text continues for full page]
+
+Footer: (RPA PAGE 8 OF 17, Revised 6/25)
+
+Expected classification:
+{
+  "pdfPage": 8,
+  "state": "CA",
+  "formCode": "RPA",
+  "formRevision": "6/25",
+  "formPage": 8,
+  "totalPagesInForm": 17,
+  "role": "main_contract",
+  "titleSnippet": "MEDIATION AND ARBITRATION",
+  "confidence": 90,
+  "contentCategory": "boilerplate",
+  "hasFilledFields": false
+}
+
+Reasoning: Even though property/buyer/seller are in header, the MAIN BODY is dense legal boilerplate with no fillable transaction fields. Header fields are formatting, not content.
+
+---
+
+**Example 3: Seller Counter Offer (Override Document)**
+
+Visual content:
+SELLER COUNTER OFFER NO. 1 (SCO)
+
+┌────────────────────────────────────────────────────────┐
+│ Property: 123 Main St, Los Angeles, CA 90210         │
+└────────────────────────────────────────────────────────┘
+
+Seller makes this counter offer to Buyer's offer:
+
+1. Purchase Price is changed to: $765,000
+2. Close of Escrow is changed to: 45 days from acceptance
+3. Initial Deposit is changed to: $30,000
+
+All other terms of Buyer's offer remain the same.
+
+Seller: Jane Smith ____________  Date: 1/15/2024
+
+Footer: (SCO PAGE 1 OF 2, Revised 11/23)
+
+Expected classification:
+{
+  "pdfPage": 18,
+  "state": "CA",
+  "formCode": "SCO",
+  "formRevision": "11/23",
+  "formPage": 1,
+  "totalPagesInForm": 2,
+  "role": "counter_offer",
+  "titleSnippet": "SELLER COUNTER OFFER NO. 1 (SCO)",
+  "confidence": 100,
+  "contentCategory": "transaction_terms",
+  "hasFilledFields": true
+}
+
+Reasoning: Seller counter offer (SCO, not BCO) with 3 filled modified terms. This is an override document that changes the main contract.
+
+---
+
+**Example 4: Addendum with Critical Timeline Terms**
+
+Visual content:
+ADDENDUM NO. 1 (ADM)
+
+┌────────────────────────────────────────────────────────┐
+│ Property: 123 Main St, Los Angeles, CA 90210         │
+└────────────────────────────────────────────────────────┘
+
+The following additional terms are hereby incorporated:
+
+1. Post Inspection and Section 1 Clearance to be completed
+   at Seller's expense within 10 days after acceptance
+
+2. Section 1 Clearance must be delivered to Buyer at least
+   5 days prior to close of escrow
+
+_________________________________________________
+_________________________________________________
+_________________________________________________
+[15 blank lines for additional terms]
+
+Buyer: ___________  Seller: ___________  Date: ___
+
+Footer: (ADM PAGE 1 OF 1, Revised 4/24)
+
+Expected classification:
+{
+  "pdfPage": 20,
+  "state": "CA",
+  "formCode": "ADM",
+  "formRevision": "4/24",
+  "formPage": 1,
+  "totalPagesInForm": 1,
+  "role": "addendum",
+  "titleSnippet": "ADDENDUM NO. 1 (ADM)",
+  "confidence": 95,
+  "contentCategory": "transaction_terms",
+  "hasFilledFields": true
+}
+
+Reasoning: Even though 80% is blank lines, the 2 critical timeline terms in the body count as filled transaction terms. Do NOT classify as boilerplate just because of blank space.
+
+---
+
+**Example 5: Signature Page**
+
+Visual content:
+┌────────────────────────────────────────────────────────┐
+│ Re: 123 Main St, Los Angeles, CA 90210               │
+└────────────────────────────────────────────────────────┘
+
+BUYER AND SELLER ACKNOWLEDGE RECEIPT OF A COPY OF THIS AGREEMENT
+
+By signing below, the Parties agree to the terms above:
+
+BUYER: John Doe                 Date: 1/20/2024
+       _____________________    ______________
+
+SELLER: Jane Smith              Date: 1/18/2024
+        _____________________   ______________
+
+BUYER'S AGENT: Bob Johnson, ABC Realty
+SELLER'S AGENT: Mary Wilson, XYZ Brokers
+
+Footer: (RPA PAGE 17 OF 17, Revised 6/25)
+
+Expected classification:
+{
+  "pdfPage": 17,
+  "state": "CA",
+  "formCode": "RPA",
+  "formRevision": "6/25",
+  "formPage": 17,
+  "totalPagesInForm": 17,
+  "role": "main_contract",
+  "titleSnippet": "BUYER AND SELLER ACKNOWLEDGE RECEIPT OF A COPY OF THIS AGREEMENT",
+  "confidence": 100,
+  "contentCategory": "signatures",
+  "hasFilledFields": true
+}
+
+Reasoning: Primary content is signature blocks and dates. Agent names also visible. This is extractable signature data, so hasFilledFields = true.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Return ONLY valid JSON matching this schema exactly. No other text.
 
