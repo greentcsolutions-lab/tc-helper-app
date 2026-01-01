@@ -1,9 +1,11 @@
 // src/lib/extraction/classify/classifier.ts
-// Version: 7.0.0 - 2025-12-30
-// REFACTORED: Now uses centralized Grok client (minimal v2)
-// - Replaces all fetch/parse logic with callGrokAPI
-// - Maintains EXACT same behavior as v6.3.1
-// - Post-processing logic unchanged
+// Version: 7.1.0 - 2026-01-01
+// ENHANCED: Added validation + retry for Grok API calls
+// - Switched from callGrokAPI → callGrokAPIWithRetryAndValidation
+// - Detects response truncation (finish_reason === 'length')
+// - Retries on network errors with exponential backoff
+// - Prevents silent truncation failures that cause parse errors
+// Previous: 7.0.0 - Centralized Grok client integration
 
 import { buildClassifierPrompt } from '../prompts';
 import {
@@ -13,7 +15,7 @@ import {
   buildLabeledCriticalImages,
   extractPackageMetadata,
 } from './post-processor';
-import { callGrokAPI, type GrokPage } from '@/lib/grok/client';
+import { callGrokAPIWithRetryAndValidation, type GrokPage } from '@/lib/grok/client';
 
 import type { 
   GrokPageResult, 
@@ -54,6 +56,7 @@ const chunk = <T>(arr: T[], size: number): T[][] =>
 /**
  * Classifies a batch of pages using the centralized Grok client
  * v7.0.0: Refactored to use callGrokAPI - removes all manual fetch/parse logic
+ * v7.1.0: Enhanced with validation + retry to prevent truncation failures
  */
 async function classifyBatch(
   batch: { pageNumber: number; base64: string }[],
@@ -78,7 +81,8 @@ async function classifyBatch(
     
     // v7.0.0: Use centralized Grok client instead of manual fetch/parse
     // This replaces 80+ lines of boilerplate with a single function call
-    const json = await callGrokAPI<GrokClassifierOutput>(
+    // v7.1.0: Added validation + retry to catch truncation and network errors
+    const json = await callGrokAPIWithRetryAndValidation<GrokClassifierOutput>(
       batchPrompt,
       grokPages,
       {
@@ -88,7 +92,8 @@ async function classifyBatch(
         maxTokens: 4096,
         expectObject: true, // Expecting object { pages: [...] }
       },
-      totalPages // Include total document context
+      totalPages, // Include total document context
+      3 // maxRetries: Retry up to 3 times on transient errors
     );
     
     // Validate schema (same as before)
