@@ -341,38 +341,27 @@ Now extract the data following these steps.
 
 ---
 
-### 6. **No Output Prefilling** (MEDIUM PRIORITY)
-**Current:** Grok generates full response including any preamble
+### 6. **Output Prefilling NOT SUPPORTED** (TESTED AND REJECTED)
+**Current:** Grok generates full response without prefilling
 
 **Research says:** "Prefill outputs (e.g., start with '{') to force format adherence"
 
-**Why this matters:**
-- OpenAI/xAI APIs support assistant message prefilling
-- Forces model to start with JSON immediately (no "Here's the extraction..." preamble)
-- Reduces token waste and parsing complexity
+**❌ TESTED AND FAILED:** xAI's Grok API does NOT support assistant message prefilling like Anthropic's Claude does.
 
-**Recommendation:**
-```typescript
-// In callGrokAPI(), change messages structure:
-messages: [
-  {
-    role: 'user',
-    content: [
-      { type: 'text', text: prompt },
-      ...formatImagesForGrokAPI(pages, totalPagesInDocument),
-    ],
-  },
-  {
-    role: 'assistant',
-    content: expectObject ? '{' : '[', // ⬅️ ADD THIS
-  },
-],
-```
+**What happened when we tried:**
+- Added assistant message with `{` or `[` character
+- Grok responded with:
+  - Explanatory preamble: `{Assistant: First, the output must be...`
+  - Double opening braces: `{{` instead of `{`
+  - Truncated/malformed responses
+- All classification batches failed to parse
 
-**Note:** Check xAI API docs to confirm they support assistant prefilling (OpenAI does).
+**Conclusion:** xAI interprets assistant messages differently than Anthropic. The assistant role confuses the model rather than guiding it.
 
-**Files to update:**
-- `src/lib/grok/client.ts:140-148`
+**Status:** **REVERTED** in v5.1.0
+
+**Files updated:**
+- `src/lib/grok/client.ts` (removed prefilling logic)
 
 ---
 
@@ -521,17 +510,19 @@ Your accuracy drop from 95% (chat) to 60% (API) is likely caused by:
 
 ## 📝 Implementation Checklist
 
-- [ ] Enable `response_format: { type: 'json_object' }` in API calls
-- [ ] Implement `callGrokAPIWithRetry()` wrapper with exponential backoff
-- [ ] Add 3 few-shot examples to universal extractor prompt
-- [ ] Add 2 few-shot examples to classifier prompt
-- [ ] Install and configure OpenAI SDK for xAI endpoint
-- [ ] Replace all `fetch()` calls with SDK calls
-- [ ] Add step-by-step chain-of-thought section to extractor prompt
-- [ ] Refactor `second-turn.ts` to use `callGrokAPIWithValidation()`
-- [ ] Test output prefilling (if xAI supports it)
-- [ ] Enhance section delimiters with `###` markers
-- [ ] Add spatial visual guidance for property address extraction
+- [x] Enable `response_format: { type: 'json_object' }` in API calls ✅
+- [x] Implement `callGrokAPIWithRetry()` wrapper with exponential backoff ✅
+- [x] Add 3 few-shot examples to universal extractor prompt ✅
+- [x] Add 2 few-shot examples to classifier prompt ✅
+- [x] Install and configure OpenAI SDK for xAI endpoint ✅
+- [x] Replace all `fetch()` calls with SDK calls ✅
+- [x] Add step-by-step chain-of-thought section to extractor prompt ✅
+- [x] Refactor `second-turn.ts` to use `callGrokAPIWithValidation()` ✅
+- [x] ~~Test output prefilling~~ **REJECTED** - xAI doesn't support it ❌
+- [x] Enhance section delimiters with `###` markers ✅
+- [x] Add spatial visual guidance for property address extraction ✅
+
+**Score: 10/11 implemented** (output prefilling not supported by xAI)
 
 ---
 

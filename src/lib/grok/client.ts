@@ -1,11 +1,11 @@
 // src/lib/grok/client.ts
-// Version: 5.0.0 - 2026-01-01
-// COMPLETE GROK API BEST PRACTICES IMPLEMENTATION
-// Changes in this version:
-// - Migrated to OpenAI SDK for better reliability (v4.0.0)
-// - Added output prefilling (assistant message with '{' or '[') to force immediate JSON
-// - Combined with JSON mode for maximum reliability
+// Version: 5.1.0 - 2026-01-01
+// HOTFIX: Removed output prefilling (not supported by xAI Grok API)
+// - Output prefilling was causing double braces `{{` and explanatory text
+// - Grok interprets assistant messages differently than Claude
+// - Keeping JSON mode, OpenAI SDK, retry logic, few-shot examples
 // Previous versions:
+// - 5.0.0: Added output prefilling (REVERTED - caused parsing failures)
 // - 4.0.0: Migrated to OpenAI SDK
 // - 3.0.0: Added JSON mode and retry logic with exponential backoff
 // - 2.2.0: Enhanced response logging
@@ -147,11 +147,8 @@ export async function callGrokAPI<T>(
   } = options;
   
   console.log(`${logPrefix}:api] Sending request to Grok...`);
-  
-  // STEP 1: Build request body with output prefilling
-  // Output prefilling forces the model to start with JSON immediately (no preamble)
-  const prefillChar = expectObject ? '{' : '[';
 
+  // STEP 1: Build request body with JSON mode (no prefilling - xAI doesn't support it)
   const requestBody = {
     model,
     temperature,
@@ -165,13 +162,9 @@ export async function callGrokAPI<T>(
           ...formatImagesForGrokAPI(pages, totalPagesInDocument),
         ],
       },
-      {
-        role: 'assistant',
-        content: prefillChar, // Prefill to force immediate JSON output
-      },
     ],
   };
-  
+
   console.log(`${logPrefix}:api] Request content blocks: ${requestBody.messages[0].content.length}`);
   console.log(`${logPrefix}:api] Max tokens: ${maxTokens}`);
 
@@ -187,16 +180,14 @@ export async function callGrokAPI<T>(
     throw new Error(`Grok API error ${statusCode}: ${errorMessage}`);
   }
 
-  // STEP 3: Extract response content and prepend prefill character
-  const rawText = data.choices[0].message.content;
-  // Prepend the prefill character since API continues from where we started
-  const text = prefillChar + rawText;
+  // STEP 3: Extract response content
+  const text = data.choices[0].message.content;
 
   console.log(`${logPrefix}:response] Raw response length: ${text.length} chars`);
   console.log(`${logPrefix}:response] First 300 chars:`, text.substring(0, 300));
   console.log(`${logPrefix}:response] Last 200 chars:`, text.substring(text.length - 200));
 
-  // STEP 4: Extract JSON from response (now includes prefill character)
+  // STEP 4: Extract JSON from response
   const json = extractJSONFromGrokResponse<T>(text, logPrefix, expectObject);
   
   // ============================================================================
@@ -407,10 +398,8 @@ export async function callGrokAPIWithValidation<T>(
   } = options;
   
   console.log(`${logPrefix}:api] Sending request to Grok...`);
-  
-  // Build request body with output prefilling
-  const prefillChar = expectObject ? '{' : '[';
 
+  // Build request body with JSON mode (no prefilling - xAI doesn't support it)
   const requestBody = {
     model,
     temperature,
@@ -424,13 +413,9 @@ export async function callGrokAPIWithValidation<T>(
           ...formatImagesForGrokAPI(pages, totalPagesInDocument),
         ],
       },
-      {
-        role: 'assistant',
-        content: prefillChar, // Prefill to force immediate JSON output
-      },
     ],
   };
-  
+
   console.log(`${logPrefix}:api] Request content blocks: ${requestBody.messages[0].content.length}`);
   console.log(`${logPrefix}:api] Max tokens: ${maxTokens}`);
 
@@ -449,9 +434,8 @@ export async function callGrokAPIWithValidation<T>(
   // ✨ ADDED: Validation check (not in original classifier)
   validateFinishReason(data, logPrefix);
 
-  // Extract response content and prepend prefill character
-  const rawText = data.choices[0].message.content;
-  const text = prefillChar + rawText;
+  // Extract response content
+  const text = data.choices[0].message.content;
 
   console.log(`${logPrefix}:response] Raw response length: ${text.length} chars`);
   console.log(`${logPrefix}:response] First 300 chars:`, text.substring(0, 300));
