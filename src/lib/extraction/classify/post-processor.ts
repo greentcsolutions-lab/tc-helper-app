@@ -1,6 +1,9 @@
 // src/lib/extraction/classify/post-processor.ts
-// Version: 3.4.0 - 2025-12-31
-// CRITICAL FIX: Signature and broker pages now included even when hasFilledFields=false
+// Version: 3.5.0 - 2026-01-01
+// FIX: Exclude disclosure forms with "addendum" in title (FRR-PA, FRPA, etc.)
+// - Rule 1 now checks contentCategory='disclosures' and excludes them
+// - Keeps real transaction-modifying addendums (ADM, FVAC, etc.)
+// Previous: 3.4.0 - Signature and broker pages always included
 
 import type { LabeledCriticalImage, GrokPageResult } from '@/types/classification';
 
@@ -13,9 +16,9 @@ export function mergeDetectedPages(
 /**
  * Selects critical pages for extraction using universal logic
  * Works for CA, TX, FL, NV, and all other U.S. states
- * 
- * v3.4.0: CRITICAL FIX - Signature and broker pages now ALWAYS included,
- * even when hasFilledFields=false (unsigned contracts, empty broker fields)
+ *
+ * v3.5.0: Exclude disclosure "addendums" (FRR-PA, FRPA) - they're not real addendums
+ * v3.4.0: Signature and broker pages now ALWAYS included, even when hasFilledFields=false
  */
 export function getCriticalPageNumbers(detectedPages: GrokPageResult[]): number[] {
   const selected = new Set<number>();
@@ -55,12 +58,22 @@ export function getCriticalPageNumbers(detectedPages: GrokPageResult[]): number[
         continue;
       }
 
+      // v3.5.0 FIX: Exclude boilerplate disclosure "addendums"
+      // Some disclosure forms have "addendum" in the title (e.g., FRR-PA, FRPA)
+      // but are purely informational disclosures, not transaction-modifying documents.
+      // Only include if contentCategory indicates actual extractable transaction data.
+      if (category === 'disclosures') {
+        stats.excluded++;
+        continue;
+      }
+
       // CRITICAL (v3.2.0): For override documents with hasFilledFields=true,
-      // ALWAYS include regardless of contentCategory.
-      // 
+      // include if contentCategory is extractable (transaction_terms, signatures, broker_info)
+      // OR if it's boilerplate (Grok sometimes misclassifies real addenda as boilerplate).
+      //
       // Rationale: Grok sometimes misclassifies addenda with critical timeline terms
       // as "boilerplate" when they have lots of blank lines + legal text.
-      // If fields are filled, there's extractable data that modifies the contract.
+      // If fields are filled AND it's not a disclosure, there's likely extractable data.
       selected.add(page.pdfPage);
       stats.override++;
       continue;
