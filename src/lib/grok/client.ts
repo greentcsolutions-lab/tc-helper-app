@@ -1,14 +1,15 @@
 // src/lib/grok/client.ts
-// Version: 5.1.0 - 2026-01-01
-// HOTFIX: Removed output prefilling (not supported by xAI Grok API)
-// - Output prefilling was causing double braces `{{` and explanatory text
-// - Grok interprets assistant messages differently than Claude
-// - Keeping JSON mode, OpenAI SDK, retry logic, few-shot examples
+// Version: 5.2.0 - 2026-01-01
+// CRITICAL FIX: Made JSON mode conditional based on expectObject
+// - JSON mode ONLY works for objects { }, not arrays [ ]
+// - Classifier expects object { state, pages } → JSON mode ON
+// - Extractor expects array [{}, {}, ...] → JSON mode OFF
+// - This fixes extractor returning wrong array (sellerNames instead of page extractions)
 // Previous versions:
+// - 5.1.0: Removed output prefilling (not supported by xAI)
 // - 5.0.0: Added output prefilling (REVERTED - caused parsing failures)
 // - 4.0.0: Migrated to OpenAI SDK
 // - 3.0.0: Added JSON mode and retry logic with exponential backoff
-// - 2.2.0: Enhanced response logging
 
 import OpenAI from 'openai';
 
@@ -148,12 +149,14 @@ export async function callGrokAPI<T>(
   
   console.log(`${logPrefix}:api] Sending request to Grok...`);
 
-  // STEP 1: Build request body with JSON mode (no prefilling - xAI doesn't support it)
-  const requestBody = {
+  // STEP 1: Build request body with conditional JSON mode
+  // CRITICAL: JSON mode only works for objects { }, not arrays [ ]
+  // - Classifier expects object: { state, pages } → JSON mode ON
+  // - Extractor expects array: [ {}, {}, ... ] → JSON mode OFF
+  const requestBody: any = {
     model,
     temperature,
     max_tokens: maxTokens,
-    response_format: { type: 'json_object' }, // Enable JSON mode for guaranteed JSON output
     messages: [
       {
         role: 'user',
@@ -164,6 +167,14 @@ export async function callGrokAPI<T>(
       },
     ],
   };
+
+  // Only enable JSON mode for objects (not arrays)
+  if (expectObject) {
+    requestBody.response_format = { type: 'json_object' };
+    console.log(`${logPrefix}:api] JSON mode: ENABLED (expecting object)`);
+  } else {
+    console.log(`${logPrefix}:api] JSON mode: DISABLED (expecting array)`);
+  }
 
   console.log(`${logPrefix}:api] Request content blocks: ${requestBody.messages[0].content.length}`);
   console.log(`${logPrefix}:api] Max tokens: ${maxTokens}`);
@@ -399,12 +410,11 @@ export async function callGrokAPIWithValidation<T>(
   
   console.log(`${logPrefix}:api] Sending request to Grok...`);
 
-  // Build request body with JSON mode (no prefilling - xAI doesn't support it)
-  const requestBody = {
+  // Build request body with conditional JSON mode
+  const requestBody: any = {
     model,
     temperature,
     max_tokens: maxTokens,
-    response_format: { type: 'json_object' }, // Enable JSON mode for guaranteed JSON output
     messages: [
       {
         role: 'user',
@@ -415,6 +425,14 @@ export async function callGrokAPIWithValidation<T>(
       },
     ],
   };
+
+  // Only enable JSON mode for objects (not arrays)
+  if (expectObject) {
+    requestBody.response_format = { type: 'json_object' };
+    console.log(`${logPrefix}:api] JSON mode: ENABLED (expecting object)`);
+  } else {
+    console.log(`${logPrefix}:api] JSON mode: DISABLED (expecting array)`);
+  }
 
   console.log(`${logPrefix}:api] Request content blocks: ${requestBody.messages[0].content.length}`);
   console.log(`${logPrefix}:api] Max tokens: ${maxTokens}`);
