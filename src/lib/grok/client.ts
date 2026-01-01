@@ -210,19 +210,12 @@ export async function callGrokAPI<T>(
   
   if (Array.isArray(json)) {
     console.log(`${logPrefix}:parsed] Type: Array with ${json.length} items`);
-    
-    // Show first 2 complete objects to respect Vercel limits
-    const itemsToShow = Math.min(2, json.length);
-    for (let i = 0; i < itemsToShow; i++) {
-      console.log(`${logPrefix}:parsed] ─────────────────────────────────────────`);
-      console.log(`${logPrefix}:parsed] Item ${i + 1}/${json.length}:`);
-      console.log(JSON.stringify(json[i], null, 2));
-    }
-    
-    if (json.length > 2) {
-      console.log(`${logPrefix}:parsed] ─────────────────────────────────────────`);
-      console.log(`${logPrefix}:parsed] ... ${json.length - 2} more items not shown (Vercel log limit)`);
-    }
+
+    // DEBUGGING MODE: Show ALL items (temporarily - remove after debugging)
+    console.log(`${logPrefix}:parsed] ⚠️ DEBUG MODE: Showing all ${json.length} items`);
+    console.log(`${logPrefix}:parsed] FULL JSON OUTPUT:`);
+    console.log(JSON.stringify(json, null, 2));
+    console.log(`${logPrefix}:parsed] END FULL JSON`)
     
     // Show summary of all items
     console.log(`${logPrefix}:parsed] ─────────────────────────────────────────`);
