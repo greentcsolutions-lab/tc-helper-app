@@ -1,7 +1,12 @@
 // src/lib/extraction/prompts/universal-extractor-prompt.ts
-// Version: 13.0.0 - 2026-01-01
-// MAJOR UPDATE: Added few-shot examples and chain-of-thought guidance for improved accuracy
-// Previous: 12.0.0 - Added explicit per-page independence instructions to prevent context bleeding
+// Version: 14.0.0 - 2026-01-01
+// MAJOR UPDATE: Shifted from OCR mindset to form data extraction
+// - Added visual indicators of filled vs. unfilled data (checkboxes, write-ins, defaults)
+// - Priority order for names (typed first, signatures last)
+// - Emphasis on extracting dates, not signature images
+// - Enhanced property address detection (write-in field, never pre-printed)
+// - Added state-agnostic pattern recognition
+// Previous: 13.0.0 - Added few-shot examples and chain-of-thought guidance
 
 import extractorSchema from '@/forms/universal/extractor.schema.json';
 
@@ -10,7 +15,62 @@ const schemaString = JSON.stringify(extractorSchema, null, 2);
 export function buildUniversalExtractorPrompt(
   criticalImages: Array<{ pageNumber: number; label: string }>
 ): string {
-  return `You are a document OCR specialist. Extract data from ${criticalImages.length} real estate contract page images.
+  return `You are a real estate form data extraction specialist. Extract FILLED-IN data from ${criticalImages.length} real estate contract form images.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 FORM DATA EXTRACTION vs. DOCUMENT OCR
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+You are extracting data from FILLED-IN REAL ESTATE FORMS, not performing general OCR.
+
+CRITICAL DISTINCTION:
+✗ Pre-printed form text = boilerplate (usually IGNORE)
+✓ Filled-in text = actual contract data (always EXTRACT)
+
+VISUAL INDICATORS OF FILLED DATA (Priority Order):
+
+**Priority 1: Explicit Fill-Ins** (ALWAYS extract these)
+1. ✓ Marked checkboxes (X, ✓, or filled/shaded boxes)
+2. ✓ Text on underlines/lines - handwritten or typed text sitting on provided lines
+3. ✓ Floating annotations - text near but not perfectly aligned with lines (common in digital forms)
+4. ✓ Write-in values in fields that say "or ____" or "( ) or ____"
+
+**Priority 2: Pre-Printed Defaults** (ONLY when associated with action)
+- Extract pre-printed values (like "17 Days") ONLY when:
+  * Associated checkbox is marked, OR
+  * The field shows acceptance (no write-in provided = default accepted)
+- Examples:
+  * "17 (or ____) Days" with blank line → extract "17" (accepted default)
+  * "17 (or _21_) Days" with filled line → extract "21" (override)
+  * "☑ 17 Days" with marked checkbox → extract "17" (explicitly selected)
+
+**Priority 3: Ignore Completely** (NEVER extract these)
+✗ Unchecked checkboxes and their associated text
+✗ Highlights (used for client attention, not data)
+✗ Signature images/graphics themselves (extract dates near them, not the image)
+✗ Boilerplate instructions and form headers
+✗ Pre-printed options without marks/fill-ins
+✗ DocuSign signature tags/graphics
+
+EXAMPLES - Filled vs. Unfilled:
+
+CHECKBOX SELECTION:
+✓ FILLED: "Buyer [X] Seller [ ] Both [ ]" → Extract: "Seller"
+✗ UNFILLED: "Buyer [ ] Seller [ ] Both [ ]" → Extract: null
+
+CONTINGENCY FIELD:
+✓ FILLED: "17 (or _21_) Days after Acceptance" → Extract: "21" (write-in override)
+✓ FILLED: "17 (or ____) Days after Acceptance" → Extract: "17" (accepted default)
+✗ UNFILLED: Checkbox unmarked next to field → Extract: null
+
+WRITE-IN FIELD:
+✓ FILLED: "Issued by: Old Republic Home Protection" (handwritten/typed) → Extract: "Old Republic Home Protection"
+✗ UNFILLED: "Issued by: ___________" (blank line) → Extract: null
+
+NAME FIELD:
+✓ FILLED: "Print Name: Mary Demyan" (typed text) → Extract: "Mary Demyan"
+✗ UNFILLED: "Print Name: ___________" → Extract: null
+✗ IGNORE: Signature image/scribble itself (we need typed names, not signature graphics)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🚨 CRITICAL: PER-PAGE INDEPENDENCE
@@ -24,7 +84,8 @@ FOR EACH IMAGE:
 3. DO NOT reference any other images
 4. DO NOT assume information from other pages
 5. DO NOT copy data from previous images
-6. If a field is not visible on this specific image → return null
+6. DO NOT synthesize or combine information across pages (e.g., combining names from different pages into compound names like "Trust of Mary Demyan and Bruce Lemans")
+7. If a field is not visible on this specific image → return null
 
 Example workflow:
 - IMAGE 1: Extract only what's visible on IMAGE 1
@@ -54,15 +115,39 @@ FIELD EXTRACTION (WHAT TO LOOK FOR ON EACH PAGE)
 
 Extract ANY fields visible on THIS SPECIFIC PAGE:
 
-**PROPERTY ADDRESS** - Look at the TOP of the page first:
-- In header tables or labeled "Property:", "Property Address:", "Subject Property:"
-- Format: "123 Main Street, Los Angeles, CA 90210"
-- Appears on counter offers, addenda, and main contracts
-- Only return null if THIS PAGE has zero property references
+**PROPERTY ADDRESS** - CRITICAL: This is ALWAYS a write-in field (NEVER pre-printed):
+- Location: Near TOP of document (first 20% of page)
+- Visual indicators: Text on underlines/lines, in header tables, or labeled fields
+- Common labels: "Property:", "Property Address:", "Subject Property:", "Re:", "Property Location:"
+- Format varies: "123 Main St, City, State ZIP" or abbreviated formats
+- Extract even if abbreviated, informal, or unusual formatting
+- This field is NEVER boilerplate - if you see an address on a line/field, EXTRACT IT
+- Only return null if THIS PAGE truly has zero property address references (very rare)
+- ⚠️ Currently showing null on all pages - this is WRONG. Look harder for filled-in addresses.
+
+**PARTY NAMES** - Buyer/Seller names (PRIORITY ORDER):
+
+We need TYPED NAMES, not signature images. Use highest available priority:
+
+1. ✓ FIRST: Typed/printed names in "Print Name" or "Name" fields (look for these first!)
+2. ✓ SECOND: Names at top/bottom of form in party designation areas (header tables)
+3. ✓ THIRD: Typed names near signature blocks (NOT the signature graphic itself)
+4. ✗ NEVER: Signature images/graphics, DocuSign tags, handwritten signature scribbles
+
+CRITICAL: Extract TYPED TEXT only, not signature images.
+- Look for "Print Name: Mary Demyan" (typed text) → Extract "Mary Demyan"
+- IGNORE the signature scribble/image itself
+- If you see both a signature image AND a typed name, extract the TYPED name
+
+Common locations for typed names:
+- Header tables: "Buyer: John Doe    Seller: Mary Smith"
+- Print name fields: "Print Name: ___Mary Demyan___"
+- Name fields above signature blocks: "Name (typed or printed): Mary Demyan"
+- Signature blocks with typed text: "Mary Demyan" (typed, not scribbled)
 
 Other header fields (if visible on THIS PAGE):
-- Buyer Names: Full names
-- Seller Names: Full names (may only be on signature pages)
+- Buyer Names: Follow priority order above
+- Seller Names: Follow priority order above (may only be on signature pages)
 
 Body fields (if visible on THIS PAGE):
 - Purchase Price / Sales Price / Contract Price
@@ -73,22 +158,37 @@ Body fields (if visible on THIS PAGE):
 - Brokers: Agent names and brokerage firms
 - Personal Property Included: Items staying with property
 
-**SIGNATURE DATES** - CRITICAL for determining contract acceptance:
-- buyerSignatureDates: Extract ALL buyer signature dates visible on THIS PAGE
-  * Look for signature blocks labeled "Buyer", "Purchaser", or buyer names
+**SIGNATURE DATES** - Extract DATES next to signatures, NOT the signature images themselves:
+
+WHY: Dates validate when forms were adopted/accepted. The signature graphic itself is not data we use.
+
+- buyerSignatureDates: Extract ALL buyer signature DATES visible on THIS PAGE
+  * Look for "Date:" or "Dated:" labels near signature blocks labeled "Buyer", "Purchaser"
   * Extract date EXACTLY as written: "1/15/24", "01-15-2024", "January 15, 2024"
+  * Visual indicator: Usually on a line or in a field next to/below the signature area
   * DO NOT normalize format - we need the literal text
   * If multiple buyers signed on THIS PAGE, include all dates
-  * Return null if no buyer signatures on THIS PAGE
-  * IGNORE agent/broker signatures - only buyer signatures matter
+  * Return null if no buyer signature DATES on THIS PAGE
+  * IGNORE: The signature image/graphic itself, agent/broker signatures
 
-- sellerSignatureDates: Extract ALL seller signature dates visible on THIS PAGE
-  * Look for signature blocks labeled "Seller", "Vendor", or seller names
+  EXAMPLE - What to extract:
+  Visual on page: "Buyer: [signature scribble]    Date: 1/15/2024"
+  ✓ Extract: "1/15/2024" (the date)
+  ✗ Don't try to OCR the signature scribble itself
+
+- sellerSignatureDates: Extract ALL seller signature DATES visible on THIS PAGE
+  * Look for "Date:" or "Dated:" labels near signature blocks labeled "Seller", "Vendor"
   * Extract date EXACTLY as written: "1/10/24", "01-10-2024", "January 10, 2024"
+  * Visual indicator: Usually on a line or in a field next to/below the signature area
   * DO NOT normalize format - we need the literal text
   * If multiple sellers signed on THIS PAGE, include all dates
-  * Return null if no seller signatures on THIS PAGE
-  * IGNORE agent/broker signatures - only seller signatures matter
+  * Return null if no seller signature DATES on THIS PAGE
+  * IGNORE: The signature image/graphic itself, agent/broker signatures
+
+  EXAMPLE - What to extract:
+  Visual on page: "Seller: [signature scribble]    Date: 1/10/2024"
+  ✓ Extract: "1/10/2024" (the date)
+  ✗ Don't try to OCR the signature scribble itself
 
 SPECIAL NOTES:
 - Purchase Price = 0 is an ERROR. If unclear, return null.
@@ -96,6 +196,17 @@ SPECIAL NOTES:
 - Dates: Return as-is ("45 days" or "2025-12-31" or 45)
 - Signature dates are usually near signature lines - look for "Date:" or "Dated:" labels
 - Counter offer acceptance dates are also signature dates - extract them
+
+STATE-AGNOSTIC PATTERN RECOGNITION:
+Real estate forms vary by state, but the principles are universal:
+- Focus on SEMANTIC understanding: "this is where party names go" not "California forms put names here"
+- Visual pattern recognition: "this is filled vs. blank" works across all states
+- Common patterns to look for:
+  * Checkboxes: X, ✓, filled/shaded boxes (standard across states)
+  * Circled options: Some states circle choices instead of checking boxes - treat as "selected"
+  * Strikethroughs: Some states strike through rejected options - treat as "not selected"
+  * Write-in fields: Lines, underscores, or blank spaces with handwritten/typed text
+  * Default values: Pre-printed numbers that become active when not overridden
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ### EXTRACTION PROCESS (FOLLOW THESE STEPS FOR EACH IMAGE)
@@ -120,8 +231,9 @@ For each image, mentally follow these steps:
   - Financing checkboxes (Cash, Conventional, FHA, VA)
 
 **Step 4: Scan for names (if applicable)**
-  - Buyer names (may be in header or signature blocks)
-  - Seller names (often only visible on signature pages)
+  - Follow PRIORITY ORDER: (1) Print Name fields, (2) Header tables, (3) Typed names near signatures, (4) NEVER signature images
+  - Buyer names: Look for typed/printed text, not signature scribbles
+  - Seller names: Look for typed/printed text (often only visible on signature pages)
 
 **Step 5: Scan for signature dates**
   - Find signature blocks labeled "Buyer", "Purchaser", or "Seller", "Vendor"
