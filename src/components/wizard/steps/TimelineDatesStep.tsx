@@ -1,16 +1,17 @@
 'use client';
 
 // src/components/wizard/steps/TimelineDatesStep.tsx
-// Step 8: Timeline Dates with CA defaults and flexible input
+// Step 8: Timeline Dates with flexible input (days or specific dates)
 
+import { useState } from 'react';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import { ManualTransactionData, CA_DEFAULT_TIMELINE_DAYS } from '@/types/manual-wizard';
 import {
   calculateTimelineDate,
   formatDisplayDate,
-  parseUserDate,
 } from '@/lib/date-utils';
-import { Calendar, Info } from 'lucide-react';
+import { Calendar, Hash } from 'lucide-react';
 
 interface Props {
   data: Partial<ManualTransactionData>;
@@ -24,9 +25,17 @@ interface TimelineField {
   description: string;
   useBusinessDays: boolean;
   required: boolean;
+  isContingency?: boolean;
 }
 
 const TIMELINE_FIELDS: TimelineField[] = [
+  {
+    key: 'closingDays',
+    label: 'Closing Date',
+    description: 'Calendar days from acceptance',
+    useBusinessDays: false,
+    required: true,
+  },
   {
     key: 'initialDepositDays',
     label: 'Initial Deposit (Earnest Money)',
@@ -47,6 +56,7 @@ const TIMELINE_FIELDS: TimelineField[] = [
     description: 'Calendar days from acceptance',
     useBusinessDays: false,
     required: false,
+    isContingency: true,
   },
   {
     key: 'appraisalDays',
@@ -54,6 +64,7 @@ const TIMELINE_FIELDS: TimelineField[] = [
     description: 'Calendar days from acceptance',
     useBusinessDays: false,
     required: false,
+    isContingency: true,
   },
   {
     key: 'loanDays',
@@ -61,13 +72,7 @@ const TIMELINE_FIELDS: TimelineField[] = [
     description: 'Calendar days from acceptance',
     useBusinessDays: false,
     required: false,
-  },
-  {
-    key: 'closingDays',
-    label: 'Closing Date',
-    description: 'Calendar days from acceptance',
-    useBusinessDays: false,
-    required: true,
+    isContingency: true,
   },
 ];
 
@@ -75,22 +80,26 @@ export default function TimelineDatesStep({ data, updateData, userState }: Props
   const timeline = data.timeline || {};
   const acceptanceDate = timeline.acceptanceDate || '';
 
+  // Track which fields are in "date mode" vs "days mode"
+  const [dateMode, setDateMode] = useState<Record<string, boolean>>({});
+
   const handleFieldChange = (
     key: keyof typeof CA_DEFAULT_TIMELINE_DAYS,
-    value: string
+    value: string,
+    isDateMode: boolean
   ) => {
-    // Allow either number input (days) or date format (MM/DD/YYYY)
-    let parsedValue: number | string = value;
+    let parsedValue: number | string | null = value;
 
-    // Check if it's a date format
-    if (value.match(/^\d{1,2}\/\d{1,2}\/\d{4}$/)) {
-      const isoDate = parseUserDate(value);
-      if (isoDate) {
-        parsedValue = isoDate;
+    if (isDateMode) {
+      // In date mode, store as YYYY-MM-DD
+      parsedValue = value || null;
+    } else {
+      // In days mode, parse as number
+      if (value === '' || value === null) {
+        parsedValue = null;
+      } else if (!isNaN(parseInt(value, 10))) {
+        parsedValue = parseInt(value, 10);
       }
-    } else if (value.match(/^\d+$/)) {
-      // It's a number of days
-      parsedValue = parseInt(value, 10);
     }
 
     updateData({
@@ -101,6 +110,42 @@ export default function TimelineDatesStep({ data, updateData, userState }: Props
     });
   };
 
+  const handleWaive = (key: keyof typeof CA_DEFAULT_TIMELINE_DAYS) => {
+    updateData({
+      timeline: {
+        ...timeline,
+        [key]: 'Waived',
+      },
+    });
+  };
+
+  const getDisplayValue = (
+    key: keyof typeof CA_DEFAULT_TIMELINE_DAYS,
+    isDateMode: boolean
+  ): string => {
+    const value = timeline[key];
+
+    if (value === 'Waived') return 'Waived';
+    if (!value) return '';
+
+    if (isDateMode) {
+      // Show as date
+      if (typeof value === 'string' && value.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        return value;
+      }
+      // If it's a number of days, calculate the date
+      if (typeof value === 'number' && acceptanceDate) {
+        const field = TIMELINE_FIELDS.find(f => f.key === key);
+        return calculateTimelineDate(acceptanceDate, value, field?.useBusinessDays || false);
+      }
+      return '';
+    } else {
+      // Show as days
+      if (typeof value === 'number') return value.toString();
+      return '';
+    }
+  };
+
   const getCalculatedDate = (
     key: keyof typeof CA_DEFAULT_TIMELINE_DAYS,
     useBusinessDays: boolean
@@ -108,6 +153,7 @@ export default function TimelineDatesStep({ data, updateData, userState }: Props
     if (!acceptanceDate) return '';
 
     const value = timeline[key];
+    if (value === 'Waived') return '';
 
     // If it's already a date string (YYYY-MM-DD), return it formatted
     if (typeof value === 'string' && value.match(/^\d{4}-\d{2}-\d{2}$/)) {
@@ -116,11 +162,7 @@ export default function TimelineDatesStep({ data, updateData, userState }: Props
 
     // If it's a number of days, calculate the date
     if (typeof value === 'number') {
-      const calculated = calculateTimelineDate(
-        acceptanceDate,
-        value,
-        useBusinessDays
-      );
+      const calculated = calculateTimelineDate(acceptanceDate, value, useBusinessDays);
       return formatDisplayDate(calculated);
     }
 
@@ -128,22 +170,20 @@ export default function TimelineDatesStep({ data, updateData, userState }: Props
   };
 
   const allRequiredFilled = TIMELINE_FIELDS.filter((f) => f.required).every(
-    (f) => timeline[f.key]
+    (f) => timeline[f.key] && timeline[f.key] !== ''
   );
 
   return (
     <div className="space-y-6">
       <div className="space-y-2">
         <p className="text-sm text-muted-foreground">
-          Set your transaction timeline. You can enter either the number of days
-          from acceptance or a specific date (MM/DD/YYYY).
+          Set your transaction timeline. Toggle between days from acceptance or specific dates.
         </p>
         {userState === 'CA' && (
           <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
             <p className="text-xs text-blue-800">
               <span className="font-semibold">California Defaults:</span> Default
-              values have been pre-filled based on standard CA timelines. You can
-              modify any of these values.
+              values have been pre-filled. You can modify any of these.
             </p>
           </div>
         )}
@@ -152,15 +192,10 @@ export default function TimelineDatesStep({ data, updateData, userState }: Props
       <div className="space-y-6">
         {TIMELINE_FIELDS.map((field) => {
           const value = timeline[field.key];
-          const displayValue =
-            typeof value === 'string' && value.match(/^\d{4}-\d{2}-\d{2}$/)
-              ? formatDisplayDate(value)
-              : value?.toString() || '';
-
-          const calculatedDate = getCalculatedDate(
-            field.key,
-            field.useBusinessDays
-          );
+          const isWaived = value === 'Waived';
+          const isInDateMode = dateMode[field.key] || false;
+          const displayValue = getDisplayValue(field.key, isInDateMode);
+          const calculatedDate = getCalculatedDate(field.key, field.useBusinessDays);
 
           return (
             <div key={field.key} className="border rounded-lg p-4 space-y-3">
@@ -177,28 +212,86 @@ export default function TimelineDatesStep({ data, updateData, userState }: Props
                     )}
                   </p>
                 </div>
-              </div>
 
-              <div className="flex gap-2">
-                <div className="flex-1 relative">
-                  <Input
-                    placeholder="Days or MM/DD/YYYY"
-                    value={displayValue}
-                    onChange={(e) => handleFieldChange(field.key, e.target.value)}
-                  />
-                  {calculatedDate && (
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                      <Calendar className="h-4 w-4 text-green-500" />
-                    </div>
-                  )}
+                {/* Mode Toggle */}
+                <div className="flex items-center gap-1 bg-gray-100 rounded p-1">
+                  <button
+                    type="button"
+                    onClick={() => setDateMode(prev => ({ ...prev, [field.key]: false }))}
+                    className={`px-2 py-1 rounded text-xs transition-colors ${
+                      !isInDateMode
+                        ? 'bg-white shadow-sm font-medium'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <Hash className="h-3 w-3 inline mr-1" />
+                    Days
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDateMode(prev => ({ ...prev, [field.key]: true }))}
+                    className={`px-2 py-1 rounded text-xs transition-colors ${
+                      isInDateMode
+                        ? 'bg-white shadow-sm font-medium'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <Calendar className="h-3 w-3 inline mr-1" />
+                    Date
+                  </button>
                 </div>
               </div>
 
-              {calculatedDate && (
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  {isInDateMode ? (
+                    <Input
+                      type="date"
+                      value={displayValue}
+                      onChange={(e) => handleFieldChange(field.key, e.target.value, true)}
+                      disabled={isWaived}
+                      className={isWaived ? 'opacity-50' : ''}
+                    />
+                  ) : (
+                    <Input
+                      type="number"
+                      placeholder={isWaived ? 'Waived' : 'Number of days'}
+                      value={displayValue}
+                      onChange={(e) => handleFieldChange(field.key, e.target.value, false)}
+                      disabled={isWaived}
+                      className={isWaived ? 'opacity-50' : ''}
+                    />
+                  )}
+                </div>
+
+                {field.isContingency && (
+                  <Button
+                    type="button"
+                    variant={isWaived ? 'default' : 'outline'}
+                    onClick={() =>
+                      isWaived
+                        ? handleFieldChange(field.key, '', false)
+                        : handleWaive(field.key)
+                    }
+                    className="shrink-0"
+                  >
+                    {isWaived ? 'Un-waive' : 'Waived'}
+                  </Button>
+                )}
+              </div>
+
+              {calculatedDate && !isWaived && (
                 <div className="bg-green-50 border border-green-200 rounded p-2">
                   <p className="text-xs text-green-800">
-                    <span className="font-semibold">Target Date:</span>{' '}
-                    {calculatedDate}
+                    <span className="font-semibold">Target Date:</span> {calculatedDate}
+                  </p>
+                </div>
+              )}
+
+              {isWaived && (
+                <div className="bg-gray-100 border border-gray-300 rounded p-2">
+                  <p className="text-xs text-gray-600">
+                    This contingency has been waived
                   </p>
                 </div>
               )}
@@ -214,29 +307,6 @@ export default function TimelineDatesStep({ data, updateData, userState }: Props
           </p>
         </div>
       )}
-
-      <div className="p-4 bg-gray-50 border border-gray-200 rounded-md">
-        <div className="flex items-start gap-2">
-          <Info className="h-4 w-4 text-muted-foreground mt-0.5" />
-          <div className="text-xs text-muted-foreground">
-            <p className="font-semibold mb-1">Date Calculation Rules:</p>
-            <ul className="space-y-1 list-disc list-inside">
-              <li>
-                <strong>Initial Deposit:</strong> Calculated using business days
-                (excludes weekends and holidays)
-              </li>
-              <li>
-                <strong>Other Dates:</strong> Calculated using calendar days, but
-                adjusted forward if they fall on weekends or holidays
-              </li>
-              <li>
-                You can override any calculated date by entering a specific date
-                in MM/DD/YYYY format
-              </li>
-            </ul>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }

@@ -197,23 +197,9 @@ export default function PropertyAddressStep({ data, updateData }: Props) {
             <p>
               <span className="font-medium">State:</span> {data.state}
             </p>
-            {data.state === 'CA' && (
-              <p className="mt-2 text-xs bg-blue-50 border border-blue-200 rounded p-2">
-                California property detected. Default timeline values will be
-                pre-filled in later steps.
-              </p>
-            )}
           </div>
         </div>
       )}
-
-      <div className="p-4 bg-gray-50 border border-gray-200 rounded-md">
-        <p className="text-xs text-muted-foreground">
-          <span className="font-semibold">Tip:</span> The state is important as
-          it determines state-specific default values for your transaction
-          timeline.
-        </p>
-      </div>
     </div>
   );
 }
