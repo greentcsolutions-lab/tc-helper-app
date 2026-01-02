@@ -32,7 +32,7 @@ export default async function UploadPage() {
       <div className="mb-8">
         <h1 className="text-4xl font-bold mb-2">Upload New File</h1>
         <p className="text-muted-foreground text-lg">
-          Drop your California RPA packet and let AI extract everything in seconds
+          Drop your contract and let AI extract everything in seconds
         </p>
       </div>
 
