@@ -3,7 +3,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { currentUser } from '@clerk/nextjs/server';
-import { prisma } from '@/lib/prisma';
+import { db } from '@/lib/prisma';
 import { ManualTransactionData } from '@/types/manual-wizard';
 import { calculateTimelineDate } from '@/lib/date-utils';
 
@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const dbUser = await prisma.user.findUnique({
+    const dbUser = await db.user.findUnique({
       where: { clerkId: user.id },
       select: { id: true },
     });
@@ -146,50 +146,69 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Create Parse record
-    const parse = await prisma.parse.create({
-      data: {
-        userId: dbUser.id,
-        fileName: `Manual Entry - ${data.propertyAddress}`,
-        state: data.state,
-        status: 'COMPLETED',
+    // Create Parse record and increment UserUsage counter
+    const parse = await db.$transaction(async (tx) => {
+      const newParse = await tx.parse.create({
+        data: {
+          userId: dbUser.id,
+          fileName: `Manual Entry - ${data.propertyAddress}`,
+          state: data.state,
+          status: 'COMPLETED',
 
-        // Core fields
-        buyerNames: data.buyerNames.filter((n) => n.trim()),
-        sellerNames: data.sellerNames.filter((n) => n.trim()),
-        propertyAddress: data.propertyAddress,
-        effectiveDate: acceptanceDate,
-        initialDepositDueDate,
-        sellerDeliveryOfDisclosuresDate: sellerDeliveryDate,
-        closingDate,
+          // Core fields
+          buyerNames: data.buyerNames.filter((n) => n.trim()),
+          sellerNames: data.sellerNames.filter((n) => n.trim()),
+          propertyAddress: data.propertyAddress,
+          effectiveDate: acceptanceDate,
+          initialDepositDueDate,
+          sellerDeliveryOfDisclosuresDate: sellerDeliveryDate,
+          closingDate,
 
-        // Broker information with detailed agent data
-        brokers: {
-          listingAgentDetails: data.listingAgent,
-          buyersAgentDetails: data.buyersAgent,
-          // Legacy fields for compatibility
-          listingAgent: data.listingAgent.name,
-          listingBrokerage: data.listingAgent.company,
-          sellingAgent: data.buyersAgent.name,
-          sellingBrokerage: data.buyersAgent.company,
+          // Broker information with detailed agent data
+          brokers: {
+            listingAgentDetails: data.listingAgent,
+            buyersAgentDetails: data.buyersAgent,
+            // Legacy fields for compatibility
+            listingAgent: data.listingAgent.name,
+            listingBrokerage: data.listingAgent.company,
+            sellingAgent: data.buyersAgent.name,
+            sellingBrokerage: data.buyersAgent.company,
+          },
+
+          // Timeline events
+          timelineEvents,
+
+          // Extraction details
+          extractionDetails: {
+            route: 'manual',
+            createdVia: 'wizard',
+            isDualRepresentation: data.isDualRepresentation,
+          },
+
+          // Set finalized timestamp
+          finalizedAt: new Date(),
+
+          // Mark as not missing SCOs since it's manually created
+          missingSCOs: false,
         },
+      });
 
-        // Timeline events
-        timelineEvents,
-
-        // Extraction details
-        extractionDetails: {
-          route: 'manual',
-          createdVia: 'wizard',
-          isDualRepresentation: data.isDualRepresentation,
+      // Increment UserUsage counter
+      await tx.userUsage.upsert({
+        where: { userId: dbUser.id },
+        create: {
+          userId: dbUser.id,
+          parses: 1,
+          lastParse: new Date(),
         },
+        update: {
+          parses: { increment: 1 },
+          lastParse: new Date(),
+        },
+      });
+      console.log(`[create-manual:${newParse.id}] Incremented user usage counter`);
 
-        // Set finalized timestamp
-        finalizedAt: new Date(),
-
-        // Mark as not missing SCOs since it's manually created
-        missingSCOs: false,
-      },
+      return newParse;
     });
 
     return NextResponse.json({
