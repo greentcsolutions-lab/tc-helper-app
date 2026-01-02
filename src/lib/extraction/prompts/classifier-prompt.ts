@@ -1,7 +1,10 @@
 // src/lib/extraction/prompts/classifier-prompt.ts
-// Version: 7.0.0 - 2026-01-01
-// MAJOR UPDATE: Added few-shot examples for improved classification accuracy
-// Previous: 6.0.0 - Universal U.S. real estate document page classification
+// Version: 7.1.0 - 2026-01-02
+// ENHANCED: Improved single-field detection (one checkbox vs large text field)
+// - Added explicit guidance: one small checkbox → hasFilledFields=false
+// - Added FVAC few-shot example (boilerplate, not extractable)
+// - Clarified: large multi-line text field (5+ lines, 30%+ of page) → true
+// Previous: 7.0.0 - Added few-shot examples for classification accuracy
 
 import classifierSchema from '@/forms/classifier.schema.json';
 
@@ -96,9 +99,12 @@ When determining contentCategory and hasFilledFields:
    - Even if there are 1-2 minor fields at the bottom (like initials or dates)
    
 5. hasFilledFields: true ONLY if:
-   - The MAIN BODY has 3+ substantive filled fields OR checked boxes OR a single large, multi-line text field with one or multiple entries
+   - The MAIN BODY has 3+ substantive filled fields OR checked boxes
+   - OR a single LARGE multi-line text field (5+ lines tall, spans 30%+ of page height)
    - Examples: price, deposit, dates, loan type checkboxes, contingency dates
-   - Do NOT count: property address in header, single initial field, form codes
+   - Do NOT count: property address in header, single checkbox, single initial field, form codes
+   - CRITICAL: One small checkbox ≠ filled fields (e.g., FVAC has one checkbox → false)
+   - CRITICAL: One large text block with timeline terms = filled fields (e.g., ADM → true)
 
 6. THE DECISIVE TEST:
    "If I removed all header/footer fields, would this page still have 
@@ -425,6 +431,62 @@ Expected classification:
 }
 
 Reasoning: Primary content is signature blocks and dates. Agent names also visible. This is extractable signature data, so hasFilledFields = true.
+
+---
+
+**Example 6: Boilerplate "Addendum" with One Checkbox (FVAC)**
+
+Visual content:
+FHA/VA AMENDATORY CLAUSE (FVAC)
+
+┌────────────────────────────────────────────────────────────┐
+│ Property: 123 Main St, Los Angeles, CA 90210             │
+└────────────────────────────────────────────────────────────┘
+
+This is an addendum to the Purchase Agreement, OR ☐ Other
+
+☑ Due to a modification of the price stated in a previous
+   amendatory clause, this FHA/VA Amendatory Clause reflects
+   the current purchase price...
+
+1. "It is expressly agreed that notwithstanding any other
+provisions of this contract, the purchaser shall not be
+obligated to complete the purchase of the property described
+herein or to incur any penalty by forfeiture of earnest money
+deposits or otherwise unless the purchaser has been given in
+accordance with HUD/FHA or VA requirements a written statement..."
+
+[Dense legal text continues for full page - 8 more paragraphs]
+
+2. CERTIFICATION: The undersigned Buyer, Seller, and real
+estate agent(s) or broker(s) hereby certify that the terms...
+
+WARNING: It is a crime to knowingly make false statements...
+
+Buyer: ___________  Date: _____
+Seller: ___________  Date: _____
+
+Buyer's Real Estate Broker: eXp Realty
+Seller's Real Estate Broker: Real Broker Technologies
+
+Footer: (FVAC PAGE 1 OF 1, Revised 6/23)
+
+Expected classification:
+{
+  "pdfPage": 25,
+  "state": "CA",
+  "formCode": "FVAC",
+  "formRevision": "6/23",
+  "formPage": 1,
+  "totalPagesInForm": 1,
+  "role": "addendum",
+  "titleSnippet": "FHA/VA AMENDATORY CLAUSE",
+  "confidence": 95,
+  "contentCategory": "boilerplate",
+  "hasFilledFields": false
+}
+
+Reasoning: Even though titled "addendum", this is 95% dense legal boilerplate with ONLY one small checkbox at top. The broker names and signatures at bottom are standard formatting, not substantive transaction data. One checkbox does NOT meet the threshold for hasFilledFields. This is a disclosure form, not a transaction-modifying addendum.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
