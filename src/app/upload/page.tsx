@@ -6,7 +6,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
-import { Sparkles, Shield, Zap, CheckCircle, FileEdit } from "lucide-react";
+import { Sparkles, Shield, Zap, CheckCircle } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -38,7 +38,7 @@ export default async function UploadPage() {
 
       <div className="grid lg:grid-cols-3 gap-8">
         {/* Main Upload Area - 2/3 width */}
-        <div className="lg:col-span-2 space-y-6">
+        <div className="lg:col-span-2">
           {hasCredits ? (
             <UploadZone />
           ) : (
@@ -57,32 +57,6 @@ export default async function UploadPage() {
               </CardContent>
             </Card>
           )}
-
-          {/* OR Divider */}
-          <div className="flex items-center gap-4">
-            <div className="flex-1 border-t border-gray-300" />
-            <span className="text-sm font-medium text-muted-foreground">OR</span>
-            <div className="flex-1 border-t border-gray-300" />
-          </div>
-
-          {/* Manual Entry Card */}
-          <Card className="border-2 border-dashed border-blue-300 bg-gradient-to-br from-blue-50 to-indigo-50">
-            <CardContent className="py-12 text-center">
-              <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <FileEdit className="h-8 w-8 text-blue-600" />
-              </div>
-              <h3 className="text-xl font-bold mb-2">Create Transaction Manually</h3>
-              <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-                Don't have documents? Create a transaction manually by entering the details yourself.
-              </p>
-              <Button asChild size="lg" variant="outline" className="border-blue-600 text-blue-700 hover:bg-blue-50">
-                <Link href="/upload/manual">
-                  <FileEdit className="h-4 w-4 mr-2" />
-                  Start Manual Entry
-                </Link>
-              </Button>
-            </CardContent>
-          </Card>
         </div>
 
         {/* Sidebar Info - 1/3 width */}

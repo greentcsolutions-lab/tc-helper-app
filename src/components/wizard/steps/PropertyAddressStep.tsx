@@ -1,13 +1,12 @@
 'use client';
 
 // src/components/wizard/steps/PropertyAddressStep.tsx
-// Step 1: Property Address with address lookup
+// Step 1: Property Address with dynamic autocomplete suggestions
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
 import { ManualTransactionData } from '@/types/manual-wizard';
-import { MapPin, CheckCircle, AlertCircle } from 'lucide-react';
+import { MapPin, CheckCircle } from 'lucide-react';
 
 interface Props {
   data: Partial<ManualTransactionData>;
@@ -23,112 +22,172 @@ const US_STATES = [
   'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY'
 ];
 
+// Mock address suggestions - in production, replace with real API call
+const mockAddressSuggestions = (query: string): string[] => {
+  if (query.length < 3) return [];
+
+  // Simple mock suggestions based on query
+  const mockAddresses = [
+    '1902 Wright Place, Carlsbad, CA, USA',
+    '1902 Wright Street, Los Angeles, CA, USA',
+    '1902 Wright Avenue, San Diego, CA, USA',
+    '1902 Wright Court, Sacramento, CA, USA',
+  ];
+
+  return mockAddresses.filter(addr =>
+    addr.toLowerCase().includes(query.toLowerCase())
+  );
+};
+
 export default function PropertyAddressStep({ data, updateData }: Props) {
   const [addressInput, setAddressInput] = useState(data.propertyAddress || '');
-  const [isValidating, setIsValidating] = useState(false);
-  const [validationStatus, setValidationStatus] = useState<
-    'idle' | 'valid' | 'invalid'
-  >('idle');
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [selectedIndex, setSelectedIndex] = useState(-1);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const suggestionsRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // Handle clicks outside to close suggestions
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        suggestionsRef.current &&
+        !suggestionsRef.current.contains(event.target as Node) &&
+        inputRef.current &&
+        !inputRef.current.contains(event.target as Node)
+      ) {
+        setShowSuggestions(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleAddressChange = (value: string) => {
     setAddressInput(value);
-    setValidationStatus('idle');
+    setSelectedIndex(-1);
+
+    // Get suggestions
+    if (value.length >= 3) {
+      const newSuggestions = mockAddressSuggestions(value);
+      setSuggestions(newSuggestions);
+      setShowSuggestions(newSuggestions.length > 0);
+    } else {
+      setSuggestions([]);
+      setShowSuggestions(false);
+    }
   };
 
-  const validateAddress = async () => {
-    if (!addressInput.trim()) return;
+  const selectSuggestion = (address: string) => {
+    setAddressInput(address);
+    setShowSuggestions(false);
 
-    setIsValidating(true);
-    setValidationStatus('idle');
-
-    // Basic address validation - extract state from address
-    // Format expected: "123 Main St, City, ST 12345"
-    const stateMatch = addressInput.match(/,\s*([A-Z]{2})\s+\d{5}/);
+    // Extract state from address
+    const stateMatch = address.match(/,\s*([A-Z]{2})[,\s]/);
     const extractedState = stateMatch ? stateMatch[1] : '';
 
-    // Simulate validation delay (replace with actual API call if needed)
-    await new Promise((resolve) => setTimeout(resolve, 500));
-
     if (extractedState && US_STATES.includes(extractedState)) {
-      setValidationStatus('valid');
       updateData({
-        propertyAddress: addressInput.trim(),
+        propertyAddress: address,
         state: extractedState,
       });
-    } else {
-      setValidationStatus('invalid');
-    }
-
-    setIsValidating(false);
-  };
-
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      validateAddress();
     }
   };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showSuggestions || suggestions.length === 0) return;
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setSelectedIndex(prev =>
+          prev < suggestions.length - 1 ? prev + 1 : prev
+        );
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setSelectedIndex(prev => (prev > 0 ? prev - 1 : -1));
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (selectedIndex >= 0 && selectedIndex < suggestions.length) {
+          selectSuggestion(suggestions[selectedIndex]);
+        }
+        break;
+      case 'Escape':
+        setShowSuggestions(false);
+        break;
+    }
+  };
+
+  const isValid = data.propertyAddress && data.state;
 
   return (
     <div className="space-y-6">
       <div className="space-y-2">
         <label className="text-sm font-medium">Property Address</label>
         <p className="text-sm text-muted-foreground">
-          Enter the full property address including city, state, and ZIP code.
-        </p>
-        <p className="text-xs text-muted-foreground italic">
-          Example: 123 Main Street, Los Angeles, CA 90001
+          Enter the property address. Suggestions will appear as you type.
         </p>
       </div>
 
-      <div className="flex gap-2">
-        <div className="flex-1 relative">
+      <div className="relative">
+        <div className="relative">
+          <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="123 Main Street, City, ST 12345"
+            ref={inputRef}
+            placeholder="Start typing an address..."
             value={addressInput}
             onChange={(e) => handleAddressChange(e.target.value)}
-            onKeyPress={handleKeyPress}
-            className={`pr-10 ${
-              validationStatus === 'valid'
-                ? 'border-green-500'
-                : validationStatus === 'invalid'
-                  ? 'border-red-500'
-                  : ''
-            }`}
+            onKeyDown={handleKeyDown}
+            onFocus={() => {
+              if (suggestions.length > 0) {
+                setShowSuggestions(true);
+              }
+            }}
+            className={`pl-10 ${isValid ? 'border-green-500' : ''}`}
           />
-          <div className="absolute right-3 top-1/2 -translate-y-1/2">
-            {validationStatus === 'valid' && (
-              <CheckCircle className="h-5 w-5 text-green-500" />
-            )}
-            {validationStatus === 'invalid' && (
-              <AlertCircle className="h-5 w-5 text-red-500" />
-            )}
-          </div>
+          {isValid && (
+            <CheckCircle className="absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 text-green-500" />
+          )}
         </div>
-        <Button
-          onClick={validateAddress}
-          disabled={!addressInput.trim() || isValidating}
-          variant="outline"
-        >
-          <MapPin className="h-4 w-4 mr-2" />
-          {isValidating ? 'Validating...' : 'Validate'}
-        </Button>
+
+        {/* Suggestions Dropdown */}
+        {showSuggestions && suggestions.length > 0 && (
+          <div
+            ref={suggestionsRef}
+            className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto"
+          >
+            <div className="py-1">
+              <div className="px-3 py-2 text-xs font-medium text-muted-foreground border-b">
+                Suggestions
+              </div>
+              {suggestions.map((suggestion, index) => (
+                <button
+                  key={index}
+                  type="button"
+                  className={`w-full px-3 py-2 text-left hover:bg-gray-100 cursor-pointer flex items-start gap-2 ${
+                    index === selectedIndex ? 'bg-blue-50' : ''
+                  }`}
+                  onClick={() => selectSuggestion(suggestion)}
+                  onMouseEnter={() => setSelectedIndex(index)}
+                >
+                  <MapPin className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                  <span className="text-sm">{suggestion}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
-      {validationStatus === 'invalid' && (
-        <div className="p-4 bg-red-50 border border-red-200 rounded-md">
-          <p className="text-sm text-red-800">
-            Unable to validate address. Please ensure it includes the full address
-            with city, state (2-letter abbreviation), and ZIP code.
-          </p>
-        </div>
-      )}
-
-      {validationStatus === 'valid' && data.state && (
+      {isValid && (
         <div className="p-4 bg-green-50 border border-green-200 rounded-md space-y-2">
           <div className="flex items-center gap-2">
             <CheckCircle className="h-5 w-5 text-green-600" />
             <p className="text-sm font-medium text-green-800">
-              Address Validated
+              Address Confirmed
             </p>
           </div>
           <div className="text-sm text-green-700">
@@ -138,23 +197,9 @@ export default function PropertyAddressStep({ data, updateData }: Props) {
             <p>
               <span className="font-medium">State:</span> {data.state}
             </p>
-            {data.state === 'CA' && (
-              <p className="mt-2 text-xs bg-blue-50 border border-blue-200 rounded p-2">
-                California property detected. Default timeline values will be
-                pre-filled in later steps.
-              </p>
-            )}
           </div>
         </div>
       )}
-
-      <div className="p-4 bg-blue-50 border border-blue-200 rounded-md">
-        <p className="text-xs text-blue-800">
-          <span className="font-semibold">Note:</span> The state is important as
-          it determines state-specific default values and requirements for your
-          transaction timeline.
-        </p>
-      </div>
     </div>
   );
 }
