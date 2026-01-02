@@ -17,7 +17,7 @@ import {
   CA_DEFAULT_TIMELINE_DAYS,
 } from '@/types/manual-wizard';
 
-// Import wizard step components (we'll create these next)
+// Import wizard step components
 import PropertyAddressStep from './steps/PropertyAddressStep';
 import TransactionTypeStep from './steps/TransactionTypeStep';
 import BuyerNamesStep from './steps/BuyerNamesStep';
@@ -26,6 +26,7 @@ import ListingAgentStep from './steps/ListingAgentStep';
 import BuyersAgentStep from './steps/BuyersAgentStep';
 import AcceptanceDateStep from './steps/AcceptanceDateStep';
 import TimelineDatesStep from './steps/TimelineDatesStep';
+import ReviewStep from './steps/ReviewStep';
 
 interface Props {
   userState: string;
@@ -165,6 +166,8 @@ export default function ManualTransactionWizard({ userState }: Props) {
             userState={userState}
           />
         );
+      case 'review':
+        return <ReviewStep data={data} />;
       default:
         return <div>Unknown step</div>;
     }
@@ -172,48 +175,22 @@ export default function ManualTransactionWizard({ userState }: Props) {
 
   const isLastStep = currentStepIndex === WIZARD_STEPS.length - 1;
 
+  const progressPercentage = (currentStepIndex / (WIZARD_STEPS.length - 1)) * 100;
+
   return (
     <div className="max-w-4xl mx-auto p-6">
-      {/* Progress Indicator */}
+      {/* Simple Progress Bar */}
       <div className="mb-8">
-        <div className="flex items-center justify-between mb-4">
-          {WIZARD_STEPS.map((step, index) => (
-            <div key={step} className="flex items-center flex-1">
-              <div className="flex flex-col items-center flex-1">
-                <div
-                  className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold transition-colors ${
-                    index < currentStepIndex
-                      ? 'bg-green-500 text-white'
-                      : index === currentStepIndex
-                        ? 'bg-blue-500 text-white'
-                        : 'bg-gray-200 text-gray-500'
-                  }`}
-                >
-                  {index < currentStepIndex ? (
-                    <Check className="h-5 w-5" />
-                  ) : (
-                    index + 1
-                  )}
-                </div>
-                <p
-                  className={`text-xs mt-2 text-center ${
-                    index === currentStepIndex
-                      ? 'font-semibold text-foreground'
-                      : 'text-muted-foreground'
-                  }`}
-                >
-                  {WIZARD_STEP_TITLES[step]}
-                </p>
-              </div>
-              {index < WIZARD_STEPS.length - 1 && (
-                <div
-                  className={`h-1 flex-1 mx-2 ${
-                    index < currentStepIndex ? 'bg-green-500' : 'bg-gray-200'
-                  }`}
-                />
-              )}
-            </div>
-          ))}
+        <div className="flex items-center gap-4 mb-2">
+          <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-blue-500 transition-all duration-300"
+              style={{ width: `${progressPercentage}%` }}
+            />
+          </div>
+          <span className="text-sm font-medium text-muted-foreground whitespace-nowrap">
+            {currentStepIndex + 1} of {WIZARD_STEPS.length}
+          </span>
         </div>
       </div>
 

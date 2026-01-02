@@ -8,6 +8,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import Link from "next/link";
 
 import { UploadView } from "./types";
 import { Dropzone } from "./dropzone";
@@ -16,6 +17,8 @@ import { ResultsView } from "./results-view";
 import { useParseOrchestrator } from "@/hooks/useParseOrchestrator";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { useCleanupEffects } from "@/hooks/useCleanupEffects";
+import { Button } from "@/components/ui/button";
+import { FileEdit } from "lucide-react";
 
 const JOKES = [
   "Don't trust AI to identify mushrooms...",
@@ -168,6 +171,27 @@ export default function UploadZone() {
             onFileSelect={onFileSelect}
             onCancel={handleCancel}
           />
+
+          {/* Manual Entry Option */}
+          <div className="text-center space-y-4">
+            <div className="flex items-center gap-4">
+              <div className="flex-1 border-t border-gray-300" />
+              <span className="text-sm font-medium text-muted-foreground">OR</span>
+              <div className="flex-1 border-t border-gray-300" />
+            </div>
+
+            <Button asChild variant="outline" size="lg" className="w-full max-w-md">
+              <Link href="/upload/manual">
+                <FileEdit className="h-4 w-4 mr-2" />
+                Create Transaction Manually
+              </Link>
+            </Button>
+
+            <p className="text-sm text-muted-foreground">
+              Don't have documents? Enter transaction details yourself.
+            </p>
+          </div>
+
           <PrivacyNotice />
         </>
       )}

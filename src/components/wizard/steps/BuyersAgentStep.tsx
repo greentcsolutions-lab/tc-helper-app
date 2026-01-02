@@ -157,14 +157,6 @@ export default function BuyersAgentStep({ data, updateData }: Props) {
           </div>
         </div>
       </div>
-
-      {allFieldsFilled && (
-        <div className="p-4 bg-green-50 border border-green-200 rounded-md">
-          <p className="text-sm text-green-800 font-medium">
-            Buyer's agent information complete
-          </p>
-        </div>
-      )}
     </div>
   );
 }

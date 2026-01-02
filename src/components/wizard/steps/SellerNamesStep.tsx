@@ -81,17 +81,8 @@ export default function SellerNamesStep({ data, updateData }: Props) {
           className="w-full border-dashed"
         >
           <Plus className="h-4 w-4 mr-2" />
-          Add Another Seller ({sellerNames.length}/{MAX_SELLERS})
+          Add Another Seller
         </Button>
-      )}
-
-      {filledSellers > 0 && (
-        <div className="p-4 bg-blue-50 border border-blue-200 rounded-md">
-          <p className="text-sm text-blue-800">
-            {filledSellers === 1 ? '1 seller' : `${filledSellers} sellers`}{' '}
-            entered
-          </p>
-        </div>
       )}
 
       <div className="p-4 bg-gray-50 border border-gray-200 rounded-md">

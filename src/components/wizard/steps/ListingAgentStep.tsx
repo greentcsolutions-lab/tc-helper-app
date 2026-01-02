@@ -104,22 +104,6 @@ export default function ListingAgentStep({ data, updateData }: Props) {
           </div>
         </div>
       </div>
-
-      {allFieldsFilled && (
-        <div className="p-4 bg-green-50 border border-green-200 rounded-md">
-          <p className="text-sm text-green-800 font-medium">
-            Listing agent information complete
-          </p>
-        </div>
-      )}
-
-      <div className="p-4 bg-blue-50 border border-blue-200 rounded-md">
-        <p className="text-xs text-blue-800">
-          <span className="font-semibold">Next:</span> You'll enter the buyer's
-          agent information. If this is a dual representation (same agent
-          represents both parties), you'll be able to auto-fill the information.
-        </p>
-      </div>
     </div>
   );
 }
