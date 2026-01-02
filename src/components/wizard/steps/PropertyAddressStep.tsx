@@ -89,17 +89,28 @@ export default function PropertyAddressStep({ data, updateData }: Props) {
         );
 
         if (!response.ok) {
-          throw new Error('Failed to fetch address suggestions');
+          const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+          console.error('[PropertyAddressStep] API error:', response.status, errorData);
+          throw new Error(errorData.error || 'Failed to fetch address suggestions');
         }
 
         const data = await response.json();
+
+        if (!data.suggestions || data.suggestions.length === 0) {
+          console.log('[PropertyAddressStep] No suggestions found for:', debouncedQuery);
+          setSuggestions([]);
+          setShowSuggestions(false);
+          return;
+        }
+
         const addresses = data.suggestions.map((s: any) => s.address);
 
         setSuggestions(addresses);
         setShowSuggestions(addresses.length > 0);
       } catch (err) {
-        console.error('Error fetching suggestions:', err);
-        setError('Unable to fetch address suggestions');
+        console.error('[PropertyAddressStep] Error fetching suggestions:', err);
+        const errorMessage = err instanceof Error ? err.message : 'Unable to fetch address suggestions';
+        setError(errorMessage);
         setSuggestions([]);
         setShowSuggestions(false);
       } finally {
@@ -113,6 +124,13 @@ export default function PropertyAddressStep({ data, updateData }: Props) {
   const handleAddressChange = (value: string) => {
     setAddressInput(value);
     setSelectedIndex(-1);
+
+    // In manual entry mode, update the address in real-time
+    if (isManualEntry) {
+      updateData({
+        propertyAddress: value,
+      });
+    }
   };
 
   const selectSuggestion = (address: string) => {

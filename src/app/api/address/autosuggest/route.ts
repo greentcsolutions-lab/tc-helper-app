@@ -14,7 +14,11 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const query = searchParams.get('query');
 
+    // Log incoming request for debugging
+    console.log('[mapbox-api] Received request with query:', query);
+
     if (!query || query.length < 3) {
+      console.log('[mapbox-api] Query too short:', query?.length || 0);
       return NextResponse.json(
         { error: 'Query must be at least 3 characters' },
         { status: 400 }
@@ -22,9 +26,10 @@ export async function GET(req: NextRequest) {
     }
 
     if (!MAPBOX_API_KEY) {
-      console.error('MAPBOX_API_KEY not configured');
+      console.error('[mapbox-api] MAPBOX_API_KEY not configured in environment');
+      console.error('[mapbox-api] Available env keys:', Object.keys(process.env).filter(k => k.includes('MAP')));
       return NextResponse.json(
-        { error: 'Mapbox API not configured' },
+        { error: 'Mapbox API key not configured. Please set MAPBOX_API_KEY environment variable.' },
         { status: 500 }
       );
     }
@@ -40,27 +45,37 @@ export async function GET(req: NextRequest) {
     // Call Mapbox Geocoding API
     const mapboxUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${MAPBOX_API_KEY}&country=US&types=address&limit=5`;
 
-    console.log(`[mapbox] Fetching suggestions for: ${query}`);
+    console.log(`[mapbox-api] Fetching suggestions for: "${query}"`);
 
     let response;
     try {
       response = await fetch(mapboxUrl);
     } catch (fetchError) {
       // Retry once on network failure
-      console.warn('[mapbox] First request failed, retrying...');
+      console.warn('[mapbox-api] First request failed, retrying...', fetchError);
       await new Promise(resolve => setTimeout(resolve, 500));
-      response = await fetch(mapboxUrl);
+      try {
+        response = await fetch(mapboxUrl);
+      } catch (retryError) {
+        console.error('[mapbox-api] Retry also failed:', retryError);
+        return NextResponse.json(
+          { error: 'Network error connecting to Mapbox' },
+          { status: 503 }
+        );
+      }
     }
 
     if (!response.ok) {
-      console.error(`[mapbox] API error: ${response.status} ${response.statusText}`);
+      const errorText = await response.text();
+      console.error(`[mapbox-api] Mapbox API error: ${response.status} ${response.statusText}`, errorText);
       return NextResponse.json(
-        { error: 'Failed to fetch address suggestions' },
+        { error: `Mapbox API error: ${response.status} - ${errorText.substring(0, 100)}` },
         { status: response.status }
       );
     }
 
     const data = await response.json();
+    console.log(`[mapbox-api] Received ${data.features?.length || 0} results from Mapbox`);
 
     // Transform Mapbox results to our format
     const suggestions = data.features.map((feature: any) => ({
