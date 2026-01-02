@@ -56,9 +56,27 @@ export async function DELETE(
       }
     }
 
-    // Delete from database
-    await db.parse.delete({
-      where: { id: parseId },
+    // Delete from database and decrement user usage counter
+    await db.$transaction(async (tx) => {
+      // Delete the parse
+      await tx.parse.delete({
+        where: { id: parseId },
+      });
+
+      // Decrement the user's parse counter (cannot go below 0)
+      const usage = await tx.userUsage.findUnique({
+        where: { userId: parse.userId },
+      });
+
+      if (usage) {
+        await tx.userUsage.update({
+          where: { userId: parse.userId },
+          data: {
+            parses: Math.max(0, usage.parses - 1),
+          },
+        });
+        console.log(`[delete:${parseId}] Decremented user usage counter from ${usage.parses} to ${Math.max(0, usage.parses - 1)}`);
+      }
     });
 
     console.log(`[delete:${parseId}] ✓ Parse deleted successfully`);

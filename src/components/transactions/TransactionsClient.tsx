@@ -58,7 +58,7 @@ export default function TransactionsClient({ initialParses }: TransactionsClient
 
   const handleDelete = async (id: string) => {
     try {
-      const res = await fetch(`/api/parse/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/parse/delete/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error();
       toast.success("Transaction deleted");
       // Optional: refetch or optimistic update
