@@ -5,12 +5,42 @@
 
 import { ManualTransactionData } from '@/types/manual-wizard';
 import { MapPin, User, Users, Building, Calendar } from 'lucide-react';
+import { calculateTimelineDate, formatDisplayDate } from '@/lib/date-utils';
 
 interface Props {
   data: Partial<ManualTransactionData>;
 }
 
 export default function ReviewStep({ data }: Props) {
+  const acceptanceDate = data.timeline?.acceptanceDate;
+
+  // Helper to get the display date for a timeline field
+  const getTimelineDate = (
+    value: string | number | null | undefined,
+    useBusinessDays: boolean = false
+  ): string => {
+    if (!value) return 'Not set';
+    if (value === 'Waived') return 'Waived';
+
+    // If it's already a date string (YYYY-MM-DD)
+    if (typeof value === 'string' && value.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      return formatDisplayDate(value);
+    }
+
+    // If it's a number of days and we have an acceptance date
+    if (typeof value === 'number' && acceptanceDate) {
+      const calculatedDate = calculateTimelineDate(acceptanceDate, value, useBusinessDays);
+      return formatDisplayDate(calculatedDate);
+    }
+
+    // Fallback for number without acceptance date
+    if (typeof value === 'number') {
+      return `${value} days`;
+    }
+
+    return 'Not set';
+  };
+
   return (
     <div className="space-y-6">
       <p className="text-sm text-muted-foreground">
@@ -85,54 +115,44 @@ export default function ReviewStep({ data }: Props) {
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
             <div>
               <p className="text-muted-foreground text-xs">Acceptance Date</p>
-              <p className="font-medium">{data.timeline?.acceptanceDate || 'Not set'}</p>
+              <p className="font-medium">
+                {acceptanceDate ? formatDisplayDate(acceptanceDate) : 'Not set'}
+              </p>
             </div>
             <div>
               <p className="text-muted-foreground text-xs">Closing</p>
               <p className="font-medium">
-                {data.timeline?.closingDays
-                  ? typeof data.timeline.closingDays === 'number'
-                    ? `${data.timeline.closingDays} days`
-                    : data.timeline.closingDays
-                  : 'Not set'}
+                {getTimelineDate(data.timeline?.closingDays, false)}
               </p>
             </div>
             <div>
               <p className="text-muted-foreground text-xs">Initial Deposit</p>
               <p className="font-medium">
-                {data.timeline?.initialDepositDays
-                  ? typeof data.timeline.initialDepositDays === 'number'
-                    ? `${data.timeline.initialDepositDays} days`
-                    : data.timeline.initialDepositDays
-                  : 'Not set'}
+                {getTimelineDate(data.timeline?.initialDepositDays, true)}
               </p>
             </div>
             <div>
               <p className="text-muted-foreground text-xs">Seller Delivery</p>
               <p className="font-medium">
-                {data.timeline?.sellerDeliveryDays
-                  ? typeof data.timeline.sellerDeliveryDays === 'number'
-                    ? `${data.timeline.sellerDeliveryDays} days`
-                    : data.timeline.sellerDeliveryDays
-                  : 'Not set'}
+                {getTimelineDate(data.timeline?.sellerDeliveryDays, false)}
               </p>
             </div>
             <div>
               <p className="text-muted-foreground text-xs">Inspection</p>
               <p className="font-medium">
-                {data.timeline?.inspectionDays || 'Not set'}
+                {getTimelineDate(data.timeline?.inspectionDays, false)}
               </p>
             </div>
             <div>
               <p className="text-muted-foreground text-xs">Appraisal</p>
               <p className="font-medium">
-                {data.timeline?.appraisalDays || 'Not set'}
+                {getTimelineDate(data.timeline?.appraisalDays, false)}
               </p>
             </div>
             <div>
               <p className="text-muted-foreground text-xs">Loan</p>
               <p className="font-medium">
-                {data.timeline?.loanDays || 'Not set'}
+                {getTimelineDate(data.timeline?.loanDays, false)}
               </p>
             </div>
           </div>
