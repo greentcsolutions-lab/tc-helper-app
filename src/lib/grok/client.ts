@@ -193,6 +193,10 @@ export async function callGrokAPI<T>(
 
   // STEP 3: Extract response content
   const text = data.choices[0].message.content;
+  if (!text) {
+    console.error(`${logPrefix}:api] ❌ Empty response content from Grok`);
+    throw new Error('Empty response content from Grok API');
+  }
 
   console.log(`${logPrefix}:response] Raw response length: ${text.length} chars`);
   console.log(`${logPrefix}:response] First 300 chars:`, text.substring(0, 300));
@@ -449,6 +453,10 @@ export async function callGrokAPIWithValidation<T>(
 
   // Extract response content
   const text = data.choices[0].message.content;
+  if (!text) {
+    console.error(`${logPrefix}:api] ❌ Empty response content from Grok`);
+    throw new Error('Empty response content from Grok API');
+  }
 
   console.log(`${logPrefix}:response] Raw response length: ${text.length} chars`);
   console.log(`${logPrefix}:response] First 300 chars:`, text.substring(0, 300));
