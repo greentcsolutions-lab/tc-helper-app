@@ -9,50 +9,68 @@ import { coerceAllTypes } from './helpers/type-coercion';
 import { calculateEffectiveDate, normalizeDates } from './helpers/date-utils';
 import { mergePages, applyOverrides } from './helpers/merge';
 import { validateArrayLength, validateExtractedTerms } from './helpers/validation';
+import { validateAddress } from './helpers/address-validation';
 
 // ============================================================================
 // MAIN ENTRY POINT
 // ============================================================================
 
-export function mergePageExtractions(
+export async function mergePageExtractions(
   pageExtractions: PerPageExtraction[],
   classificationMetadata: {
     criticalPageNumbers: number[];
     pageLabels: Record<string, string>;
     packageMetadata: any;
   }
-): MergeResult {
+): Promise<MergeResult> {
   console.log(`\n[post-processor] ${"═".repeat(60)}`);
   console.log(`[post-processor] STARTING MERGE PROCESS`);
   console.log(`[post-processor] ${"═".repeat(60)}`);
-  
+
   // STEP 1: Safety validation
   validateArrayLength(pageExtractions.length, classificationMetadata.criticalPageNumbers.length);
-  
+
   // STEP 2: Enrich with classification metadata
   const enrichedPages = enrichWithMetadata(pageExtractions, classificationMetadata);
   console.log(`[post-processor] Enriched ${enrichedPages.length} pages`);
-  
+
   // STEP 3: Execute merge pipeline
   const mergeLog: string[] = [];
   const provenance: Record<string, number> = {};
-  
+
   let finalTerms = executeMergePipeline(enrichedPages, provenance, mergeLog);
-  
-  // STEP 4: Validate results
+
+  // STEP 4: Validate and correct address using Mapbox
+  const addressValidation = await validateAddress(finalTerms.propertyAddress, mergeLog);
+
+  let addressNeedsReview = false;
+
+  if (addressValidation.verified && addressValidation.correctedAddress) {
+    // Use Mapbox-verified address as source of truth
+    finalTerms.propertyAddress = addressValidation.correctedAddress;
+    mergeLog.push(`✅ Address updated to Mapbox-verified version`);
+  } else if (addressValidation.needsReview) {
+    // Flag for review but keep original address
+    addressNeedsReview = true;
+    mergeLog.push(`⚠️ Address needs review: ${addressValidation.reviewReason}`);
+  }
+
+  // STEP 5: Validate results
   const validation = validateExtractedTerms(finalTerms, mergeLog);
-  
+
   console.log(`\n[post-processor] MERGE COMPLETE\n`);
-  
+
   return {
     finalTerms: finalTerms as any, // Type assertion for UniversalExtractionResult
     provenance,
     pageExtractions: enrichedPages,
-    needsReview: validation.needsReview,
+    needsReview: validation.needsReview || addressNeedsReview,
     needsSecondTurn: validation.needsSecondTurn,
     mergeLog,
     validationErrors: validation.errors,
-    validationWarnings: validation.warnings,
+    validationWarnings: addressNeedsReview
+      ? [...validation.warnings, `Address validation: ${addressValidation.reviewReason}`]
+      : validation.warnings,
   };
 }
 

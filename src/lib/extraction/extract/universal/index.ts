@@ -54,8 +54,8 @@ export async function universalExtractor(
   console.log(`\n[extractor:phase2] ${"─".repeat(60)}`);
   console.log(`[extractor:phase2] PHASE 2: MERGING PAGE EXTRACTIONS`);
   console.log(`[extractor:phase2] ${"─".repeat(60)}`);
-  
-  const mergeResult = mergePageExtractions(pageExtractions, classificationMetadata);
+
+  const mergeResult = await mergePageExtractions(pageExtractions, classificationMetadata);
   
   console.log(`\n${"═".repeat(80)}`);
   console.log(`║ ✅ EXTRACTION COMPLETE`);
