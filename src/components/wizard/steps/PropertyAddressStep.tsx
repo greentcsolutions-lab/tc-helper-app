@@ -209,11 +209,6 @@ export default function PropertyAddressStep({ data, updateData }: Props) {
             )}
           </Button>
         </div>
-        <p className="text-sm text-muted-foreground">
-          {isManualEntry
-            ? 'Enter the property address manually.'
-            : 'Start typing to see address suggestions from Mapbox.'}
-        </p>
       </div>
 
       <div className="relative">
