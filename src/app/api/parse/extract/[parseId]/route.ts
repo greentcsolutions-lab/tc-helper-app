@@ -129,19 +129,44 @@ export async function POST(
       ? JSON.parse(JSON.stringify(mappedFields.extractionDetails))
       : undefined;
 
-    await db.parse.update({
-      where: { id: parseId },
-      data: {
-        status: finalStatus,
-        ...mappedFields,
-        earnestMoneyDeposit: mappedFields.earnestMoneyDeposit ?? undefined,
-        financing: mappedFields.financing ?? undefined,
-        contingencies: mappedFields.contingencies ?? undefined,
-        closingCosts: mappedFields.closingCosts ?? undefined,
-        brokers: mappedFields.brokers ?? undefined,
-        extractionDetails: extractionDetailsJson,
-        timelineEvents: timelineEvents ?? undefined,
-      },
+    // Update parse and increment UserUsage counter in a transaction
+    await db.$transaction(async (tx) => {
+      await tx.parse.update({
+        where: { id: parseId },
+        data: {
+          status: finalStatus,
+          ...mappedFields,
+          earnestMoneyDeposit: mappedFields.earnestMoneyDeposit ?? undefined,
+          financing: mappedFields.financing ?? undefined,
+          contingencies: mappedFields.contingencies ?? undefined,
+          closingCosts: mappedFields.closingCosts ?? undefined,
+          brokers: mappedFields.brokers ?? undefined,
+          extractionDetails: extractionDetailsJson,
+          timelineEvents: timelineEvents ?? undefined,
+        },
+      });
+
+      // Increment UserUsage counter (active parses only)
+      const parse = await tx.parse.findUnique({
+        where: { id: parseId },
+        select: { userId: true },
+      });
+
+      if (parse) {
+        await tx.userUsage.upsert({
+          where: { userId: parse.userId },
+          create: {
+            userId: parse.userId,
+            parses: 1,
+            lastParse: new Date(),
+          },
+          update: {
+            parses: { increment: 1 },
+            lastParse: new Date(),
+          },
+        });
+        console.log(`[extract:${parseId}] Incremented user usage counter`);
+      }
     });
 
     logSuccess("EXTRACT:5", `Saved — status: ${finalStatus}`);

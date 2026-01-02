@@ -16,12 +16,15 @@ export default async function TransactionsPage() {
 
   const dbUser = await db.user.findUnique({
     where: { clerkId: user.id },
-    select: { id: true },
+    select: {
+      id: true,
+      quota: true,
+    },
   });
 
   if (!dbUser) redirect("/onboarding");
 
-  // Fetch all parses for this user
+  // Fetch all parses for this user (including archived for the client to filter)
   const dbParses = await db.parse.findMany({
     where: { userId: dbUser.id },
     orderBy: { createdAt: "desc" },
@@ -83,9 +86,16 @@ export default async function TransactionsPage() {
     lowResZipUrl: parse.renderZipUrl ?? null,
   }));
 
+  // Count only non-archived parses for the active count
+  const activeCount = dbParses.filter(p => p.status !== "ARCHIVED").length;
+
   return (
     <div className="p-6 max-w-7xl mx-auto">
-      <TransactionsClient initialParses={initialParses} />
+      <TransactionsClient
+        initialParses={initialParses}
+        userQuota={dbUser.quota}
+        activeCount={activeCount}
+      />
     </div>
   );
 }

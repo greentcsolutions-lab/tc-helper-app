@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ChevronDown, Trash2, AlertCircle, FileText } from "lucide-react";
 import { format } from "date-fns";
 import ExtractionCategories from "@/components/ExtractionCategories";
@@ -13,10 +14,18 @@ import { ParseResult } from "@/types";
 interface TransactionCardProps {
   parse: ParseResult;
   isLatest: boolean;
+  isSelected: boolean;
+  onToggleSelect: (id: string) => void;
   onDelete: (id: string) => void;
 }
 
-export default function TransactionCard({ parse, isLatest, onDelete }: TransactionCardProps) {
+export default function TransactionCard({
+  parse,
+  isLatest,
+  isSelected,
+  onToggleSelect,
+  onDelete
+}: TransactionCardProps) {
   const [isOpen, setIsOpen] = useState(isLatest);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -32,6 +41,10 @@ export default function TransactionCard({ parse, isLatest, onDelete }: Transacti
     }
   };
 
+  const handleCheckboxClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+  };
+
   return (
     <Card className="overflow-hidden">
       <button
@@ -41,6 +54,13 @@ export default function TransactionCard({ parse, isLatest, onDelete }: Transacti
         <CardHeader className="bg-primary/10">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
+              <div onClick={handleCheckboxClick}>
+                <Checkbox
+                  checked={isSelected}
+                  onCheckedChange={() => onToggleSelect(parse.id)}
+                  className="h-5 w-5"
+                />
+              </div>
               <FileText className="h-8 w-8 text-primary" />
               <div>
                 <h3 className="text-xl font-semibold">{address}</h3>
