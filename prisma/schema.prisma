@@ -106,7 +106,9 @@ model Parse {
   earnestMoneyAmount   Float?                   // Deprecated - use earnestMoneyDeposit
   earnestMoneyHolder   String?                  // Deprecated - use earnestMoneyDeposit
   closingDate          String?                  // YYYY-MM-DD or "N days"
-  effectiveDate        String?                  // YYYY-MM-DD (final acceptance)
+  effectiveDate        String?                  // YYYY-MM-DD (final acceptance / acceptance date)
+  initialDepositDueDate String?                 // YYYY-MM-DD or "N days" (same as earnest money due date)
+  sellerDeliveryOfDisclosuresDate String?       // YYYY-MM-DD or "N days"
   isAllCash            Boolean?
   loanType             String?
 
@@ -117,7 +119,7 @@ model Parse {
   financing            Json?     // { isAllCash: boolean, loanType: string, loanAmount: number }
   contingencies        Json?     // { inspectionDays, appraisalDays, loanDays, saleOfBuyerProperty }
   closingCosts         Json?     // { buyerPays: [], sellerPays: [], sellerCreditAmount }
-  brokers              Json?     // { listingBrokerage, listingAgent, sellingBrokerage, sellingAgent }
+  brokers              Json?     // { listingAgent: { name, company, phone, email }, buyersAgent: { name, company, phone, email } }
   personalPropertyIncluded String[] @default([])
   escrowHolder         String?
 

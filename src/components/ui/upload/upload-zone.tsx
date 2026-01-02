@@ -136,7 +136,7 @@ export default function UploadZone() {
 
   const handleComplete = async () => {
     if (!parseId) {
-      router.push("/dashboard");
+      router.push("/transactions");
       return;
     }
 
@@ -145,11 +145,11 @@ export default function UploadZone() {
 
     try {
       await triggerCleanup(parseId);
-      console.log('[upload-zone] ✓ Cleanup complete, navigating to dashboard');
-      router.push("/dashboard");
+      console.log('[upload-zone] ✓ Cleanup complete, navigating to transactions');
+      router.push("/transactions");
     } catch (error) {
       console.warn('[upload-zone] Cleanup failed but continuing:', error);
-      router.push("/dashboard");
+      router.push("/transactions");
     }
   };
 

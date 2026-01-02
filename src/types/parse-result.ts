@@ -49,7 +49,9 @@ export interface ParseResult {
   earnestMoneyAmount: number | null;        // deprecated — use earnestMoneyDeposit.amount
   earnestMoneyHolder: string | null;        // deprecated — use earnestMoneyDeposit.holder
   closingDate: string | null;
-  effectiveDate: string | null;
+  effectiveDate: string | null;             // Acceptance date (YYYY-MM-DD)
+  initialDepositDueDate: string | null;     // Earnest money due date (YYYY-MM-DD or "N days")
+  sellerDeliveryOfDisclosuresDate: string | null; // YYYY-MM-DD or "N days"
   isAllCash: boolean | null;
   loanType: string | null;
 
@@ -79,10 +81,25 @@ export interface ParseResult {
   } | null;
 
   brokers: {
-    listingBrokerage: string | null;
-    listingAgent: string | null;
-    sellingBrokerage: string | null;
-    sellingAgent: string | null;
+    // Legacy fields (for backwards compatibility with AI extraction)
+    listingBrokerage?: string | null;
+    listingAgent?: string | null;
+    sellingBrokerage?: string | null;
+    sellingAgent?: string | null;
+
+    // New detailed agent fields (for manual entry)
+    listingAgentDetails?: {
+      name: string | null;
+      company: string | null;
+      phone: string | null;
+      email: string | null;
+    } | null;
+    buyersAgentDetails?: {
+      name: string | null;
+      company: string | null;
+      phone: string | null;
+      email: string | null;
+    } | null;
   } | null;
 
   personalPropertyIncluded: string[] | null;
