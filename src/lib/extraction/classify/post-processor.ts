@@ -1,8 +1,10 @@
 // src/lib/extraction/classify/post-processor.ts
-// Version: 3.5.0 - 2026-01-01
-// FIX: Exclude disclosure forms with "addendum" in title (FRR-PA, FRPA, etc.)
-// - Rule 1 now checks contentCategory='disclosures' and excludes them
-// - Keeps real transaction-modifying addendums (ADM, FVAC, etc.)
+// Version: 3.6.0 - 2026-01-01
+// FIX: Exclude ALL boilerplate forms with "addendum" in title
+// - v3.6.0: Also exclude contentCategory='signatures' (FVAC, etc.)
+// - v3.5.0: Exclude contentCategory='disclosures' (FRR-PA, FRPA, etc.)
+// - Only include addendums with 'transaction_terms' or 'boilerplate' (mislabeled)
+// - Keeps real transaction-modifying addendums (ADM, AEA, TOA, etc.)
 // Previous: 3.4.0 - Signature and broker pages always included
 
 import type { LabeledCriticalImage, GrokPageResult } from '@/types/classification';
@@ -17,6 +19,7 @@ export function mergeDetectedPages(
  * Selects critical pages for extraction using universal logic
  * Works for CA, TX, FL, NV, and all other U.S. states
  *
+ * v3.6.0: Also exclude signature-only "addendums" (FVAC) - just one checkbox field
  * v3.5.0: Exclude disclosure "addendums" (FRR-PA, FRPA) - they're not real addendums
  * v3.4.0: Signature and broker pages now ALWAYS included, even when hasFilledFields=false
  */
@@ -49,8 +52,8 @@ export function getCriticalPageNumbers(detectedPages: GrokPageResult[]): number[
     // ========================================================================
     // RULE 1: Override documents (counters, addenda, amendments)
     // ========================================================================
-    // These are NOT disclosures - they modify contract terms
-    // Examples: SCO, BCO, ADM, FVAC, APR, RR, amendments
+    // These modify contract terms (not just boilerplate disclosures)
+    // Examples: SCO, BCO, ADM, AEA, TOA, APR, RR, amendments
     if (['counter_offer', 'addendum', 'local_addendum', 'contingency_release'].includes(role)) {
       // Primary requirement: Must have filled fields
       if (!hasFilled) {
@@ -58,11 +61,17 @@ export function getCriticalPageNumbers(detectedPages: GrokPageResult[]): number[
         continue;
       }
 
-      // v3.5.0 FIX: Exclude boilerplate disclosure "addendums"
-      // Some disclosure forms have "addendum" in the title (e.g., FRR-PA, FRPA)
-      // but are purely informational disclosures, not transaction-modifying documents.
-      // Only include if contentCategory indicates actual extractable transaction data.
-      if (category === 'disclosures') {
+      // v3.6.0 FIX: Exclude boilerplate forms masquerading as addendums
+      // Real addendums (ADM, AEA, TOA) have contentCategory='transaction_terms'
+      // with multi-line text fields that modify contract terms.
+      //
+      // Boilerplate "addendums" are just legal disclosures or signature pages:
+      // - FVAC (FHA/VA Clause): contentCategory='signatures' (one checkbox)
+      // - FRR-PA, FRPA (Reporting): contentCategory='disclosures' (legal text)
+      //
+      // Only include addendums with extractable transaction data, plus 'boilerplate'
+      // category (v3.2.0: Grok sometimes mislabels real addenda as boilerplate).
+      if (['disclosures', 'signatures'].includes(category)) {
         stats.excluded++;
         continue;
       }
