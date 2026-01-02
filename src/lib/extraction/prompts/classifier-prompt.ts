@@ -1,10 +1,13 @@
 // src/lib/extraction/prompts/classifier-prompt.ts
-// Version: 7.1.0 - 2026-01-02
-// ENHANCED: Improved single-field detection (one checkbox vs large text field)
-// - Added explicit guidance: one small checkbox → hasFilledFields=false
-// - Added FVAC few-shot example (boilerplate, not extractable)
-// - Clarified: large multi-line text field (5+ lines, 30%+ of page) → true
-// Previous: 7.0.0 - Added few-shot examples for classification accuracy
+// Version: 7.2.0 - 2026-01-02
+// MAJOR ACCURACY UPGRADE: Implemented 5-part optimization from Claude research
+// - EDIT 1: Concrete field counting rules (✓/✗ checklist)
+// - EDIT 2: Strengthened per-page independence (prevent cross-page bleeding)
+// - EDIT 3: Conservative defaults for uncertainty (better to be accurate on 90% than hallucinate on 100%)
+// - EDIT 4: Negative example showing common header/body confusion mistake
+// - EDIT 5: Priority-based form code extraction (4 priority levels)
+// Expected: 90% → 95%+ accuracy improvement
+// Previous: 7.1.0 - Single-field detection, FVAC example
 
 import classifierSchema from '@/forms/classifier.schema.json';
 
@@ -21,7 +24,14 @@ export function buildClassifierPrompt(
   return `
 You are a U.S. real estate document page classifier. Examine ${batchSize} independent page images from a transaction packet.
 
-Treat each page as isolated. Classify based solely on visible content: header/title, footer (code, revision, page X of Y), layout, section headings, and fields.
+CRITICAL: Treat each image as a SEPARATE, INDEPENDENT DOCUMENT.
+- Do NOT combine information across images
+- Do NOT assume images are sequential pages
+- Image 1 has NO relationship to Image ${batchSize}
+- Classify ONLY based on what you see in THAT SPECIFIC image
+- Each image gets its own independent classification
+
+Classify based solely on visible content: header/title, footer (code, revision, page X of Y), layout, section headings, and fields.
 
 Images in order:
 - Image 1 = PDF page ${batchStart}
@@ -86,11 +96,23 @@ When determining contentCategory and hasFilledFields:
    
 3. contentCategory: "transaction_terms" means:
    - Multiple fillable fields in the main body (not headers)
-   - Checkboxes that make substantive choices (loan type, contingencies, items included)
-   - Dollar amounts, dates, or numbers that are part of the transaction
-   - Examples: purchase price, earnest money/deposit, closing date, contingency deadlines
-   - **CRITICAL TIMELINE TERMS** (inspection periods, delivery deadlines, clearance requirements)
-   - Minimum threshold: At least 2-3 substantive fillable fields in the main body
+   - Minimum threshold: At least 3 substantive fillable fields in the main body
+
+   COUNT ONLY THESE AS FILLED FIELDS:
+   ✓ Dollar amounts (e.g., $500,000, $10,000)
+   ✓ Dates (e.g., 1/15/2024, "30 days from acceptance")
+   ✓ Checked checkboxes (☑)
+   ✓ Names with signatures or initials
+   ✓ Multi-line text blocks 5+ lines tall, spanning 30%+ page height
+   ✓ Critical timeline terms (numbered or underlined, e.g., "within 10 days after acceptance")
+
+   DO NOT COUNT:
+   ✗ Property address in header/footer
+   ✗ Pre-printed labels ("Buyer:", "Seller:", "Property:")
+   ✗ Page numbers, form codes, revision dates
+   ✗ Empty checkboxes (☐)
+   ✗ Single initials on boilerplate pages
+   ✗ Broker names in running headers
    
 4. contentCategory: "boilerplate" means:
    - Dense paragraph text that fills most of the page
@@ -184,19 +206,58 @@ Reason: Main body is dense legal text. Header address and bottom initials don't 
 Universal: Dense legal clauses look the same in CA, TX, FL, etc.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚖️ HANDLING UNCERTAINTY - CONSERVATIVE DEFAULTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+When uncertain about classification:
+
+1. contentCategory - Default to MORE CONSERVATIVE:
+   - If unsure between "transaction_terms" vs "boilerplate" → choose "boilerplate"
+   - If unsure between "transaction_terms" vs "other" → choose "other"
+
+2. hasFilledFields - Default to MORE CONSERVATIVE:
+   - If unsure whether fields are substantive → choose false
+   - Better to miss a field than hallucinate one
+
+3. formCode - When uncertain:
+   - Use exact footer text if visible
+   - If no code visible → use null (don't guess)
+
+4. confidence - Be honest:
+   - Return confidence < 70 if genuinely ambiguous
+   - Low confidence is better than confidently wrong
+
+REMEMBER: It's better to be accurate on 90% of pages than to hallucinate on 100%.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 For each page:
 - If no standard form detected → null
 - Otherwise, extract metadata matching the schema.
 - state: Two-letter code if detected (e.g., 'CA', 'TX', 'FL'); null if unknown.
-- formCode: Extract the SHORT CODE from the footer or header. CRITICAL EXAMPLES:
-  * SELLER counter offers: SCO, SMCO (not BCO - that's buyer counter)
-  * BUYER counter offers: BCO (not SCO - that's seller counter)
-  * Main contracts: RPA, TREC 20-16, FAR/BAR-6
-  * If the footer says "(SCO PAGE 1 OF 2)" → formCode is "SCO"
-  * If the footer says "(BCO PAGE 1 OF 1)" → formCode is "BCO"
-  * If the title says "SELLER COUNTER OFFER" → usually SCO or SMCO
-  * If the title says "BUYER COUNTER OFFER" → usually BCO
+- formCode: Extract the SHORT CODE using this priority order:
+
+  PRIORITY 1 - Footer code in parentheses:
+  * "(SCO PAGE 1 OF 2)" → formCode: "SCO"
+  * "(BCO PAGE 1 OF 1)" → formCode: "BCO"
+  * "(RPA PAGE 5 OF 17)" → formCode: "RPA"
+
+  PRIORITY 2 - Footer code before "PAGE":
+  * "SCO PAGE 1" → formCode: "SCO"
+  * "TREC 20-16 PAGE 3" → formCode: "TREC 20-16"
+
+  PRIORITY 3 - Header short code in parentheses:
+  * "SELLER COUNTER OFFER (SCO)" → formCode: "SCO"
+  * "ADDENDUM (ADM)" → formCode: "ADM"
+
+  PRIORITY 4 - If no code visible:
+  * Return formCode: null (don't guess!)
+
+  CRITICAL RULES:
+  * SELLER counter offers: SCO or SMCO (NEVER BCO)
+  * BUYER counter offers: BCO (NEVER SCO)
+  * When uncertain between similar codes → use exact footer text
+  * Main contracts: RPA, TREC 20-16, FAR/BAR-6, etc.
 - formRevision: Date if visible (e.g., '6/25', '11/2023').
 - formPage/totalPagesInForm: From footer (e.g., 'Page 3 of 17').
 - role: Best enum match:
@@ -487,6 +548,46 @@ Expected classification:
 }
 
 Reasoning: Even though titled "addendum", this is 95% dense legal boilerplate with ONLY one small checkbox at top. The broker names and signatures at bottom are standard formatting, not substantive transaction data. One checkbox does NOT meet the threshold for hasFilledFields. This is a disclosure form, not a transaction-modifying addendum.
+
+---
+
+**Example 7: Common Mistake - Confusing Header Fields with Body Content**
+
+Visual content:
+┌────────────────────────────────────────────────────────┐
+│ Property: 456 Oak St, San Diego, CA 92101             │
+│ Buyer: Alice Smith        Seller: Bob Johnson         │
+└────────────────────────────────────────────────────────┘
+
+ARBITRATION OF DISPUTES: Any dispute or claim in law or
+equity arising between Buyer and Seller out of this Agreement
+or any resulting transaction which is not settled through
+mediation shall be decided by neutral, binding arbitration.
+The arbitrator shall be a retired judge or an attorney with
+at least five years of residential real estate law experience.
+[Dense legal text continues for 20 more lines...]
+
+Buyer Initials: ___  Seller Initials: ___
+
+Footer: (RPA PAGE 10 OF 17, Revised 6/25)
+
+❌ INCORRECT CLASSIFICATION:
+{
+  "contentCategory": "transaction_terms",
+  "hasFilledFields": true
+}
+Reasoning: Mistake! The classifier saw "Property:", "Buyer:", "Seller:"
+in the header and counted them as filled fields.
+
+✅ CORRECT CLASSIFICATION:
+{
+  "contentCategory": "boilerplate",
+  "hasFilledFields": false
+}
+Reasoning: Header fields are FORMATTING, not content. The main body
+is dense legal text with only empty initial fields at bottom. Apply
+the decisive test: "If I removed all header/footer fields, would this
+page still have extractable transaction data?" → NO.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
