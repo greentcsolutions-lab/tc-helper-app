@@ -30,12 +30,14 @@ interface TimelineClientProps {
 
 export default function TimelineClient({ parses }: TimelineClientProps) {
   const [selectedEvent, setSelectedEvent] = useState<TimelineEvent | null>(null);
+  const [showOverdueDetails, setShowOverdueDetails] = useState(false);
 
   const events = useMemo(() => getAllTimelineEvents(parses), [parses]);
 
   // Group events by status
   const upcomingCount = events.filter(e => e.status === 'upcoming').length;
   const overdueCount = events.filter(e => e.status === 'overdue').length;
+  const overdueEvents = events.filter(e => e.status === 'overdue');
 
   // Custom event style based on type and status
   const eventStyleGetter = (event: TimelineEvent) => {
@@ -116,6 +118,47 @@ export default function TimelineClient({ parses }: TimelineClientProps) {
         </div>
       </div>
 
+      {/* Overdue Details Card - Shows when clicked */}
+      {showOverdueDetails && (
+        <Card className="border-red-200 bg-red-50">
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              <span className="text-red-700">Overdue Events Details ({overdueCount})</span>
+              <button
+                onClick={() => setShowOverdueDetails(false)}
+                className="text-sm text-muted-foreground hover:text-foreground"
+              >
+                Close
+              </button>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {overdueEvents.map((event) => (
+                <div key={event.id} className="p-4 bg-white rounded-lg border border-red-200">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <p className="font-semibold text-gray-900">{event.title}</p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Due: {format(event.start, "MMMM d, yyyy")}
+                      </p>
+                      {event.propertyAddress && (
+                        <p className="text-sm text-muted-foreground">
+                          Property: {event.propertyAddress}
+                        </p>
+                      )}
+                    </div>
+                    <Badge variant="destructive" className="ml-4">
+                      {event.type}
+                    </Badge>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
@@ -132,7 +175,10 @@ export default function TimelineClient({ parses }: TimelineClientProps) {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card
+          className="cursor-pointer hover:bg-red-50 transition-colors"
+          onClick={() => setShowOverdueDetails(!showOverdueDetails)}
+        >
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-lg bg-red-100 flex items-center justify-center">
@@ -140,7 +186,9 @@ export default function TimelineClient({ parses }: TimelineClientProps) {
               </div>
               <div>
                 <p className="text-2xl font-bold">{overdueCount}</p>
-                <p className="text-sm text-muted-foreground">Overdue</p>
+                <p className="text-sm text-muted-foreground">
+                  Overdue {overdueCount > 0 && '(click to view)'}
+                </p>
               </div>
             </div>
           </CardContent>
