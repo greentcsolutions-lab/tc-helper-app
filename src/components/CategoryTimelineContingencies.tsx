@@ -20,12 +20,16 @@ export default function CategoryTimelineContingencies({
 }) {
   const cont = data.contingencies;
 
+  // Extract timeline source from extractionDetails if available
+  const timelineSource = (data.extractionDetails as any)?.timelineSource;
+
   // ═══════════════════════════════════════════════════════════════════════
   // HELPER: Format date with source annotation
   // Returns "MM/DD/YYYY (source)" or null if not available
   // ═══════════════════════════════════════════════════════════════════════
   const formatDateWithSource = (
     value: string | number | null | undefined,
+    sourceKey: string,
     fieldType: 'business_days' | 'calendar_days' | 'date'
   ): { display: string; date: Date } | null => {
     if (!value) return null;
@@ -35,8 +39,18 @@ export default function CategoryTimelineContingencies({
       if (typeof value === 'string' && value.match(/^\d{4}-\d{2}-\d{2}$/)) {
         const date = parseISO(value);
         const formatted = format(date, 'MM/dd/yyyy');
+
+        // Check if we have source information
+        const sourceDays = timelineSource?.[sourceKey];
+        let sourceLabel = 'specified';
+
+        if (typeof sourceDays === 'number') {
+          const daysLabel = fieldType === 'business_days' ? 'business days' : 'days';
+          sourceLabel = `${sourceDays} ${daysLabel}`;
+        }
+
         return {
-          display: `${formatted} (specified)`,
+          display: `${formatted} (${sourceLabel})`,
           date
         };
       }
@@ -48,8 +62,6 @@ export default function CategoryTimelineContingencies({
 
       // Handle number of days (but we need acceptance date to calculate)
       if (typeof value === 'number') {
-        // We can't calculate without acceptance date, just show the days
-        const daysLabel = fieldType === 'business_days' ? 'business days' : 'days';
         return null; // Don't show if we can't calculate actual date
       }
 
@@ -65,7 +77,7 @@ export default function CategoryTimelineContingencies({
   const timelineFields: TimelineField[] = [];
 
   // Close of Escrow
-  const closingFormatted = formatDateWithSource(data.closingDate, 'date');
+  const closingFormatted = formatDateWithSource(data.closingDate, 'closingDays', 'calendar_days');
   if (closingFormatted) {
     timelineFields.push({
       label: "Close of Escrow",
@@ -75,7 +87,7 @@ export default function CategoryTimelineContingencies({
   }
 
   // Initial Deposit / EMD Due
-  const initialDepositFormatted = formatDateWithSource(data.initialDepositDueDate, 'business_days');
+  const initialDepositFormatted = formatDateWithSource(data.initialDepositDueDate, 'initialDepositDays', 'business_days');
   if (initialDepositFormatted) {
     timelineFields.push({
       label: "Initial Deposit / EMD Due",
@@ -85,7 +97,7 @@ export default function CategoryTimelineContingencies({
   }
 
   // Seller Delivery of Documents
-  const sellerDeliveryFormatted = formatDateWithSource(data.sellerDeliveryOfDisclosuresDate, 'calendar_days');
+  const sellerDeliveryFormatted = formatDateWithSource(data.sellerDeliveryOfDisclosuresDate, 'sellerDeliveryDays', 'calendar_days');
   if (sellerDeliveryFormatted) {
     timelineFields.push({
       label: "Seller Delivery of Documents",
@@ -95,7 +107,7 @@ export default function CategoryTimelineContingencies({
   }
 
   // Inspection Contingency
-  const inspectionFormatted = formatDateWithSource(cont?.inspectionDays, 'calendar_days');
+  const inspectionFormatted = formatDateWithSource(cont?.inspectionDays, 'inspectionDays', 'calendar_days');
   if (inspectionFormatted) {
     timelineFields.push({
       label: "Inspection Contingency",
@@ -105,7 +117,7 @@ export default function CategoryTimelineContingencies({
   }
 
   // Appraisal Contingency
-  const appraisalFormatted = formatDateWithSource(cont?.appraisalDays, 'calendar_days');
+  const appraisalFormatted = formatDateWithSource(cont?.appraisalDays, 'appraisalDays', 'calendar_days');
   if (appraisalFormatted) {
     timelineFields.push({
       label: "Appraisal Contingency",
@@ -115,7 +127,7 @@ export default function CategoryTimelineContingencies({
   }
 
   // Loan Contingency
-  const loanFormatted = formatDateWithSource(cont?.loanDays, 'calendar_days');
+  const loanFormatted = formatDateWithSource(cont?.loanDays, 'loanDays', 'calendar_days');
   if (loanFormatted) {
     timelineFields.push({
       label: "Loan Contingency",
