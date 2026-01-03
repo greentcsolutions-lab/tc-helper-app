@@ -104,8 +104,13 @@ export function extractTimelineEvents(parse: any): TimelineEvent[] {
     });
   }
 
-  // 2. Initial Deposit Due
-  const depositDue = parseDate(parse.initialDepositDueDate);
+  // 2. Initial Deposit Due (can be either number of days or specific date)
+  let depositDue: Date | null = null;
+  if (typeof parse.initialDepositDueDate === 'number' && acceptanceDate) {
+    depositDue = calculateContingencyDate(acceptanceDate, parse.initialDepositDueDate);
+  } else if (typeof parse.initialDepositDueDate === 'string') {
+    depositDue = parseDate(parse.initialDepositDueDate);
+  }
   if (depositDue) {
     events.push({
       id: `${parseId}-deposit`,
@@ -120,8 +125,13 @@ export function extractTimelineEvents(parse: any): TimelineEvent[] {
     });
   }
 
-  // 3. Seller Delivery of Disclosures
-  const sellerDisclosuresDate = parseDate(parse.sellerDeliveryOfDisclosuresDate);
+  // 3. Seller Delivery of Disclosures (can be either number of days or specific date)
+  let sellerDisclosuresDate: Date | null = null;
+  if (typeof parse.sellerDeliveryOfDisclosuresDate === 'number' && acceptanceDate) {
+    sellerDisclosuresDate = calculateContingencyDate(acceptanceDate, parse.sellerDeliveryOfDisclosuresDate);
+  } else if (typeof parse.sellerDeliveryOfDisclosuresDate === 'string') {
+    sellerDisclosuresDate = parseDate(parse.sellerDeliveryOfDisclosuresDate);
+  }
   if (sellerDisclosuresDate) {
     events.push({
       id: `${parseId}-seller-disclosures`,
