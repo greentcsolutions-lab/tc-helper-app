@@ -35,23 +35,26 @@ export default function TimelineClient({ parses }: TimelineClientProps) {
   const [showUpcomingDetails, setShowUpcomingDetails] = useState(false);
   const [showCompletedDetails, setShowCompletedDetails] = useState(false);
   const [statusOverrides, setStatusOverrides] = useState<Record<string, TimelineEvent['status']>>({});
+  const [dateOverrides, setDateOverrides] = useState<Record<string, Date>>({});
 
   const allEvents = useMemo(() => getAllTimelineEvents(parses), [parses]);
 
-  // Apply status overrides and filter out not_applicable
+  // Apply status and date overrides, filter out not_applicable
   const events = useMemo(() => {
     return allEvents
       .map(event => ({
         ...event,
-        status: statusOverrides[event.id] || event.status
+        status: statusOverrides[event.id] || event.status,
+        start: dateOverrides[event.id] || event.start,
+        end: dateOverrides[event.id] || event.end,
       }))
       .filter(e => e.status !== 'not_applicable');
-  }, [allEvents, statusOverrides]);
+  }, [allEvents, statusOverrides, dateOverrides]);
 
-  // Group events by status
-  const upcomingEvents = events.filter(e => e.status === 'upcoming');
-  const overdueEvents = events.filter(e => e.status === 'overdue');
-  const completedEvents = events.filter(e => e.status === 'completed');
+  // Group events by status - EXCLUDE acceptance events from cards
+  const upcomingEvents = events.filter(e => e.status === 'upcoming' && e.type !== 'acceptance');
+  const overdueEvents = events.filter(e => e.status === 'overdue' && e.type !== 'acceptance');
+  const completedEvents = events.filter(e => e.status === 'completed' && e.type !== 'acceptance');
 
   const upcomingCount = upcomingEvents.length;
   const overdueCount = overdueEvents.length;
@@ -62,6 +65,14 @@ export default function TimelineClient({ parses }: TimelineClientProps) {
     setStatusOverrides(prev => ({
       ...prev,
       [eventId]: newStatus
+    }));
+  };
+
+  // Function to update event date
+  const updateEventDate = (eventId: string, newDate: Date) => {
+    setDateOverrides(prev => ({
+      ...prev,
+      [eventId]: newDate
     }));
   };
 
@@ -129,9 +140,27 @@ export default function TimelineClient({ parses }: TimelineClientProps) {
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1">
                   <p className="font-semibold text-gray-900">{event.title}</p>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Due: {format(event.start, "MMMM d, yyyy")}
-                  </p>
+                  {/* Date display with edit capability - NOT for acceptance */}
+                  {event.type !== 'acceptance' ? (
+                    <div className="mt-1 flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">Due:</span>
+                      <input
+                        type="date"
+                        value={format(event.start, 'yyyy-MM-dd')}
+                        onChange={(e) => {
+                          const newDate = new Date(e.target.value);
+                          if (!isNaN(newDate.getTime())) {
+                            updateEventDate(event.id, newDate);
+                          }
+                        }}
+                        className="text-xs border rounded px-2 py-1"
+                      />
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Due: {format(event.start, "MMMM d, yyyy")} (Fixed)
+                    </p>
+                  )}
                   {event.propertyAddress && (
                     <p className="text-sm text-muted-foreground">
                       Property: {event.propertyAddress}
@@ -367,12 +396,35 @@ export default function TimelineClient({ parses }: TimelineClientProps) {
               <div>
                 <p className="text-sm font-semibold text-gray-900">{selectedEvent.title}</p>
               </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Date</p>
-                <p className="font-medium">
-                  {format(selectedEvent.start, "MMMM d, yyyy")}
-                </p>
-              </div>
+
+              {/* Date editing - NOT for acceptance dates */}
+              {selectedEvent.type !== 'acceptance' ? (
+                <div>
+                  <p className="text-sm text-muted-foreground mb-2">Event Date</p>
+                  <input
+                    type="date"
+                    value={format(selectedEvent.start, 'yyyy-MM-dd')}
+                    onChange={(e) => {
+                      const newDate = new Date(e.target.value);
+                      if (!isNaN(newDate.getTime())) {
+                        updateEventDate(selectedEvent.id, newDate);
+                      }
+                    }}
+                    className="w-full text-sm border rounded px-3 py-2"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Original: {format(allEvents.find(ev => ev.id === selectedEvent.id)?.start || selectedEvent.start, "MMMM d, yyyy")}
+                  </p>
+                </div>
+              ) : (
+                <div>
+                  <p className="text-sm text-muted-foreground">Date</p>
+                  <p className="font-medium">
+                    {format(selectedEvent.start, "MMMM d, yyyy")} (Fixed)
+                  </p>
+                </div>
+              )}
+
               {selectedEvent.propertyAddress && (
                 <div>
                   <p className="text-sm text-muted-foreground">Property</p>
@@ -388,7 +440,6 @@ export default function TimelineClient({ parses }: TimelineClientProps) {
                     value={selectedEvent.status}
                     onChange={(e) => {
                       updateEventStatus(selectedEvent.id, e.target.value as TimelineEvent['status']);
-                      setSelectedEvent(null); // Close modal after update
                     }}
                     className="w-full text-sm border rounded px-3 py-2"
                   >
