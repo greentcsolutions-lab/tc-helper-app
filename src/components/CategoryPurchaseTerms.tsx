@@ -1,13 +1,23 @@
 // src/components/CategoryPurchaseTerms.tsx
-// Version: 2.0.0 - 2025-12-29
+// Version: 3.0.0 - 2026-01-03
+// ENHANCED: Added edit mode support and missing fields (loan amount, personal property, escrow holder, closing costs)
 // FIXED: Proper null handling + zero-value detection (purchasePrice: 0 = error)
-// ENHANCED: Type guards for all fields to prevent undefined/null display
 
-import CategorySection from "./CategorySection";
+import CategorySection, { FieldConfig } from "./CategorySection";
 import { DollarSign, AlertCircle } from "lucide-react";
 import { ParseResult } from "@/types";
 
-export default function CategoryPurchaseTerms({ data }: { data: ParseResult }) {
+interface CategoryPurchaseTermsProps {
+  data: ParseResult;
+  isEditing?: boolean;
+  onDataChange?: (updatedData: ParseResult) => void;
+}
+
+export default function CategoryPurchaseTerms({
+  data,
+  isEditing = false,
+  onDataChange,
+}: CategoryPurchaseTermsProps) {
   // ═══════════════════════════════════════════════════════════════════════
   // HELPER: Safe array display
   // ═══════════════════════════════════════════════════════════════════════
@@ -24,15 +34,15 @@ export default function CategoryPurchaseTerms({ data }: { data: ParseResult }) {
     fieldName: string
   ): string | null => {
     if (typeof amount !== 'number') return null;
-    
+
     // CRITICAL: purchasePrice: 0 means extraction failed
     if (fieldName === 'purchasePrice' && amount === 0) {
       return "⚠️ EXTRACTION ERROR (0)";
     }
-    
+
     // Other zero values are valid (e.g., seller credit = $0)
     if (amount === 0) return "$0";
-    
+
     return `$${amount.toLocaleString()}`;
   };
 
@@ -53,54 +63,129 @@ export default function CategoryPurchaseTerms({ data }: { data: ParseResult }) {
   };
 
   // ═══════════════════════════════════════════════════════════════════════
-  // BUILD FIELD LIST WITH TYPE-SAFE GUARDS
+  // HELPER: Format array for display
   // ═══════════════════════════════════════════════════════════════════════
-  const fields = [
-    {
-      label: "Buyer Names",
-      value: formatNames(data.buyerNames),
-    },
-    {
-      label: "Seller Names",
-      value: formatNames(data.sellerNames),
-    },
-    {
-      label: "Property Address",
-      value: formatString(data.propertyAddress),
-    },
-    {
-      label: "Purchase Price",
-      value: formatCurrency(data.purchasePrice, 'purchasePrice'),
-    },
-    {
-      label: "All Cash Offer",
-      value: formatBoolean(data.isAllCash),
-    },
-    {
-      label: "Initial Deposit Amount",
-      value: formatCurrency(data.earnestMoneyDeposit?.amount, 'earnestMoney'),
-    },
-    {
-      label: "Deposit Holder",
-      value: formatString(data.earnestMoneyDeposit?.holder),
-    },
-    {
-      label: "Loan Type",
-      value: formatString(data.loanType),
-    },
-    {
-      label: "Close of Escrow",
-      value: formatString(data.closingDate),
-    },
-    {
-      label: "Effective Date",
-      value: formatString(data.effectiveDate),
-    },
-    {
-      label: "Seller Credit to Buyer",
-      value: formatCurrency(data.closingCosts?.sellerCreditAmount, 'sellerCredit'),
-    },
-  ].filter((f) => f.value !== null);
+  const formatArray = (arr: string[] | null | undefined): string | null => {
+    if (!Array.isArray(arr) || arr.length === 0) return null;
+    return arr.join(', ');
+  };
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // BUILD FIELD LIST WITH TYPE-SAFE GUARDS AND EDIT SUPPORT
+  // ═══════════════════════════════════════════════════════════════════════
+  const createField = (
+    label: string,
+    value: any,
+    type?: 'text' | 'number' | 'date' | 'boolean' | 'array',
+    onChange?: (val: any) => void
+  ): FieldConfig => ({
+    label,
+    value,
+    type,
+    onChange,
+  });
+
+  const allFields: FieldConfig[] = [
+    createField(
+      "Buyer Names",
+      isEditing ? data.buyerNames : formatNames(data.buyerNames),
+      'array',
+      (val) => onDataChange?.({ ...data, buyerNames: val })
+    ),
+    createField(
+      "Seller Names",
+      isEditing ? data.sellerNames : formatNames(data.sellerNames),
+      'array',
+      (val) => onDataChange?.({ ...data, sellerNames: val })
+    ),
+    createField(
+      "Property Address",
+      isEditing ? data.propertyAddress : formatString(data.propertyAddress),
+      'text',
+      (val) => onDataChange?.({ ...data, propertyAddress: val })
+    ),
+    createField(
+      "Purchase Price",
+      isEditing ? data.purchasePrice : formatCurrency(data.purchasePrice, 'purchasePrice'),
+      'number',
+      (val) => onDataChange?.({ ...data, purchasePrice: val })
+    ),
+    createField(
+      "All Cash Offer",
+      isEditing ? data.isAllCash : formatBoolean(data.isAllCash),
+      'boolean',
+      (val) => onDataChange?.({ ...data, isAllCash: val })
+    ),
+    createField(
+      "Initial Deposit Amount",
+      isEditing ? data.earnestMoneyDeposit?.amount : formatCurrency(data.earnestMoneyDeposit?.amount, 'earnestMoney'),
+      'number',
+      (val) => onDataChange?.({
+        ...data,
+        earnestMoneyDeposit: { ...data.earnestMoneyDeposit, amount: val },
+      })
+    ),
+    createField(
+      "Deposit Holder",
+      isEditing ? data.earnestMoneyDeposit?.holder : formatString(data.earnestMoneyDeposit?.holder),
+      'text',
+      (val) => onDataChange?.({
+        ...data,
+        earnestMoneyDeposit: { ...data.earnestMoneyDeposit, holder: val },
+      })
+    ),
+    createField(
+      "Loan Type",
+      isEditing ? data.loanType : formatString(data.loanType),
+      'text',
+      (val) => onDataChange?.({ ...data, loanType: val })
+    ),
+    createField(
+      "Loan Amount",
+      isEditing ? data.financing?.loanAmount : formatCurrency(data.financing?.loanAmount, 'loanAmount'),
+      'number',
+      (val) => onDataChange?.({
+        ...data,
+        financing: { ...data.financing, loanAmount: val },
+      })
+    ),
+    createField(
+      "Close of Escrow",
+      isEditing ? data.closingDate : formatString(data.closingDate),
+      'date',
+      (val) => onDataChange?.({ ...data, closingDate: val })
+    ),
+    createField(
+      "Effective Date",
+      isEditing ? data.effectiveDate : formatString(data.effectiveDate),
+      'date',
+      (val) => onDataChange?.({ ...data, effectiveDate: val })
+    ),
+    createField(
+      "Seller Credit to Buyer",
+      isEditing ? data.closingCosts?.sellerCreditAmount : formatCurrency(data.closingCosts?.sellerCreditAmount, 'sellerCredit'),
+      'number',
+      (val) => onDataChange?.({
+        ...data,
+        closingCosts: { ...data.closingCosts, sellerCreditAmount: val },
+      })
+    ),
+    createField(
+      "Escrow Holder",
+      isEditing ? data.escrowHolder : formatString(data.escrowHolder),
+      'text',
+      (val) => onDataChange?.({ ...data, escrowHolder: val })
+    ),
+    createField(
+      "Personal Property Included",
+      isEditing ? data.personalPropertyIncluded : formatArray(data.personalPropertyIncluded),
+      'array',
+      (val) => onDataChange?.({ ...data, personalPropertyIncluded: val })
+    ),
+  ];
+
+  // Filter out null values when not editing
+  const fields = isEditing ? allFields : allFields.filter((f) => f.value !== null);
 
   if (fields.length === 0) return null;
 
@@ -111,7 +196,7 @@ export default function CategoryPurchaseTerms({ data }: { data: ParseResult }) {
 
   return (
     <div className="space-y-3">
-      {hasExtractionError && (
+      {hasExtractionError && !isEditing && (
         <div className="p-4 rounded-lg border-2 border-orange-300 bg-orange-50 flex items-start gap-3">
           <AlertCircle className="h-5 w-5 text-orange-600 shrink-0 mt-0.5" />
           <div>
@@ -125,13 +210,14 @@ export default function CategoryPurchaseTerms({ data }: { data: ParseResult }) {
           </div>
         </div>
       )}
-      
+
       <CategorySection
         title="Purchase Terms & Costs"
         icon={<DollarSign className="h-6 w-6 text-green-600" />}
         fields={fields}
         categoryName="Purchase Terms"
         defaultOpen={true}
+        isEditing={isEditing}
       />
     </div>
   );
