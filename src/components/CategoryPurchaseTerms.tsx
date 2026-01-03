@@ -89,10 +89,6 @@ export default function CategoryPurchaseTerms({ data }: { data: ParseResult }) {
       value: formatString(data.loanType),
     },
     {
-      label: "Close of Escrow",
-      value: formatString(data.closingDate),
-    },
-    {
       label: "Effective Date",
       value: formatString(data.effectiveDate),
     },
