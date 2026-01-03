@@ -36,6 +36,7 @@ export default async function TimelinePage() {
       initialDepositDueDate: true,
       sellerDeliveryOfDisclosuresDate: true,
       closingDate: true,
+      earnestMoneyDeposit: true,
       contingencies: true,
       createdAt: true,
     },

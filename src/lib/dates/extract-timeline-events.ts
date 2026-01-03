@@ -60,26 +60,47 @@ function getEventStatus(date: Date): TimelineEvent['status'] {
 }
 
 /**
+ * Calculates a contingency date by adding days to an anchor date
+ */
+function calculateContingencyDate(startDate: Date, days: number): Date {
+  return addDays(startDate, days);
+}
+
+/**
+ * Simplifies a full address to just the street address
+ * Example: "123 Main St, Los Angeles, CA 90001" -> "123 Main St"
+ */
+function simplifyAddress(address: string | undefined): string {
+  if (!address) return "Unknown Property";
+
+  // Split by comma and take the first part (street address)
+  const parts = address.split(',');
+  return parts[0].trim();
+}
+
+/**
  * Extract all timeline events from a parsed contract using ParseResult structure
+ * Updated to use top-level database fields instead of formatted JSON
  */
 export function extractTimelineEvents(parse: any): TimelineEvent[] {
   const events: TimelineEvent[] = [];
   const parseId = parse.id;
   const propertyAddress = parse.propertyAddress || 'Unknown Property';
+  const simplifiedAddress = simplifyAddress(propertyAddress);
 
-  // 1. Effective Date (Acceptance Date) - Never marked as overdue
-  const effectiveDate = parseDate(parse.effectiveDate);
-  if (effectiveDate) {
+  // 1. Effective Date (Acceptance Date) - Always completed, never overdue
+  const acceptanceDate = parseDate(parse.effectiveDate);
+  if (acceptanceDate) {
     events.push({
       id: `${parseId}-acceptance`,
-      title: `Acceptance: ${propertyAddress}`,
-      start: effectiveDate,
-      end: effectiveDate,
+      title: `Acceptance: ${simplifiedAddress}`,
+      start: acceptanceDate,
+      end: acceptanceDate,
       allDay: true,
       type: 'acceptance',
       parseId,
       propertyAddress,
-      status: 'completed', // Acceptance dates are always completed, never overdue
+      status: 'completed', // Acceptance dates initialize the workflow and cannot be overdue
     });
   }
 
@@ -88,7 +109,7 @@ export function extractTimelineEvents(parse: any): TimelineEvent[] {
   if (depositDue) {
     events.push({
       id: `${parseId}-deposit`,
-      title: `Deposit Due: ${propertyAddress}`,
+      title: `Deposit Due: ${simplifiedAddress}`,
       start: depositDue,
       end: depositDue,
       allDay: true,
@@ -100,46 +121,47 @@ export function extractTimelineEvents(parse: any): TimelineEvent[] {
   }
 
   // 3. Seller Delivery of Disclosures
-  const sellerDelivery = parseDate(parse.sellerDeliveryOfDisclosuresDate);
-  if (sellerDelivery) {
+  const sellerDisclosuresDate = parseDate(parse.sellerDeliveryOfDisclosuresDate);
+  if (sellerDisclosuresDate) {
     events.push({
-      id: `${parseId}-seller-delivery`,
-      title: `Seller Delivery: ${propertyAddress}`,
-      start: sellerDelivery,
-      end: sellerDelivery,
+      id: `${parseId}-seller-disclosures`,
+      title: `Seller Disclosures Due: ${simplifiedAddress}`,
+      start: sellerDisclosuresDate,
+      end: sellerDisclosuresDate,
       allDay: true,
       type: 'deadline',
       parseId,
       propertyAddress,
-      status: getEventStatus(sellerDelivery),
+      status: getEventStatus(sellerDisclosuresDate),
     });
   }
 
-  // 4. Contingency Removal Dates
-  const contingencies = parse.contingencies;
-  if (contingencies) {
-    // Inspection Contingency
-    const inspectionDate = parseDate(contingencies.inspectionDays);
-    if (inspectionDate) {
+  // 4. Contingency Removal Dates (calculated from acceptance date)
+  if (acceptanceDate && parse.contingencies) {
+    const contingencies = parse.contingencies;
+
+    // Loan Contingency
+    if (contingencies.loanDays && typeof contingencies.loanDays === 'number') {
+      const loanDate = calculateContingencyDate(acceptanceDate, contingencies.loanDays);
       events.push({
-        id: `${parseId}-inspection-contingency`,
-        title: `Inspection Contingency: ${propertyAddress}`,
-        start: inspectionDate,
-        end: inspectionDate,
+        id: `${parseId}-loan-contingency`,
+        title: `Loan Contingency Removal: ${simplifiedAddress}`,
+        start: loanDate,
+        end: loanDate,
         allDay: true,
         type: 'contingency',
         parseId,
         propertyAddress,
-        status: getEventStatus(inspectionDate),
+        status: getEventStatus(loanDate),
       });
     }
 
     // Appraisal Contingency
-    const appraisalDate = parseDate(contingencies.appraisalDays);
-    if (appraisalDate) {
+    if (contingencies.appraisalDays && typeof contingencies.appraisalDays === 'number') {
+      const appraisalDate = calculateContingencyDate(acceptanceDate, contingencies.appraisalDays);
       events.push({
         id: `${parseId}-appraisal-contingency`,
-        title: `Appraisal Contingency: ${propertyAddress}`,
+        title: `Appraisal Contingency Removal: ${simplifiedAddress}`,
         start: appraisalDate,
         end: appraisalDate,
         allDay: true,
@@ -150,36 +172,45 @@ export function extractTimelineEvents(parse: any): TimelineEvent[] {
       });
     }
 
-    // Loan Contingency
-    const loanDate = parseDate(contingencies.loanDays);
-    if (loanDate) {
+    // Investigation/Inspection Contingency
+    if (contingencies.inspectionDays && typeof contingencies.inspectionDays === 'number') {
+      const investigationDate = calculateContingencyDate(acceptanceDate, contingencies.inspectionDays);
       events.push({
-        id: `${parseId}-loan-contingency`,
-        title: `Loan Contingency: ${propertyAddress}`,
-        start: loanDate,
-        end: loanDate,
+        id: `${parseId}-investigation-contingency`,
+        title: `Investigation Contingency Removal: ${simplifiedAddress}`,
+        start: investigationDate,
+        end: investigationDate,
         allDay: true,
         type: 'contingency',
         parseId,
         propertyAddress,
-        status: getEventStatus(loanDate),
+        status: getEventStatus(investigationDate),
       });
     }
   }
 
-  // 5. Close of Escrow
-  const closingDate = parseDate(parse.closingDate);
-  if (closingDate) {
+  // 5. Close of Escrow / Closing Date
+  let closeDate: Date | null = null;
+
+  if (typeof parse.closingDate === 'number' && acceptanceDate) {
+    // Days after acceptance
+    closeDate = calculateContingencyDate(acceptanceDate, parse.closingDate);
+  } else if (typeof parse.closingDate === 'string') {
+    // Specific date
+    closeDate = parseDate(parse.closingDate);
+  }
+
+  if (closeDate) {
     events.push({
       id: `${parseId}-closing`,
-      title: `CLOSING: ${propertyAddress}`,
-      start: closingDate,
-      end: closingDate,
+      title: `CLOSING: ${simplifiedAddress}`,
+      start: closeDate,
+      end: closeDate,
       allDay: true,
       type: 'closing',
       parseId,
       propertyAddress,
-      status: getEventStatus(closingDate),
+      status: getEventStatus(closeDate),
     });
   }
 
@@ -201,4 +232,23 @@ export function getUpcomingEvents(parses: any[], limit: number = 5): TimelineEve
   const allEvents = getAllTimelineEvents(parses);
   const upcoming = allEvents.filter(event => event.status === 'upcoming');
   return upcoming.slice(0, limit);
+}
+
+/**
+ * Get all events on the next upcoming event date
+ * Returns all events that occur on the same date as the earliest upcoming event
+ */
+export function getNextEventsByDate(parses: any[]): TimelineEvent[] {
+  const allEvents = getAllTimelineEvents(parses);
+  const upcoming = allEvents.filter(event => event.status === 'upcoming');
+
+  if (upcoming.length === 0) return [];
+
+  // Get the earliest upcoming date
+  const nextEventDate = upcoming[0].start;
+
+  // Return all events that occur on that date
+  return upcoming.filter(
+    event => event.start.getTime() === nextEventDate.getTime()
+  );
 }
