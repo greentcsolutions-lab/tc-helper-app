@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/select";
 import { Search, FileText, Archive } from "lucide-react";
 import Link from "next/link";
-import TransactionCard from "@/components/transactions/TransactionCard";
+import TransactionTable from "@/components/transactions/TransactionTable";
 import ActionBar from "@/components/transactions/ActionBar";
 import { ParseResult } from "@/types";
 import { toast } from "sonner";
@@ -159,7 +159,7 @@ export default function TransactionsClient({
 
   return (
     <>
-      <div className="space-y-6 pb-24">
+      <div className="space-y-6 pb-24 p-6">
         {/* Header */}
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
@@ -208,21 +208,7 @@ export default function TransactionsClient({
                 </Select>
               </div>
 
-              <div className="flex items-center justify-between gap-4 flex-wrap">
-                <div className="flex items-center gap-4">
-                  {filteredAndSorted.length > 0 && (
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <Checkbox
-                        checked={selectedIds.size === filteredAndSorted.length && filteredAndSorted.length > 0}
-                        onCheckedChange={toggleSelectAll}
-                      />
-                      <span className="text-sm text-muted-foreground">
-                        Select All ({filteredAndSorted.length})
-                      </span>
-                    </label>
-                  )}
-                </div>
-
+              <div className="flex items-center justify-end gap-4 flex-wrap">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <Checkbox
                     checked={showArchived}
@@ -263,18 +249,14 @@ export default function TransactionsClient({
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-4">
-          {filteredAndSorted.map((parse) => (
-            <TransactionCard
-              key={parse.id}
-              parse={parse}
-              isLatest={parse.id === latestParseId}
-              isSelected={selectedIds.has(parse.id)}
-              onToggleSelect={toggleSelect}
-              onDelete={handleDelete}
-            />
-          ))}
-        </div>
+        <TransactionTable
+          transactions={filteredAndSorted}
+          latestId={latestParseId}
+          selectedIds={selectedIds}
+          onToggleSelect={toggleSelect}
+          onToggleSelectAll={toggleSelectAll}
+          onDelete={handleDelete}
+        />
       )}
       </div>
 

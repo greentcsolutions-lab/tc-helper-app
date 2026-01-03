@@ -38,6 +38,7 @@ export default async function TransactionsPage() {
       finalizedAt: true,
 
       // === UNIVERSAL CORE SCALARS ===
+      transactionType: true,
       buyerNames: true,
       sellerNames: true,
       propertyAddress: true,
@@ -46,6 +47,8 @@ export default async function TransactionsPage() {
       earnestMoneyHolder: true,
       closingDate: true,
       effectiveDate: true,
+      initialDepositDueDate: true,
+      sellerDeliveryOfDisclosuresDate: true,
       isAllCash: true,
       loanType: true,
 
@@ -91,7 +94,7 @@ export default async function TransactionsPage() {
   const activeCount = dbParses.filter(p => p.status !== "ARCHIVED").length;
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="p-0.5">
       <TransactionsClient
         initialParses={initialParses}
         userQuota={dbUser.quota}
