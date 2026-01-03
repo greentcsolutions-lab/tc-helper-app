@@ -113,6 +113,11 @@ export default function PropertyAddressStep({ data, updateData }: Props) {
   const handleAddressChange = (value: string) => {
     setAddressInput(value);
     setSelectedIndex(-1);
+
+    // In manual entry mode, update parent data immediately
+    if (isManualEntry) {
+      updateData({ propertyAddress: value });
+    }
   };
 
   const selectSuggestion = (address: string) => {
@@ -158,10 +163,16 @@ export default function PropertyAddressStep({ data, updateData }: Props) {
   };
 
   const toggleManualEntry = () => {
-    setIsManualEntry(!isManualEntry);
+    const newManualEntryState = !isManualEntry;
+    setIsManualEntry(newManualEntryState);
     setShowSuggestions(false);
     setSuggestions([]);
     setError(null);
+
+    // When switching to manual entry mode, preserve the typed address
+    if (newManualEntryState && addressInput) {
+      updateData({ propertyAddress: addressInput });
+    }
   };
 
   const isValid = data.propertyAddress && data.state;

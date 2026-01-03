@@ -99,6 +99,7 @@ model Parse {
   // ============================================================================
   // UNIVERSAL CORE FIELDS (top-level for fast queries)
   // ============================================================================
+  transactionType      String?   @default("escrow") // "listing" or "escrow"
   buyerNames           String[]  @default([])
   sellerNames          String[]  @default([])
   propertyAddress      String?

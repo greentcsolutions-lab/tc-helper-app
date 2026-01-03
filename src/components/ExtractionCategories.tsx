@@ -11,8 +11,8 @@ export default function ExtractionCategories({ data }: { data: ParseResult }) {
   return (
     <div className="space-y-6">
       <CategoryPurchaseTerms data={data} />
-      <CategoryRepresentingParties data={data} />
       <CategoryTimelineContingencies data={data} />
+      <CategoryRepresentingParties data={data} />
       {/* Future categories go here — one place to add them */}
     </div>
   );

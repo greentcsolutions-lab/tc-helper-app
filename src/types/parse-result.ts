@@ -42,6 +42,7 @@ export interface ParseResult {
   finalizedAt: string | Date | null;
 
   // === UNIVERSAL CORE FIELDS (existing scalars preserved) ===
+  transactionType: string | null;           // "listing" or "escrow"
   buyerNames: string[] | null;
   sellerNames: string[] | null;
   propertyAddress: string | null;

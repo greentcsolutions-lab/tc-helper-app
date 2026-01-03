@@ -156,6 +156,7 @@ export async function POST(req: NextRequest) {
           status: 'COMPLETED',
 
           // Core fields
+          transactionType: data.transactionType,
           buyerNames: data.buyerNames.filter((n) => n.trim()),
           sellerNames: data.sellerNames.filter((n) => n.trim()),
           propertyAddress: data.propertyAddress,
