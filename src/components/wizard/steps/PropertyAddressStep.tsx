@@ -9,20 +9,12 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ManualTransactionData } from '@/types/manual-wizard';
 import { MapPin, CheckCircle, Edit, Search } from 'lucide-react';
+import { US_STATE_CODES, extractStateCode } from '@/lib/address/state-utils';
 
 interface Props {
   data: Partial<ManualTransactionData>;
   updateData: (updates: Partial<ManualTransactionData>) => void;
 }
-
-// US States
-const US_STATES = [
-  'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
-  'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
-  'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
-  'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
-  'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY'
-];
 
 // Debounce helper
 function useDebounce<T>(value: T, delay: number): T {
@@ -124,14 +116,20 @@ export default function PropertyAddressStep({ data, updateData }: Props) {
     setAddressInput(address);
     setShowSuggestions(false);
 
-    // Extract state from address
-    const stateMatch = address.match(/,\s*([A-Z]{2})[,\s]/);
-    const extractedState = stateMatch ? stateMatch[1] : '';
+    // Extract state from address using utility function
+    // Handles both "CA" and "California" formats
+    const extractedState = extractStateCode(address);
 
-    if (extractedState && US_STATES.includes(extractedState)) {
+    if (extractedState) {
       updateData({
         propertyAddress: address,
         state: extractedState,
+      });
+    } else {
+      // If state extraction fails, still update address
+      // User can select state manually if needed
+      updateData({
+        propertyAddress: address,
       });
     }
   };
@@ -297,7 +295,7 @@ export default function PropertyAddressStep({ data, updateData }: Props) {
                 <SelectValue placeholder="Select state..." />
               </SelectTrigger>
               <SelectContent>
-                {US_STATES.map((state) => (
+                {US_STATE_CODES.map((state) => (
                   <SelectItem key={state} value={state}>
                     {state}
                   </SelectItem>
