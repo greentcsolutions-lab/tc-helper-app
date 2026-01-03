@@ -71,6 +71,11 @@ export async function POST(req: NextRequest) {
     const sellerDeliveryDate = calculateDate(timeline.sellerDeliveryDays, false);
     const closingDate = calculateDate(timeline.closingDays, false);
 
+    // Calculate contingency dates
+    const inspectionDate = calculateDate(timeline.inspectionDays, false);
+    const appraisalDate = calculateDate(timeline.appraisalDays, false);
+    const loanDate = calculateDate(timeline.loanDays, false);
+
     // Build timelineEvents array
     const timelineEvents = [];
 
@@ -102,7 +107,6 @@ export async function POST(req: NextRequest) {
     }
 
     if (timeline.inspectionDays) {
-      const inspectionDate = calculateDate(timeline.inspectionDays, false);
       if (inspectionDate) {
         timelineEvents.push({
           date: inspectionDate,
@@ -114,7 +118,6 @@ export async function POST(req: NextRequest) {
     }
 
     if (timeline.appraisalDays) {
-      const appraisalDate = calculateDate(timeline.appraisalDays, false);
       if (appraisalDate) {
         timelineEvents.push({
           date: appraisalDate,
@@ -126,7 +129,6 @@ export async function POST(req: NextRequest) {
     }
 
     if (timeline.loanDays) {
-      const loanDate = calculateDate(timeline.loanDays, false);
       if (loanDate) {
         timelineEvents.push({
           date: loanDate,
@@ -165,6 +167,14 @@ export async function POST(req: NextRequest) {
           sellerDeliveryOfDisclosuresDate: sellerDeliveryDate,
           closingDate,
 
+          // Contingencies (calculated dates saved as strings)
+          contingencies: {
+            inspectionDays: inspectionDate,
+            appraisalDays: appraisalDate,
+            loanDays: loanDate,
+            saleOfBuyerProperty: false, // Default to false for manual entries
+          },
+
           // Broker information with detailed agent data
           brokers: {
             listingAgentDetails: data.listingAgent,
@@ -179,11 +189,21 @@ export async function POST(req: NextRequest) {
           // Timeline events
           timelineEvents,
 
-          // Extraction details
+          // Extraction details with timeline source tracking
           extractionDetails: {
             route: 'manual',
             createdVia: 'wizard',
             isDualRepresentation: data.isDualRepresentation,
+            // Preserve source information for future features
+            timelineSource: {
+              acceptanceDate: timeline.acceptanceDate,
+              closingDays: timeline.closingDays,
+              initialDepositDays: timeline.initialDepositDays,
+              sellerDeliveryDays: timeline.sellerDeliveryDays,
+              inspectionDays: timeline.inspectionDays || null,
+              appraisalDays: timeline.appraisalDays || null,
+              loanDays: timeline.loanDays || null,
+            },
           },
 
           // Set finalized timestamp
