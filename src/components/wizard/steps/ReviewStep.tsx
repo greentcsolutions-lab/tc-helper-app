@@ -5,12 +5,17 @@
 
 import { ManualTransactionData } from '@/types/manual-wizard';
 import { MapPin, User, Users, Building, Calendar } from 'lucide-react';
+import { formatAllTimelineFields } from '@/lib/timeline/timeline-formatter';
+import { formatDisplayDate } from '@/lib/date-utils';
 
 interface Props {
   data: Partial<ManualTransactionData>;
 }
 
 export default function ReviewStep({ data }: Props) {
+  // Format all timeline fields with calculated dates
+  const formattedTimeline = formatAllTimelineFields(data.timeline);
+
   return (
     <div className="space-y-6">
       <p className="text-sm text-muted-foreground">
@@ -82,59 +87,58 @@ export default function ReviewStep({ data }: Props) {
           Timeline
         </div>
         <div className="pl-6">
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+            {/* Acceptance Date */}
             <div>
               <p className="text-muted-foreground text-xs">Acceptance Date</p>
-              <p className="font-medium">{data.timeline?.acceptanceDate || 'Not set'}</p>
-            </div>
-            <div>
-              <p className="text-muted-foreground text-xs">Closing</p>
               <p className="font-medium">
-                {data.timeline?.closingDays
-                  ? typeof data.timeline.closingDays === 'number'
-                    ? `${data.timeline.closingDays} days`
-                    : data.timeline.closingDays
+                {data.timeline?.acceptanceDate
+                  ? formatDisplayDate(data.timeline.acceptanceDate)
                   : 'Not set'}
               </p>
             </div>
+
+            {/* Closing Date */}
+            <div>
+              <p className="text-muted-foreground text-xs">Closing Date</p>
+              <p className="font-medium">{formattedTimeline.closingDays?.displayText}</p>
+            </div>
+
+            {/* Initial Deposit */}
             <div>
               <p className="text-muted-foreground text-xs">Initial Deposit</p>
-              <p className="font-medium">
-                {data.timeline?.initialDepositDays
-                  ? typeof data.timeline.initialDepositDays === 'number'
-                    ? `${data.timeline.initialDepositDays} days`
-                    : data.timeline.initialDepositDays
-                  : 'Not set'}
-              </p>
+              <p className="font-medium">{formattedTimeline.initialDepositDays?.displayText}</p>
             </div>
+
+            {/* Seller Delivery */}
             <div>
               <p className="text-muted-foreground text-xs">Seller Delivery</p>
-              <p className="font-medium">
-                {data.timeline?.sellerDeliveryDays
-                  ? typeof data.timeline.sellerDeliveryDays === 'number'
-                    ? `${data.timeline.sellerDeliveryDays} days`
-                    : data.timeline.sellerDeliveryDays
-                  : 'Not set'}
-              </p>
+              <p className="font-medium">{formattedTimeline.sellerDeliveryDays?.displayText}</p>
             </div>
-            <div>
-              <p className="text-muted-foreground text-xs">Inspection</p>
-              <p className="font-medium">
-                {data.timeline?.inspectionDays || 'Not set'}
-              </p>
-            </div>
-            <div>
-              <p className="text-muted-foreground text-xs">Appraisal</p>
-              <p className="font-medium">
-                {data.timeline?.appraisalDays || 'Not set'}
-              </p>
-            </div>
-            <div>
-              <p className="text-muted-foreground text-xs">Loan</p>
-              <p className="font-medium">
-                {data.timeline?.loanDays || 'Not set'}
-              </p>
-            </div>
+
+            {/* Inspection Contingency */}
+            {formattedTimeline.inspectionDays?.displayText !== 'Not set' && (
+              <div>
+                <p className="text-muted-foreground text-xs">Inspection Contingency</p>
+                <p className="font-medium">{formattedTimeline.inspectionDays?.displayText}</p>
+              </div>
+            )}
+
+            {/* Appraisal Contingency */}
+            {formattedTimeline.appraisalDays?.displayText !== 'Not set' && (
+              <div>
+                <p className="text-muted-foreground text-xs">Appraisal Contingency</p>
+                <p className="font-medium">{formattedTimeline.appraisalDays?.displayText}</p>
+              </div>
+            )}
+
+            {/* Loan Contingency */}
+            {formattedTimeline.loanDays?.displayText !== 'Not set' && (
+              <div>
+                <p className="text-muted-foreground text-xs">Loan Contingency</p>
+                <p className="font-medium">{formattedTimeline.loanDays?.displayText}</p>
+              </div>
+            )}
           </div>
         </div>
       </div>
