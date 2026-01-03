@@ -43,14 +43,14 @@ export default function TimelineClient({ parses }: TimelineClientProps) {
 
     if (event.status === 'overdue') {
       backgroundColor = '#ef4444'; // red
+    } else if (event.type === 'acceptance') {
+      backgroundColor = '#14b8a6'; // teal for acceptance dates
     } else if (event.type === 'closing') {
       backgroundColor = '#10b981'; // green
     } else if (event.type === 'contingency') {
       backgroundColor = '#f59e0b'; // orange
     } else if (event.type === 'deposit') {
       backgroundColor = '#8b5cf6'; // purple
-    } else if (event.type === 'acceptance') {
-      backgroundColor = '#14b8a6'; // teal
     } else if (event.type === 'deadline') {
       backgroundColor = '#3b82f6'; // blue
     }

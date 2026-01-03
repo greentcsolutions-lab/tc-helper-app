@@ -18,21 +18,24 @@ export default async function TimelinePage() {
 
   if (!user) redirect("/onboarding");
 
-  // Fetch all completed parses with timeline data
+  // Fetch all completed parses with ParseResult fields (exclude archived)
   const parses = await db.parse.findMany({
     where: {
       userId: user.id,
-      status: { in: ["COMPLETED", "NEEDS_REVIEW"] },
+      status: {
+        in: ["COMPLETED", "NEEDS_REVIEW"],
+        not: "ARCHIVED"
+      },
     },
     orderBy: { createdAt: "desc" },
     select: {
       id: true,
       fileName: true,
       propertyAddress: true,
-      closingDate: true,
       effectiveDate: true,
       initialDepositDueDate: true,
       sellerDeliveryOfDisclosuresDate: true,
+      closingDate: true,
       earnestMoneyDeposit: true,
       contingencies: true,
       createdAt: true,

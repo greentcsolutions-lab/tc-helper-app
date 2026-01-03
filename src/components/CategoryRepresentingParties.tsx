@@ -86,7 +86,7 @@ export default function CategoryRepresentingParties({
       isEditing
         ? brokers?.listingAgentDetails?.phone
         : formatString(brokers?.listingAgentDetails?.phone),
-      'text',
+      'tel',
       (val) => {
         const updatedBrokers = {
           ...brokers,
@@ -103,7 +103,7 @@ export default function CategoryRepresentingParties({
       isEditing
         ? brokers?.listingAgentDetails?.email
         : formatString(brokers?.listingAgentDetails?.email),
-      'text',
+      'email',
       (val) => {
         const updatedBrokers = {
           ...brokers,
@@ -158,7 +158,7 @@ export default function CategoryRepresentingParties({
       isEditing
         ? brokers?.buyersAgentDetails?.phone
         : formatString(brokers?.buyersAgentDetails?.phone),
-      'text',
+      'tel',
       (val) => {
         const updatedBrokers = {
           ...brokers,
@@ -175,7 +175,7 @@ export default function CategoryRepresentingParties({
       isEditing
         ? brokers?.buyersAgentDetails?.email
         : formatString(brokers?.buyersAgentDetails?.email),
-      'text',
+      'email',
       (val) => {
         const updatedBrokers = {
           ...brokers,

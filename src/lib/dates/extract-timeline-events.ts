@@ -1,8 +1,8 @@
 // src/lib/dates/extract-timeline-events.ts
-// Version: 1.0.0 - Timeline event extraction from parsed contracts
+// Version: 2.0.0 - Updated to use ParseResult structure
 // Extracts all important dates from parsed contract data
 
-import { addDays, parseISO, isValid, isFuture, isPast } from "date-fns";
+import { addDays, parseISO, isValid, isFuture } from "date-fns";
 
 export interface TimelineEvent {
   id: string;
@@ -17,15 +17,23 @@ export interface TimelineEvent {
 }
 
 /**
- * Parses a date string in MM/DD/YYYY format or ISO format
+ * Parses a date string in YYYY-MM-DD or MM/DD/YYYY format
  */
-function parseDate(dateStr: string | number | undefined): Date | null {
+function parseDate(dateStr: string | number | null | undefined): Date | null {
   if (!dateStr) return null;
 
   // If it's a number of days, return null (needs anchor date)
   if (typeof dateStr === 'number') return null;
 
-  // Try MM/DD/YYYY format (common in California contracts)
+  // Try YYYY-MM-DD format first (ISO)
+  try {
+    const date = parseISO(dateStr);
+    if (isValid(date)) return date;
+  } catch {
+    // Continue to next format
+  }
+
+  // Try MM/DD/YYYY format
   const mmddyyyyRegex = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
   const match = dateStr.match(mmddyyyyRegex);
 
@@ -35,20 +43,7 @@ function parseDate(dateStr: string | number | undefined): Date | null {
     return isValid(date) ? date : null;
   }
 
-  // Try ISO format
-  try {
-    const date = parseISO(dateStr);
-    return isValid(date) ? date : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Calculate contingency removal date based on acceptance date + days
- */
-function calculateContingencyDate(acceptanceDate: Date, days: number): Date {
-  return addDays(acceptanceDate, days);
+  return null;
 }
 
 /**
@@ -65,6 +60,13 @@ function getEventStatus(date: Date): TimelineEvent['status'] {
 }
 
 /**
+ * Calculates a contingency date by adding days to an anchor date
+ */
+function calculateContingencyDate(startDate: Date, days: number): Date {
+  return addDays(startDate, days);
+}
+
+/**
  * Simplifies a full address to just the street address
  * Example: "123 Main St, Los Angeles, CA 90001" -> "123 Main St"
  */
@@ -77,7 +79,7 @@ function simplifyAddress(address: string | undefined): string {
 }
 
 /**
- * Extract all timeline events from a parsed contract
+ * Extract all timeline events from a parsed contract using ParseResult structure
  * Updated to use top-level database fields instead of formatted JSON
  */
 export function extractTimelineEvents(parse: any): TimelineEvent[] {
@@ -134,13 +136,18 @@ export function extractTimelineEvents(parse: any): TimelineEvent[] {
     });
   }
 
-  // 4. Contingency Removal Dates (calculated from acceptance date)
-  if (acceptanceDate && parse.contingencies) {
+  // 4. Contingency Removal Dates (can be either number of days or specific dates)
+  if (parse.contingencies) {
     const contingencies = parse.contingencies;
 
     // Loan Contingency
-    if (contingencies.loanDays && typeof contingencies.loanDays === 'number') {
-      const loanDate = calculateContingencyDate(acceptanceDate, contingencies.loanDays);
+    let loanDate: Date | null = null;
+    if (typeof contingencies.loanDays === 'number' && acceptanceDate) {
+      loanDate = calculateContingencyDate(acceptanceDate, contingencies.loanDays);
+    } else if (typeof contingencies.loanDays === 'string') {
+      loanDate = parseDate(contingencies.loanDays);
+    }
+    if (loanDate) {
       events.push({
         id: `${parseId}-loan-contingency`,
         title: `Loan Contingency Removal: ${simplifiedAddress}`,
@@ -155,8 +162,13 @@ export function extractTimelineEvents(parse: any): TimelineEvent[] {
     }
 
     // Appraisal Contingency
-    if (contingencies.appraisalDays && typeof contingencies.appraisalDays === 'number') {
-      const appraisalDate = calculateContingencyDate(acceptanceDate, contingencies.appraisalDays);
+    let appraisalDate: Date | null = null;
+    if (typeof contingencies.appraisalDays === 'number' && acceptanceDate) {
+      appraisalDate = calculateContingencyDate(acceptanceDate, contingencies.appraisalDays);
+    } else if (typeof contingencies.appraisalDays === 'string') {
+      appraisalDate = parseDate(contingencies.appraisalDays);
+    }
+    if (appraisalDate) {
       events.push({
         id: `${parseId}-appraisal-contingency`,
         title: `Appraisal Contingency Removal: ${simplifiedAddress}`,
@@ -171,8 +183,13 @@ export function extractTimelineEvents(parse: any): TimelineEvent[] {
     }
 
     // Investigation/Inspection Contingency
-    if (contingencies.inspectionDays && typeof contingencies.inspectionDays === 'number') {
-      const investigationDate = calculateContingencyDate(acceptanceDate, contingencies.inspectionDays);
+    let investigationDate: Date | null = null;
+    if (typeof contingencies.inspectionDays === 'number' && acceptanceDate) {
+      investigationDate = calculateContingencyDate(acceptanceDate, contingencies.inspectionDays);
+    } else if (typeof contingencies.inspectionDays === 'string') {
+      investigationDate = parseDate(contingencies.inspectionDays);
+    }
+    if (investigationDate) {
       events.push({
         id: `${parseId}-investigation-contingency`,
         title: `Investigation Contingency Removal: ${simplifiedAddress}`,

@@ -126,15 +126,6 @@ export default function CategoryPurchaseTerms({
       })
     ),
     createField(
-      "Deposit Holder",
-      isEditing ? data.earnestMoneyDeposit?.holder : formatString(data.earnestMoneyDeposit?.holder),
-      'text',
-      (val) => onDataChange?.({
-        ...data,
-        earnestMoneyDeposit: { ...data.earnestMoneyDeposit, holder: val },
-      })
-    ),
-    createField(
       "Loan Type",
       isEditing ? data.loanType : formatString(data.loanType),
       'text',
@@ -148,12 +139,6 @@ export default function CategoryPurchaseTerms({
         ...data,
         financing: { ...data.financing, loanAmount: val },
       })
-    ),
-    createField(
-      "Close of Escrow",
-      isEditing ? data.closingDate : formatString(data.closingDate),
-      'date',
-      (val) => onDataChange?.({ ...data, closingDate: val })
     ),
     createField(
       "Effective Date",
