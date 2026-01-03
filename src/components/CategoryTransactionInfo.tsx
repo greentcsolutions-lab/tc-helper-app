@@ -50,7 +50,9 @@ export default function CategoryTransactionInfo({
     createField(
       "File Name",
       data.fileName,
-      'text'
+      'text',
+      undefined,
+      (val) => onDataChange?.({ ...data, fileName: val })
     ),
   ];
 

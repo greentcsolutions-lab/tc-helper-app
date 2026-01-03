@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -17,16 +18,16 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Plus, X } from "lucide-react";
 import CopyAllButton from "@/components/ui/CopyAllButton";
 import CopyFieldRow from "@/components/ui/CopyFieldRow";
-import { ReactNode } from "react";
+import { ReactNode, useState } from "react";
 
 export interface FieldConfig {
   label: string;
   value: any;
   fieldKey?: string;
-  type?: 'text' | 'number' | 'date' | 'boolean' | 'select' | 'array';
+  type?: 'text' | 'number' | 'date' | 'boolean' | 'select' | 'array' | 'email' | 'tel';
   options?: { label: string; value: string; disabled?: boolean }[];
   onChange?: (value: any) => void;
 }
@@ -101,25 +102,71 @@ export default function CategorySection({
                 </SelectContent>
               </Select>
             ) : field.type === 'array' ? (
-              <Input
-                type="text"
-                value={Array.isArray(field.value) ? field.value.join(', ') : ''}
-                onChange={(e) => {
-                  const arr = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
-                  handleChange(arr);
-                }}
-                placeholder="Comma-separated values"
-                disabled={!field.onChange}
-              />
+              <div className="space-y-2">
+                {Array.isArray(field.value) && field.value.length > 0 ? (
+                  field.value.map((item, idx) => (
+                    <div key={idx} className="flex gap-2">
+                      <Input
+                        type="text"
+                        value={item}
+                        onChange={(e) => {
+                          const newArr = [...field.value];
+                          newArr[idx] = e.target.value;
+                          handleChange(newArr);
+                        }}
+                        placeholder={`${field.label} ${idx + 1}`}
+                        disabled={!field.onChange}
+                      />
+                      {field.onChange && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            const newArr = field.value.filter((_: any, i: number) => i !== idx);
+                            handleChange(newArr);
+                          }}
+                          className="px-2"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground">No items</p>
+                )}
+                {field.onChange && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const newArr = Array.isArray(field.value) ? [...field.value, ''] : [''];
+                      handleChange(newArr);
+                    }}
+                    className="w-full"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add {field.label}
+                  </Button>
+                )}
+              </div>
             ) : (
               <Input
-                type={field.type || 'text'}
+                type={field.type === 'email' ? 'email' : field.type === 'tel' ? 'tel' : field.type || 'text'}
                 value={field.value ?? ''}
                 onChange={(e) => {
                   const val = field.type === 'number' ? parseFloat(e.target.value) || null : e.target.value;
                   handleChange(val);
                 }}
-                placeholder={`Enter ${field.label.toLowerCase()}`}
+                placeholder={
+                  field.type === 'email'
+                    ? 'email@example.com'
+                    : field.type === 'tel'
+                    ? '(555) 555-5555'
+                    : `Enter ${field.label.toLowerCase()}`
+                }
                 disabled={!field.onChange}
               />
             )}
