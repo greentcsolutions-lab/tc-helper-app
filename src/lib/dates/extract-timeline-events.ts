@@ -202,3 +202,22 @@ export function getUpcomingEvents(parses: any[], limit: number = 5): TimelineEve
   const upcoming = allEvents.filter(event => event.status === 'upcoming');
   return upcoming.slice(0, limit);
 }
+
+/**
+ * Get all events on the next upcoming event date
+ * Returns all events that occur on the same date as the earliest upcoming event
+ */
+export function getNextEventsByDate(parses: any[]): TimelineEvent[] {
+  const allEvents = getAllTimelineEvents(parses);
+  const upcoming = allEvents.filter(event => event.status === 'upcoming');
+
+  if (upcoming.length === 0) return [];
+
+  // Get the earliest upcoming date
+  const nextEventDate = upcoming[0].start;
+
+  // Return all events that occur on that date
+  return upcoming.filter(
+    event => event.start.getTime() === nextEventDate.getTime()
+  );
+}
