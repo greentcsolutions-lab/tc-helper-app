@@ -10,7 +10,7 @@ export interface TimelineEvent {
   start: Date;
   end: Date;
   allDay: boolean;
-  type: 'deadline' | 'contingency' | 'closing' | 'deposit';
+  type: 'acceptance' | 'deadline' | 'contingency' | 'closing' | 'deposit';
   parseId: string;
   propertyAddress?: string;
   status: 'upcoming' | 'overdue' | 'completed';
@@ -86,7 +86,7 @@ export function extractTimelineEvents(parse: any): TimelineEvent[] {
   const propertyAddress = parse.propertyAddress || 'Unknown Property';
   const simplifiedAddress = simplifyAddress(propertyAddress);
 
-  // 1. Effective Date (Acceptance Date)
+  // 1. Effective Date (Acceptance Date) - Always completed, never overdue
   const acceptanceDate = parseDate(parse.effectiveDate);
   if (acceptanceDate) {
     events.push({
@@ -95,10 +95,10 @@ export function extractTimelineEvents(parse: any): TimelineEvent[] {
       start: acceptanceDate,
       end: acceptanceDate,
       allDay: true,
-      type: 'deadline',
+      type: 'acceptance',
       parseId,
       propertyAddress,
-      status: getEventStatus(acceptanceDate),
+      status: 'completed', // Acceptance dates initialize the workflow and cannot be overdue
     });
   }
 
@@ -118,7 +118,23 @@ export function extractTimelineEvents(parse: any): TimelineEvent[] {
     });
   }
 
-  // 3. Contingency Removal Dates (calculated from acceptance date)
+  // 3. Seller Delivery of Disclosures
+  const sellerDisclosuresDate = parseDate(parse.sellerDeliveryOfDisclosuresDate);
+  if (sellerDisclosuresDate) {
+    events.push({
+      id: `${parseId}-seller-disclosures`,
+      title: `Seller Disclosures Due: ${simplifiedAddress}`,
+      start: sellerDisclosuresDate,
+      end: sellerDisclosuresDate,
+      allDay: true,
+      type: 'deadline',
+      parseId,
+      propertyAddress,
+      status: getEventStatus(sellerDisclosuresDate),
+    });
+  }
+
+  // 4. Contingency Removal Dates (calculated from acceptance date)
   if (acceptanceDate && parse.contingencies) {
     const contingencies = parse.contingencies;
 
@@ -171,7 +187,7 @@ export function extractTimelineEvents(parse: any): TimelineEvent[] {
     }
   }
 
-  // 4. Close of Escrow / Closing Date
+  // 5. Close of Escrow / Closing Date
   let closeDate: Date | null = null;
 
   if (typeof parse.closingDate === 'number' && acceptanceDate) {
