@@ -163,110 +163,116 @@ export default function TimelineClient({ parses }: TimelineClientProps) {
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1">
                   <p className="font-semibold text-gray-900">{event.title}</p>
-                  {/* Date display with edit capability - NOT for acceptance */}
-                  {event.type !== 'acceptance' ? (
-                    <div className="mt-2 space-y-2">
-                      {/* Toggle between Calculated and Specific */}
-                      <div className="flex gap-3">
-                        <label className="flex items-center gap-1 cursor-pointer">
-                          <input
-                            type="radio"
-                            name={`date-mode-card-${event.id}`}
-                            checked={dateMode[event.id] !== 'calculated'}
-                            onChange={() => {
-                              setDateMode(prev => {
-                                const newMode = { ...prev };
-                                delete newMode[event.id];
-                                return newMode;
-                              });
-                            }}
-                            className="w-3 h-3"
-                          />
-                          <span className="text-xs">Specific Date</span>
-                        </label>
-                        <label className="flex items-center gap-1 cursor-pointer">
-                          <input
-                            type="radio"
-                            name={`date-mode-card-${event.id}`}
-                            checked={dateMode[event.id] === 'calculated'}
-                            onChange={() => {
-                              setDateMode(prev => ({ ...prev, [event.id]: 'calculated' }));
-                            }}
-                            className="w-3 h-3"
-                          />
-                          <span className="text-xs">Days from Acceptance</span>
-                        </label>
+                  {/* Date display with edit capability */}
+                  <div className="mt-2 space-y-2">
+                    {/* Acceptance dates: Specific date only (no toggle) */}
+                    {event.type === 'acceptance' ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground">Date:</span>
+                        <input
+                          type="date"
+                          value={format(event.start, 'yyyy-MM-dd')}
+                          onChange={(e) => {
+                            const newDate = new Date(e.target.value);
+                            if (!isNaN(newDate.getTime())) {
+                              updateEventDate(event.id, newDate);
+                            }
+                          }}
+                          onFocus={(e) => e.target.showPicker?.()}
+                          className="text-xs border rounded px-2 py-1"
+                        />
+                        <span className="text-xs text-muted-foreground">(specific only)</span>
                       </div>
+                    ) : (
+                      <>
+                        {/* Toggle between Calculated and Specific for non-acceptance */}
+                        <div className="flex gap-3">
+                          <label className="flex items-center gap-1 cursor-pointer">
+                            <input
+                              type="radio"
+                              name={`date-mode-card-${event.id}`}
+                              checked={dateMode[event.id] !== 'calculated'}
+                              onChange={() => {
+                                setDateMode(prev => {
+                                  const newMode = { ...prev };
+                                  delete newMode[event.id];
+                                  return newMode;
+                                });
+                              }}
+                              className="w-3 h-3"
+                            />
+                            <span className="text-xs">Specific Date</span>
+                          </label>
+                          <label className="flex items-center gap-1 cursor-pointer">
+                            <input
+                              type="radio"
+                              name={`date-mode-card-${event.id}`}
+                              checked={dateMode[event.id] === 'calculated'}
+                              onChange={() => {
+                                setDateMode(prev => ({ ...prev, [event.id]: 'calculated' }));
+                              }}
+                              className="w-3 h-3"
+                            />
+                            <span className="text-xs">Days from Acceptance</span>
+                          </label>
+                        </div>
 
-                      {/* Show appropriate input based on mode */}
-                      {dateMode[event.id] === 'calculated' ? (
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="number"
-                            min="0"
-                            value={calculatedDays[event.id] ?? 0}
-                            onChange={(e) => {
-                              setCalculatedDays(prev => ({
-                                ...prev,
-                                [event.id]: parseInt(e.target.value) || 0
-                              }));
-                            }}
-                            className="w-16 text-xs border rounded px-2 py-1"
-                          />
-                          <span className="text-xs text-muted-foreground">days after acceptance</span>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground">Due:</span>
-                          <input
-                            type="date"
-                            value={format(event.start, 'yyyy-MM-dd')}
-                            onChange={(e) => {
-                              const newDate = new Date(e.target.value);
-                              if (!isNaN(newDate.getTime())) {
-                                updateEventDate(event.id, newDate);
-                              }
-                            }}
-                            onFocus={(e) => e.target.showPicker?.()}
-                            className="text-xs border rounded px-2 py-1"
-                          />
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Due: {format(event.start, "MMMM d, yyyy")} (Fixed)
-                    </p>
-                  )}
+                        {/* Show appropriate input based on mode */}
+                        {dateMode[event.id] === 'calculated' ? (
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              min="0"
+                              value={calculatedDays[event.id] ?? 0}
+                              onChange={(e) => {
+                                setCalculatedDays(prev => ({
+                                  ...prev,
+                                  [event.id]: parseInt(e.target.value) || 0
+                                }));
+                              }}
+                              className="w-16 text-xs border rounded px-2 py-1"
+                            />
+                            <span className="text-xs text-muted-foreground">days after acceptance</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground">Due:</span>
+                            <input
+                              type="date"
+                              value={format(event.start, 'yyyy-MM-dd')}
+                              onChange={(e) => {
+                                const newDate = new Date(e.target.value);
+                                if (!isNaN(newDate.getTime())) {
+                                  updateEventDate(event.id, newDate);
+                                }
+                              }}
+                              onFocus={(e) => e.target.showPicker?.()}
+                              className="text-xs border rounded px-2 py-1"
+                            />
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
                   {event.propertyAddress && (
                     <p className="text-sm text-muted-foreground">
                       Property: {event.propertyAddress}
                     </p>
                   )}
-                  {/* Status dropdown - NOT shown for acceptance dates */}
-                  {event.type !== 'acceptance' && (
-                    <div className="mt-2 flex items-center gap-2">
-                      <span className="text-xs text-muted-foreground">Status:</span>
-                      <select
-                        value={event.status}
-                        onChange={(e) => updateEventStatus(event.id, e.target.value as TimelineEvent['status'])}
-                        className="text-xs border rounded px-2 py-1"
-                      >
-                        <option value="upcoming">Upcoming</option>
-                        <option value="overdue">Past Due</option>
-                        <option value="completed">Completed</option>
-                        <option value="not_applicable">Not Applicable</option>
-                      </select>
-                    </div>
-                  )}
-                  {/* Acceptance dates show status but can't change it */}
-                  {event.type === 'acceptance' && (
-                    <div className="mt-2">
-                      <span className="text-xs text-muted-foreground">
-                        Status: <span className="font-semibold">Completed (Acceptance dates cannot be modified)</span>
-                      </span>
-                    </div>
-                  )}
+                  {/* Status dropdown for all events */}
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">Status:</span>
+                    <select
+                      value={event.status}
+                      onChange={(e) => updateEventStatus(event.id, e.target.value as TimelineEvent['status'])}
+                      className="text-xs border rounded px-2 py-1"
+                    >
+                      <option value="upcoming">Upcoming</option>
+                      <option value="overdue">Past Due</option>
+                      <option value="completed">Completed</option>
+                      <option value="not_applicable">Not Applicable</option>
+                    </select>
+                  </div>
                 </div>
                 <Badge variant={event.status === 'overdue' ? 'destructive' : 'default'}>
                   {event.type}
@@ -474,61 +480,13 @@ export default function TimelineClient({ parses }: TimelineClientProps) {
                 <p className="text-sm font-semibold text-gray-900">{selectedEvent.title}</p>
               </div>
 
-              {/* Date editing - NOT for acceptance dates */}
-              {selectedEvent.type !== 'acceptance' ? (
-                <div>
-                  <p className="text-sm text-muted-foreground mb-2">Event Date</p>
+              {/* Date editing */}
+              <div>
+                <p className="text-sm text-muted-foreground mb-2">Event Date</p>
 
-                  {/* Toggle between Calculated and Specific */}
-                  <div className="flex gap-4 mb-3">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="radio"
-                        name={`date-mode-${selectedEvent.id}`}
-                        checked={dateMode[selectedEvent.id] !== 'calculated'}
-                        onChange={() => {
-                          setDateMode(prev => {
-                            const newMode = { ...prev };
-                            delete newMode[selectedEvent.id];
-                            return newMode;
-                          });
-                        }}
-                        className="w-4 h-4"
-                      />
-                      <span className="text-sm">Specific Date</span>
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="radio"
-                        name={`date-mode-${selectedEvent.id}`}
-                        checked={dateMode[selectedEvent.id] === 'calculated'}
-                        onChange={() => {
-                          setDateMode(prev => ({ ...prev, [selectedEvent.id]: 'calculated' }));
-                        }}
-                        className="w-4 h-4"
-                      />
-                      <span className="text-sm">Days from Acceptance</span>
-                    </label>
-                  </div>
-
-                  {/* Show appropriate input based on mode */}
-                  {dateMode[selectedEvent.id] === 'calculated' ? (
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        min="0"
-                        value={calculatedDays[selectedEvent.id] ?? 0}
-                        onChange={(e) => {
-                          setCalculatedDays(prev => ({
-                            ...prev,
-                            [selectedEvent.id]: parseInt(e.target.value) || 0
-                          }));
-                        }}
-                        className="w-24 text-sm border rounded px-3 py-2"
-                      />
-                      <span className="text-sm text-muted-foreground">days after acceptance</span>
-                    </div>
-                  ) : (
+                {/* Acceptance dates: Specific date only (no toggle) */}
+                {selectedEvent.type === 'acceptance' ? (
+                  <div>
                     <input
                       type="date"
                       value={format(selectedEvent.start, 'yyyy-MM-dd')}
@@ -541,20 +499,82 @@ export default function TimelineClient({ parses }: TimelineClientProps) {
                       onFocus={(e) => e.target.showPicker?.()}
                       className="w-full text-sm border rounded px-3 py-2"
                     />
-                  )}
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Acceptance date (specific date only)
+                    </p>
+                  </div>
+                ) : (
+                  <div>
+                    {/* Toggle between Calculated and Specific for non-acceptance dates */}
+                    <div className="flex gap-4 mb-3">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name={`date-mode-${selectedEvent.id}`}
+                          checked={dateMode[selectedEvent.id] !== 'calculated'}
+                          onChange={() => {
+                            setDateMode(prev => {
+                              const newMode = { ...prev };
+                              delete newMode[selectedEvent.id];
+                              return newMode;
+                            });
+                          }}
+                          className="w-4 h-4"
+                        />
+                        <span className="text-sm">Specific Date</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name={`date-mode-${selectedEvent.id}`}
+                          checked={dateMode[selectedEvent.id] === 'calculated'}
+                          onChange={() => {
+                            setDateMode(prev => ({ ...prev, [selectedEvent.id]: 'calculated' }));
+                          }}
+                          className="w-4 h-4"
+                        />
+                        <span className="text-sm">Days from Acceptance</span>
+                      </label>
+                    </div>
 
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Original: {format(allEvents.find(ev => ev.id === selectedEvent.id)?.start || selectedEvent.start, "MMMM d, yyyy")}
-                  </p>
-                </div>
-              ) : (
-                <div>
-                  <p className="text-sm text-muted-foreground">Date</p>
-                  <p className="font-medium">
-                    {format(selectedEvent.start, "MMMM d, yyyy")} (Fixed)
-                  </p>
-                </div>
-              )}
+                    {/* Show appropriate input based on mode */}
+                    {dateMode[selectedEvent.id] === 'calculated' ? (
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min="0"
+                          value={calculatedDays[selectedEvent.id] ?? 0}
+                          onChange={(e) => {
+                            setCalculatedDays(prev => ({
+                              ...prev,
+                              [selectedEvent.id]: parseInt(e.target.value) || 0
+                            }));
+                          }}
+                          className="w-24 text-sm border rounded px-3 py-2"
+                        />
+                        <span className="text-sm text-muted-foreground">days after acceptance</span>
+                      </div>
+                    ) : (
+                      <input
+                        type="date"
+                        value={format(selectedEvent.start, 'yyyy-MM-dd')}
+                        onChange={(e) => {
+                          const newDate = new Date(e.target.value);
+                          if (!isNaN(newDate.getTime())) {
+                            updateEventDate(selectedEvent.id, newDate);
+                          }
+                        }}
+                        onFocus={(e) => e.target.showPicker?.()}
+                        className="w-full text-sm border rounded px-3 py-2"
+                      />
+                    )}
+
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Original: {format(allEvents.find(ev => ev.id === selectedEvent.id)?.start || selectedEvent.start, "MMMM d, yyyy")}
+                    </p>
+                  </div>
+                )}
+              </div>
 
               {selectedEvent.propertyAddress && (
                 <div>
@@ -563,35 +583,22 @@ export default function TimelineClient({ parses }: TimelineClientProps) {
                 </div>
               )}
 
-              {/* Status Change - NOT for acceptance dates */}
-              {selectedEvent.type !== 'acceptance' && (
-                <div>
-                  <p className="text-sm text-muted-foreground mb-2">Change Status</p>
-                  <select
-                    value={selectedEvent.status}
-                    onChange={(e) => {
-                      updateEventStatus(selectedEvent.id, e.target.value as TimelineEvent['status']);
-                    }}
-                    className="w-full text-sm border rounded px-3 py-2"
-                  >
-                    <option value="upcoming">Upcoming</option>
-                    <option value="overdue">Past Due</option>
-                    <option value="completed">Completed</option>
-                    <option value="not_applicable">Not Applicable</option>
-                  </select>
-                </div>
-              )}
-
-              {/* Acceptance dates cannot be modified */}
-              {selectedEvent.type === 'acceptance' && (
-                <div className="p-3 bg-gray-50 rounded-lg border">
-                  <p className="text-xs text-muted-foreground">
-                    <span className="font-semibold">Status: Completed</span>
-                    <br />
-                    Acceptance dates initialize the workflow and cannot be modified.
-                  </p>
-                </div>
-              )}
+              {/* Status Change */}
+              <div>
+                <p className="text-sm text-muted-foreground mb-2">Change Status</p>
+                <select
+                  value={selectedEvent.status}
+                  onChange={(e) => {
+                    updateEventStatus(selectedEvent.id, e.target.value as TimelineEvent['status']);
+                  }}
+                  className="w-full text-sm border rounded px-3 py-2"
+                >
+                  <option value="upcoming">Upcoming</option>
+                  <option value="overdue">Past Due</option>
+                  <option value="completed">Completed</option>
+                  <option value="not_applicable">Not Applicable</option>
+                </select>
+              </div>
             </div>
           )}
         </DialogContent>
