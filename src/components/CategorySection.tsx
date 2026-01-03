@@ -69,12 +69,13 @@ export default function CategorySection({
           <label className="text-sm font-medium text-muted-foreground">
             {field.label}
           </label>
-          <div>
+          <div onKeyDown={(e) => e.stopPropagation()}>
             {field.type === 'boolean' ? (
               <div className="flex items-center gap-2">
                 <Checkbox
                   checked={field.value === true}
                   onCheckedChange={(checked) => handleChange(checked)}
+                  disabled={!field.onChange}
                 />
                 <span className="text-sm">{field.value ? 'Yes' : 'No'}</span>
               </div>
@@ -82,6 +83,7 @@ export default function CategorySection({
               <Select
                 value={field.value || ''}
                 onValueChange={handleChange}
+                disabled={!field.onChange}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select..." />
@@ -107,6 +109,7 @@ export default function CategorySection({
                   handleChange(arr);
                 }}
                 placeholder="Comma-separated values"
+                disabled={!field.onChange}
               />
             ) : (
               <Input
@@ -117,6 +120,7 @@ export default function CategorySection({
                   handleChange(val);
                 }}
                 placeholder={`Enter ${field.label.toLowerCase()}`}
+                disabled={!field.onChange}
               />
             )}
           </div>
