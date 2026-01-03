@@ -11,8 +11,9 @@ import "./calendar.css";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { getAllTimelineEvents, TimelineEvent } from "@/lib/dates/extract-timeline-events";
-import { Calendar as CalendarIcon, AlertCircle, CheckCircle, Clock } from "lucide-react";
+import { Calendar as CalendarIcon, AlertCircle, CheckCircle, Clock, X } from "lucide-react";
 
 const locales = { "en-US": enUS };
 
@@ -136,19 +137,30 @@ export default function TimelineClient({ parses }: TimelineClientProps) {
                       Property: {event.propertyAddress}
                     </p>
                   )}
-                  <div className="mt-2 flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">Status:</span>
-                    <select
-                      value={event.status}
-                      onChange={(e) => updateEventStatus(event.id, e.target.value as TimelineEvent['status'])}
-                      className="text-xs border rounded px-2 py-1"
-                    >
-                      <option value="upcoming">Upcoming</option>
-                      <option value="overdue">Past Due</option>
-                      <option value="completed">Completed</option>
-                      <option value="not_applicable">Not Applicable</option>
-                    </select>
-                  </div>
+                  {/* Status dropdown - NOT shown for acceptance dates */}
+                  {event.type !== 'acceptance' && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">Status:</span>
+                      <select
+                        value={event.status}
+                        onChange={(e) => updateEventStatus(event.id, e.target.value as TimelineEvent['status'])}
+                        className="text-xs border rounded px-2 py-1"
+                      >
+                        <option value="upcoming">Upcoming</option>
+                        <option value="overdue">Past Due</option>
+                        <option value="completed">Completed</option>
+                        <option value="not_applicable">Not Applicable</option>
+                      </select>
+                    </div>
+                  )}
+                  {/* Acceptance dates show status but can't change it */}
+                  {event.type === 'acceptance' && (
+                    <div className="mt-2">
+                      <span className="text-xs text-muted-foreground">
+                        Status: <span className="font-semibold">Completed (Acceptance dates cannot be modified)</span>
+                      </span>
+                    </div>
+                  )}
                 </div>
                 <Badge variant={event.status === 'overdue' ? 'destructive' : 'default'}>
                   {event.type}
@@ -333,47 +345,75 @@ export default function TimelineClient({ parses }: TimelineClientProps) {
         </CardContent>
       </Card>
 
-      {/* Selected Event Details */}
-      {selectedEvent && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
+      {/* Floating Modal for Selected Calendar Event */}
+      <Dialog open={!!selectedEvent} onOpenChange={(open) => !open && setSelectedEvent(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center justify-between">
               <span>Event Details</span>
               <Badge
                 variant={
-                  selectedEvent.status === 'overdue'
+                  selectedEvent?.status === 'overdue'
                     ? 'destructive'
                     : 'default'
                 }
               >
-                {selectedEvent.status}
+                {selectedEvent?.type}
               </Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div>
-              <p className="text-sm text-muted-foreground">Title</p>
-              <p className="font-medium">{selectedEvent.title}</p>
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Date</p>
-              <p className="font-medium">
-                {format(selectedEvent.start, "MMMM d, yyyy")}
-              </p>
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Type</p>
-              <p className="font-medium capitalize">{selectedEvent.type}</p>
-            </div>
-            {selectedEvent.propertyAddress && (
+            </DialogTitle>
+          </DialogHeader>
+          {selectedEvent && (
+            <div className="space-y-4">
               <div>
-                <p className="text-sm text-muted-foreground">Property</p>
-                <p className="font-medium">{selectedEvent.propertyAddress}</p>
+                <p className="text-sm font-semibold text-gray-900">{selectedEvent.title}</p>
               </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
+              <div>
+                <p className="text-sm text-muted-foreground">Date</p>
+                <p className="font-medium">
+                  {format(selectedEvent.start, "MMMM d, yyyy")}
+                </p>
+              </div>
+              {selectedEvent.propertyAddress && (
+                <div>
+                  <p className="text-sm text-muted-foreground">Property</p>
+                  <p className="font-medium">{selectedEvent.propertyAddress}</p>
+                </div>
+              )}
+
+              {/* Status Change - NOT for acceptance dates */}
+              {selectedEvent.type !== 'acceptance' && (
+                <div>
+                  <p className="text-sm text-muted-foreground mb-2">Change Status</p>
+                  <select
+                    value={selectedEvent.status}
+                    onChange={(e) => {
+                      updateEventStatus(selectedEvent.id, e.target.value as TimelineEvent['status']);
+                      setSelectedEvent(null); // Close modal after update
+                    }}
+                    className="w-full text-sm border rounded px-3 py-2"
+                  >
+                    <option value="upcoming">Upcoming</option>
+                    <option value="overdue">Past Due</option>
+                    <option value="completed">Completed</option>
+                    <option value="not_applicable">Not Applicable</option>
+                  </select>
+                </div>
+              )}
+
+              {/* Acceptance dates cannot be modified */}
+              {selectedEvent.type === 'acceptance' && (
+                <div className="p-3 bg-gray-50 rounded-lg border">
+                  <p className="text-xs text-muted-foreground">
+                    <span className="font-semibold">Status: Completed</span>
+                    <br />
+                    Acceptance dates initialize the workflow and cannot be modified.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Legend */}
       <Card>
