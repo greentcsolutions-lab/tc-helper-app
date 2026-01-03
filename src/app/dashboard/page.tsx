@@ -8,6 +8,7 @@ import { currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { FileUp, FileText, Sparkles, TrendingUp, Clock, CheckCircle } from "lucide-react";
 import NextDueCard from "@/components/dashboard/NextDueCard";
+import NextClosingCard from "@/components/dashboard/NextClosingCard";
 
 export const dynamic = "force-dynamic";
 
@@ -66,8 +67,11 @@ export default async function Dashboard() {
         </p>
       </div>
 
-      {/* PRIORITY 1: Next Due - Most Important */}
-      <NextDueCard parses={completedParses} />
+      {/* PRIORITY 1: Next Due & Next Closing - Most Important */}
+      <div className="grid gap-6 md:grid-cols-2">
+        <NextDueCard parses={completedParses} />
+        <NextClosingCard parses={completedParses} />
+      </div>
 
       {/* PRIORITY 2: Quick Actions - Primary Workflow */}
       <div className="grid gap-6 md:grid-cols-2">
