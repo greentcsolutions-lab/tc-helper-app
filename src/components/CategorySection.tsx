@@ -21,7 +21,7 @@ import {
 import { ChevronDown, Plus, X } from "lucide-react";
 import CopyAllButton from "@/components/ui/CopyAllButton";
 import CopyFieldRow from "@/components/ui/CopyFieldRow";
-import { ReactNode, useState } from "react";
+import { ReactNode } from "react";
 
 export interface FieldConfig {
   label: string;
