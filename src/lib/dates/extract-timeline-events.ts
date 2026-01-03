@@ -136,13 +136,18 @@ export function extractTimelineEvents(parse: any): TimelineEvent[] {
     });
   }
 
-  // 4. Contingency Removal Dates (calculated from acceptance date)
-  if (acceptanceDate && parse.contingencies) {
+  // 4. Contingency Removal Dates (can be either number of days or specific dates)
+  if (parse.contingencies) {
     const contingencies = parse.contingencies;
 
     // Loan Contingency
-    if (contingencies.loanDays && typeof contingencies.loanDays === 'number') {
-      const loanDate = calculateContingencyDate(acceptanceDate, contingencies.loanDays);
+    let loanDate: Date | null = null;
+    if (typeof contingencies.loanDays === 'number' && acceptanceDate) {
+      loanDate = calculateContingencyDate(acceptanceDate, contingencies.loanDays);
+    } else if (typeof contingencies.loanDays === 'string') {
+      loanDate = parseDate(contingencies.loanDays);
+    }
+    if (loanDate) {
       events.push({
         id: `${parseId}-loan-contingency`,
         title: `Loan Contingency Removal: ${simplifiedAddress}`,
@@ -157,8 +162,13 @@ export function extractTimelineEvents(parse: any): TimelineEvent[] {
     }
 
     // Appraisal Contingency
-    if (contingencies.appraisalDays && typeof contingencies.appraisalDays === 'number') {
-      const appraisalDate = calculateContingencyDate(acceptanceDate, contingencies.appraisalDays);
+    let appraisalDate: Date | null = null;
+    if (typeof contingencies.appraisalDays === 'number' && acceptanceDate) {
+      appraisalDate = calculateContingencyDate(acceptanceDate, contingencies.appraisalDays);
+    } else if (typeof contingencies.appraisalDays === 'string') {
+      appraisalDate = parseDate(contingencies.appraisalDays);
+    }
+    if (appraisalDate) {
       events.push({
         id: `${parseId}-appraisal-contingency`,
         title: `Appraisal Contingency Removal: ${simplifiedAddress}`,
@@ -173,8 +183,13 @@ export function extractTimelineEvents(parse: any): TimelineEvent[] {
     }
 
     // Investigation/Inspection Contingency
-    if (contingencies.inspectionDays && typeof contingencies.inspectionDays === 'number') {
-      const investigationDate = calculateContingencyDate(acceptanceDate, contingencies.inspectionDays);
+    let investigationDate: Date | null = null;
+    if (typeof contingencies.inspectionDays === 'number' && acceptanceDate) {
+      investigationDate = calculateContingencyDate(acceptanceDate, contingencies.inspectionDays);
+    } else if (typeof contingencies.inspectionDays === 'string') {
+      investigationDate = parseDate(contingencies.inspectionDays);
+    }
+    if (investigationDate) {
       events.push({
         id: `${parseId}-investigation-contingency`,
         title: `Investigation Contingency Removal: ${simplifiedAddress}`,
