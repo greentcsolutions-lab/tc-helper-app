@@ -1,8 +1,8 @@
 // src/lib/dates/extract-timeline-events.ts
-// Version: 1.0.0 - Timeline event extraction from parsed contracts
+// Version: 2.0.0 - Updated to use ParseResult structure
 // Extracts all important dates from parsed contract data
 
-import { addDays, parseISO, isValid, isFuture, isPast } from "date-fns";
+import { addDays, parseISO, isValid, isFuture } from "date-fns";
 
 export interface TimelineEvent {
   id: string;
@@ -17,15 +17,23 @@ export interface TimelineEvent {
 }
 
 /**
- * Parses a date string in MM/DD/YYYY format or ISO format
+ * Parses a date string in YYYY-MM-DD or MM/DD/YYYY format
  */
-function parseDate(dateStr: string | number | undefined): Date | null {
+function parseDate(dateStr: string | number | null | undefined): Date | null {
   if (!dateStr) return null;
 
   // If it's a number of days, return null (needs anchor date)
   if (typeof dateStr === 'number') return null;
 
-  // Try MM/DD/YYYY format (common in California contracts)
+  // Try YYYY-MM-DD format first (ISO)
+  try {
+    const date = parseISO(dateStr);
+    if (isValid(date)) return date;
+  } catch {
+    // Continue to next format
+  }
+
+  // Try MM/DD/YYYY format
   const mmddyyyyRegex = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
   const match = dateStr.match(mmddyyyyRegex);
 
@@ -35,20 +43,7 @@ function parseDate(dateStr: string | number | undefined): Date | null {
     return isValid(date) ? date : null;
   }
 
-  // Try ISO format
-  try {
-    const date = parseISO(dateStr);
-    return isValid(date) ? date : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Calculate contingency removal date based on acceptance date + days
- */
-function calculateContingencyDate(acceptanceDate: Date, days: number): Date {
-  return addDays(acceptanceDate, days);
+  return null;
 }
 
 /**
@@ -65,32 +60,31 @@ function getEventStatus(date: Date): TimelineEvent['status'] {
 }
 
 /**
- * Extract all timeline events from a parsed contract
+ * Extract all timeline events from a parsed contract using ParseResult structure
  */
 export function extractTimelineEvents(parse: any): TimelineEvent[] {
   const events: TimelineEvent[] = [];
-  const data = parse.formatted || {};
   const parseId = parse.id;
-  const propertyAddress = data.property_address?.full || 'Unknown Property';
+  const propertyAddress = parse.propertyAddress || 'Unknown Property';
 
-  // 1. Final Acceptance Date
-  const acceptanceDate = parseDate(data.final_acceptance_date);
-  if (acceptanceDate) {
+  // 1. Effective Date (Acceptance Date)
+  const effectiveDate = parseDate(parse.effectiveDate);
+  if (effectiveDate) {
     events.push({
       id: `${parseId}-acceptance`,
       title: `Acceptance: ${propertyAddress}`,
-      start: acceptanceDate,
-      end: acceptanceDate,
+      start: effectiveDate,
+      end: effectiveDate,
       allDay: true,
       type: 'deadline',
       parseId,
       propertyAddress,
-      status: getEventStatus(acceptanceDate),
+      status: getEventStatus(effectiveDate),
     });
   }
 
   // 2. Initial Deposit Due
-  const depositDue = parseDate(data.initial_deposit?.due);
+  const depositDue = parseDate(parse.initialDepositDueDate);
   if (depositDue) {
     events.push({
       id: `${parseId}-deposit`,
@@ -105,32 +99,47 @@ export function extractTimelineEvents(parse: any): TimelineEvent[] {
     });
   }
 
-  // 3. Contingency Removal Dates (calculated from acceptance date)
-  if (acceptanceDate && data.contingencies) {
-    const contingencies = data.contingencies;
+  // 3. Seller Delivery of Disclosures
+  const sellerDelivery = parseDate(parse.sellerDeliveryOfDisclosuresDate);
+  if (sellerDelivery) {
+    events.push({
+      id: `${parseId}-seller-delivery`,
+      title: `Seller Delivery: ${propertyAddress}`,
+      start: sellerDelivery,
+      end: sellerDelivery,
+      allDay: true,
+      type: 'deadline',
+      parseId,
+      propertyAddress,
+      status: getEventStatus(sellerDelivery),
+    });
+  }
 
-    // Loan Contingency
-    if (contingencies.loan_days && typeof contingencies.loan_days === 'number') {
-      const loanDate = calculateContingencyDate(acceptanceDate, contingencies.loan_days);
+  // 4. Contingency Removal Dates
+  const contingencies = parse.contingencies;
+  if (contingencies) {
+    // Inspection Contingency
+    const inspectionDate = parseDate(contingencies.inspectionDays);
+    if (inspectionDate) {
       events.push({
-        id: `${parseId}-loan-contingency`,
-        title: `Loan Contingency Removal: ${propertyAddress}`,
-        start: loanDate,
-        end: loanDate,
+        id: `${parseId}-inspection-contingency`,
+        title: `Inspection Contingency: ${propertyAddress}`,
+        start: inspectionDate,
+        end: inspectionDate,
         allDay: true,
         type: 'contingency',
         parseId,
         propertyAddress,
-        status: getEventStatus(loanDate),
+        status: getEventStatus(inspectionDate),
       });
     }
 
     // Appraisal Contingency
-    if (contingencies.appraisal_days && typeof contingencies.appraisal_days === 'number') {
-      const appraisalDate = calculateContingencyDate(acceptanceDate, contingencies.appraisal_days);
+    const appraisalDate = parseDate(contingencies.appraisalDays);
+    if (appraisalDate) {
       events.push({
         id: `${parseId}-appraisal-contingency`,
-        title: `Appraisal Contingency Removal: ${propertyAddress}`,
+        title: `Appraisal Contingency: ${propertyAddress}`,
         start: appraisalDate,
         end: appraisalDate,
         allDay: true,
@@ -141,45 +150,36 @@ export function extractTimelineEvents(parse: any): TimelineEvent[] {
       });
     }
 
-    // Investigation/Inspection Contingency
-    if (contingencies.investigation_days && typeof contingencies.investigation_days === 'number') {
-      const investigationDate = calculateContingencyDate(acceptanceDate, contingencies.investigation_days);
+    // Loan Contingency
+    const loanDate = parseDate(contingencies.loanDays);
+    if (loanDate) {
       events.push({
-        id: `${parseId}-investigation-contingency`,
-        title: `Investigation Contingency Removal: ${propertyAddress}`,
-        start: investigationDate,
-        end: investigationDate,
+        id: `${parseId}-loan-contingency`,
+        title: `Loan Contingency: ${propertyAddress}`,
+        start: loanDate,
+        end: loanDate,
         allDay: true,
         type: 'contingency',
         parseId,
         propertyAddress,
-        status: getEventStatus(investigationDate),
+        status: getEventStatus(loanDate),
       });
     }
   }
 
-  // 4. Close of Escrow
-  let closeDate: Date | null = null;
-
-  if (typeof data.close_of_escrow === 'number' && acceptanceDate) {
-    // Days after acceptance
-    closeDate = calculateContingencyDate(acceptanceDate, data.close_of_escrow);
-  } else if (typeof data.close_of_escrow === 'string') {
-    // Specific date
-    closeDate = parseDate(data.close_of_escrow);
-  }
-
-  if (closeDate) {
+  // 5. Close of Escrow
+  const closingDate = parseDate(parse.closingDate);
+  if (closingDate) {
     events.push({
       id: `${parseId}-closing`,
       title: `CLOSING: ${propertyAddress}`,
-      start: closeDate,
-      end: closeDate,
+      start: closingDate,
+      end: closingDate,
       allDay: true,
       type: 'closing',
       parseId,
       propertyAddress,
-      status: getEventStatus(closeDate),
+      status: getEventStatus(closingDate),
     });
   }
 

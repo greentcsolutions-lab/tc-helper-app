@@ -18,7 +18,7 @@ export default async function TimelinePage() {
 
   if (!user) redirect("/onboarding");
 
-  // Fetch all completed parses with formatted data
+  // Fetch all completed parses with ParseResult fields
   const parses = await db.parse.findMany({
     where: {
       userId: user.id,
@@ -28,7 +28,12 @@ export default async function TimelinePage() {
     select: {
       id: true,
       fileName: true,
-      formatted: true,
+      propertyAddress: true,
+      effectiveDate: true,
+      initialDepositDueDate: true,
+      sellerDeliveryOfDisclosuresDate: true,
+      closingDate: true,
+      contingencies: true,
       createdAt: true,
     },
   });
