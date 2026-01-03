@@ -36,20 +36,43 @@ export default function TimelineClient({ parses }: TimelineClientProps) {
   const [showCompletedDetails, setShowCompletedDetails] = useState(false);
   const [statusOverrides, setStatusOverrides] = useState<Record<string, TimelineEvent['status']>>({});
   const [dateOverrides, setDateOverrides] = useState<Record<string, Date>>({});
+  const [dateMode, setDateMode] = useState<Record<string, 'calculated' | 'specific'>>({});
+  const [calculatedDays, setCalculatedDays] = useState<Record<string, number>>({});
 
   const allEvents = useMemo(() => getAllTimelineEvents(parses), [parses]);
 
   // Apply status and date overrides, filter out not_applicable
   const events = useMemo(() => {
     return allEvents
-      .map(event => ({
-        ...event,
-        status: statusOverrides[event.id] || event.status,
-        start: dateOverrides[event.id] || event.start,
-        end: dateOverrides[event.id] || event.end,
-      }))
+      .map(event => {
+        let finalStart = event.start;
+        let finalEnd = event.end;
+
+        // If in calculated mode and has calculated days, recalculate from acceptance
+        if (dateMode[event.id] === 'calculated' && calculatedDays[event.id] !== undefined) {
+          // Find acceptance date for this parse
+          const acceptanceEvent = allEvents.find(e => e.parseId === event.parseId && e.type === 'acceptance');
+          if (acceptanceEvent) {
+            const daysToAdd = calculatedDays[event.id];
+            finalStart = new Date(acceptanceEvent.start);
+            finalStart.setDate(finalStart.getDate() + daysToAdd);
+            finalEnd = new Date(finalStart);
+          }
+        } else if (dateOverrides[event.id]) {
+          // Use specific date override
+          finalStart = dateOverrides[event.id];
+          finalEnd = dateOverrides[event.id];
+        }
+
+        return {
+          ...event,
+          status: statusOverrides[event.id] || event.status,
+          start: finalStart,
+          end: finalEnd,
+        };
+      })
       .filter(e => e.status !== 'not_applicable');
-  }, [allEvents, statusOverrides, dateOverrides]);
+  }, [allEvents, statusOverrides, dateOverrides, dateMode, calculatedDays]);
 
   // Group events by status - EXCLUDE acceptance events from cards
   const upcomingEvents = events.filter(e => e.status === 'upcoming' && e.type !== 'acceptance');
@@ -142,19 +165,73 @@ export default function TimelineClient({ parses }: TimelineClientProps) {
                   <p className="font-semibold text-gray-900">{event.title}</p>
                   {/* Date display with edit capability - NOT for acceptance */}
                   {event.type !== 'acceptance' ? (
-                    <div className="mt-1 flex items-center gap-2">
-                      <span className="text-xs text-muted-foreground">Due:</span>
-                      <input
-                        type="date"
-                        value={format(event.start, 'yyyy-MM-dd')}
-                        onChange={(e) => {
-                          const newDate = new Date(e.target.value);
-                          if (!isNaN(newDate.getTime())) {
-                            updateEventDate(event.id, newDate);
-                          }
-                        }}
-                        className="text-xs border rounded px-2 py-1"
-                      />
+                    <div className="mt-2 space-y-2">
+                      {/* Toggle between Calculated and Specific */}
+                      <div className="flex gap-3">
+                        <label className="flex items-center gap-1 cursor-pointer">
+                          <input
+                            type="radio"
+                            name={`date-mode-card-${event.id}`}
+                            checked={dateMode[event.id] !== 'calculated'}
+                            onChange={() => {
+                              setDateMode(prev => {
+                                const newMode = { ...prev };
+                                delete newMode[event.id];
+                                return newMode;
+                              });
+                            }}
+                            className="w-3 h-3"
+                          />
+                          <span className="text-xs">Specific Date</span>
+                        </label>
+                        <label className="flex items-center gap-1 cursor-pointer">
+                          <input
+                            type="radio"
+                            name={`date-mode-card-${event.id}`}
+                            checked={dateMode[event.id] === 'calculated'}
+                            onChange={() => {
+                              setDateMode(prev => ({ ...prev, [event.id]: 'calculated' }));
+                            }}
+                            className="w-3 h-3"
+                          />
+                          <span className="text-xs">Days from Acceptance</span>
+                        </label>
+                      </div>
+
+                      {/* Show appropriate input based on mode */}
+                      {dateMode[event.id] === 'calculated' ? (
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min="0"
+                            value={calculatedDays[event.id] ?? 0}
+                            onChange={(e) => {
+                              setCalculatedDays(prev => ({
+                                ...prev,
+                                [event.id]: parseInt(e.target.value) || 0
+                              }));
+                            }}
+                            className="w-16 text-xs border rounded px-2 py-1"
+                          />
+                          <span className="text-xs text-muted-foreground">days after acceptance</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground">Due:</span>
+                          <input
+                            type="date"
+                            value={format(event.start, 'yyyy-MM-dd')}
+                            onChange={(e) => {
+                              const newDate = new Date(e.target.value);
+                              if (!isNaN(newDate.getTime())) {
+                                updateEventDate(event.id, newDate);
+                              }
+                            }}
+                            onFocus={(e) => e.target.showPicker?.()}
+                            className="text-xs border rounded px-2 py-1"
+                          />
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <p className="text-sm text-muted-foreground mt-1">
@@ -401,17 +478,71 @@ export default function TimelineClient({ parses }: TimelineClientProps) {
               {selectedEvent.type !== 'acceptance' ? (
                 <div>
                   <p className="text-sm text-muted-foreground mb-2">Event Date</p>
-                  <input
-                    type="date"
-                    value={format(selectedEvent.start, 'yyyy-MM-dd')}
-                    onChange={(e) => {
-                      const newDate = new Date(e.target.value);
-                      if (!isNaN(newDate.getTime())) {
-                        updateEventDate(selectedEvent.id, newDate);
-                      }
-                    }}
-                    className="w-full text-sm border rounded px-3 py-2"
-                  />
+
+                  {/* Toggle between Calculated and Specific */}
+                  <div className="flex gap-4 mb-3">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name={`date-mode-${selectedEvent.id}`}
+                        checked={dateMode[selectedEvent.id] !== 'calculated'}
+                        onChange={() => {
+                          setDateMode(prev => {
+                            const newMode = { ...prev };
+                            delete newMode[selectedEvent.id];
+                            return newMode;
+                          });
+                        }}
+                        className="w-4 h-4"
+                      />
+                      <span className="text-sm">Specific Date</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name={`date-mode-${selectedEvent.id}`}
+                        checked={dateMode[selectedEvent.id] === 'calculated'}
+                        onChange={() => {
+                          setDateMode(prev => ({ ...prev, [selectedEvent.id]: 'calculated' }));
+                        }}
+                        className="w-4 h-4"
+                      />
+                      <span className="text-sm">Days from Acceptance</span>
+                    </label>
+                  </div>
+
+                  {/* Show appropriate input based on mode */}
+                  {dateMode[selectedEvent.id] === 'calculated' ? (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min="0"
+                        value={calculatedDays[selectedEvent.id] ?? 0}
+                        onChange={(e) => {
+                          setCalculatedDays(prev => ({
+                            ...prev,
+                            [selectedEvent.id]: parseInt(e.target.value) || 0
+                          }));
+                        }}
+                        className="w-24 text-sm border rounded px-3 py-2"
+                      />
+                      <span className="text-sm text-muted-foreground">days after acceptance</span>
+                    </div>
+                  ) : (
+                    <input
+                      type="date"
+                      value={format(selectedEvent.start, 'yyyy-MM-dd')}
+                      onChange={(e) => {
+                        const newDate = new Date(e.target.value);
+                        if (!isNaN(newDate.getTime())) {
+                          updateEventDate(selectedEvent.id, newDate);
+                        }
+                      }}
+                      onFocus={(e) => e.target.showPicker?.()}
+                      className="w-full text-sm border rounded px-3 py-2"
+                    />
+                  )}
+
                   <p className="text-xs text-muted-foreground mt-1">
                     Original: {format(allEvents.find(ev => ev.id === selectedEvent.id)?.start || selectedEvent.start, "MMMM d, yyyy")}
                   </p>
