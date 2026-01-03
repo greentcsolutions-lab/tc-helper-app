@@ -1,5 +1,5 @@
 // src/components/dashboard/NextDueCard.tsx
-// Version: 1.0.0 - Dashboard widget showing next 5 upcoming deadlines
+// Version: 2.0.0 - Dashboard widget showing next upcoming event(s) on the same date
 "use client";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,15 +7,27 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calendar, AlertCircle, ArrowRight } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
-import { getUpcomingEvents, TimelineEvent } from "@/lib/dates/extract-timeline-events";
+import { getNextEventsByDate, TimelineEvent } from "@/lib/dates/extract-timeline-events";
 import Link from "next/link";
 
 interface NextDueCardProps {
   parses: any[];
 }
 
+/**
+ * Simplifies a full address to just the street address
+ * Example: "123 Main St, Los Angeles, CA 90001" -> "123 Main St"
+ */
+function simplifyAddress(address: string | undefined): string {
+  if (!address) return "";
+
+  // Split by comma and take the first part (street address)
+  const parts = address.split(',');
+  return parts[0].trim();
+}
+
 export default function NextDueCard({ parses }: NextDueCardProps) {
-  const upcomingEvents = getUpcomingEvents(parses, 5);
+  const upcomingEvents = getNextEventsByDate(parses);
 
   if (upcomingEvents.length === 0) {
     return (
@@ -48,6 +60,8 @@ export default function NextDueCard({ parses }: NextDueCardProps) {
         return '💰';
       case 'deadline':
         return '⏰';
+      case 'acceptance':
+        return '✅';
       default:
         return '📅';
     }
@@ -61,8 +75,12 @@ export default function NextDueCard({ parses }: NextDueCardProps) {
         return 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400';
       case 'deposit':
         return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400';
-      default:
+      case 'acceptance':
+        return 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400';
+      case 'deadline':
         return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
+      default:
+        return 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400';
     }
   };
 
@@ -111,7 +129,7 @@ export default function NextDueCard({ parses }: NextDueCardProps) {
               </div>
               {event.propertyAddress && (
                 <p className="text-xs text-muted-foreground mt-1 truncate">
-                  {event.propertyAddress}
+                  {simplifyAddress(event.propertyAddress)}
                 </p>
               )}
             </div>

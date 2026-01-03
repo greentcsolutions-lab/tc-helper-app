@@ -49,6 +49,10 @@ export default function TimelineClient({ parses }: TimelineClientProps) {
       backgroundColor = '#f59e0b'; // orange
     } else if (event.type === 'deposit') {
       backgroundColor = '#8b5cf6'; // purple
+    } else if (event.type === 'acceptance') {
+      backgroundColor = '#14b8a6'; // teal
+    } else if (event.type === 'deadline') {
+      backgroundColor = '#3b82f6'; // blue
     }
 
     return {
@@ -67,6 +71,37 @@ export default function TimelineClient({ parses }: TimelineClientProps) {
 
   const handleSelectEvent = (event: TimelineEvent) => {
     setSelectedEvent(event);
+  };
+
+  // Custom Event component with hover tooltip
+  const CustomEvent = ({ event }: { event: TimelineEvent }) => {
+    return (
+      <div className="group relative h-full">
+        <div className="truncate">{event.title}</div>
+        {/* Hover Tooltip */}
+        <div className="absolute left-0 top-full mt-1 hidden group-hover:block z-50 w-64 p-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg">
+          <div className="space-y-2 text-xs">
+            <div>
+              <p className="font-semibold text-gray-900 dark:text-gray-100">{event.title}</p>
+            </div>
+            {event.propertyAddress && (
+              <div>
+                <p className="text-gray-500 dark:text-gray-400">Property:</p>
+                <p className="text-gray-900 dark:text-gray-100">{event.propertyAddress}</p>
+              </div>
+            )}
+            <div>
+              <p className="text-gray-500 dark:text-gray-400">Type:</p>
+              <p className="text-gray-900 dark:text-gray-100 capitalize">{event.type}</p>
+            </div>
+            <div>
+              <p className="text-gray-500 dark:text-gray-400">Status:</p>
+              <p className="text-gray-900 dark:text-gray-100 capitalize">{event.status}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -147,6 +182,9 @@ export default function TimelineClient({ parses }: TimelineClientProps) {
                 onSelectEvent={handleSelectEvent}
                 views={["month", "week", "agenda"]}
                 defaultView="month"
+                components={{
+                  event: CustomEvent,
+                }}
               />
             </div>
           ) : (
@@ -210,6 +248,10 @@ export default function TimelineClient({ parses }: TimelineClientProps) {
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-4">
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 rounded bg-[#14b8a6]" />
+              <span className="text-sm">Acceptance</span>
+            </div>
             <div className="flex items-center gap-2">
               <div className="w-4 h-4 rounded bg-[#10b981]" />
               <span className="text-sm">Closing</span>
