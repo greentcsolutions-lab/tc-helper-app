@@ -47,7 +47,12 @@ export default async function Dashboard() {
     },
     select: {
       id: true,
-      formatted: true,
+      propertyAddress: true,
+      closingDate: true,
+      effectiveDate: true,
+      initialDepositDueDate: true,
+      earnestMoneyDeposit: true,
+      contingencies: true,
     },
   });
 

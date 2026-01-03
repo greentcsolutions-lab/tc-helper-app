@@ -66,15 +66,15 @@ function getEventStatus(date: Date): TimelineEvent['status'] {
 
 /**
  * Extract all timeline events from a parsed contract
+ * Updated to use top-level database fields instead of formatted JSON
  */
 export function extractTimelineEvents(parse: any): TimelineEvent[] {
   const events: TimelineEvent[] = [];
-  const data = parse.formatted || {};
   const parseId = parse.id;
-  const propertyAddress = data.property_address?.full || 'Unknown Property';
+  const propertyAddress = parse.propertyAddress || 'Unknown Property';
 
-  // 1. Final Acceptance Date
-  const acceptanceDate = parseDate(data.final_acceptance_date);
+  // 1. Effective Date (Acceptance Date)
+  const acceptanceDate = parseDate(parse.effectiveDate);
   if (acceptanceDate) {
     events.push({
       id: `${parseId}-acceptance`,
@@ -90,7 +90,7 @@ export function extractTimelineEvents(parse: any): TimelineEvent[] {
   }
 
   // 2. Initial Deposit Due
-  const depositDue = parseDate(data.initial_deposit?.due);
+  const depositDue = parseDate(parse.initialDepositDueDate);
   if (depositDue) {
     events.push({
       id: `${parseId}-deposit`,
@@ -106,12 +106,12 @@ export function extractTimelineEvents(parse: any): TimelineEvent[] {
   }
 
   // 3. Contingency Removal Dates (calculated from acceptance date)
-  if (acceptanceDate && data.contingencies) {
-    const contingencies = data.contingencies;
+  if (acceptanceDate && parse.contingencies) {
+    const contingencies = parse.contingencies;
 
     // Loan Contingency
-    if (contingencies.loan_days && typeof contingencies.loan_days === 'number') {
-      const loanDate = calculateContingencyDate(acceptanceDate, contingencies.loan_days);
+    if (contingencies.loanDays && typeof contingencies.loanDays === 'number') {
+      const loanDate = calculateContingencyDate(acceptanceDate, contingencies.loanDays);
       events.push({
         id: `${parseId}-loan-contingency`,
         title: `Loan Contingency Removal: ${propertyAddress}`,
@@ -126,8 +126,8 @@ export function extractTimelineEvents(parse: any): TimelineEvent[] {
     }
 
     // Appraisal Contingency
-    if (contingencies.appraisal_days && typeof contingencies.appraisal_days === 'number') {
-      const appraisalDate = calculateContingencyDate(acceptanceDate, contingencies.appraisal_days);
+    if (contingencies.appraisalDays && typeof contingencies.appraisalDays === 'number') {
+      const appraisalDate = calculateContingencyDate(acceptanceDate, contingencies.appraisalDays);
       events.push({
         id: `${parseId}-appraisal-contingency`,
         title: `Appraisal Contingency Removal: ${propertyAddress}`,
@@ -142,8 +142,8 @@ export function extractTimelineEvents(parse: any): TimelineEvent[] {
     }
 
     // Investigation/Inspection Contingency
-    if (contingencies.investigation_days && typeof contingencies.investigation_days === 'number') {
-      const investigationDate = calculateContingencyDate(acceptanceDate, contingencies.investigation_days);
+    if (contingencies.inspectionDays && typeof contingencies.inspectionDays === 'number') {
+      const investigationDate = calculateContingencyDate(acceptanceDate, contingencies.inspectionDays);
       events.push({
         id: `${parseId}-investigation-contingency`,
         title: `Investigation Contingency Removal: ${propertyAddress}`,
@@ -158,15 +158,15 @@ export function extractTimelineEvents(parse: any): TimelineEvent[] {
     }
   }
 
-  // 4. Close of Escrow
+  // 4. Close of Escrow / Closing Date
   let closeDate: Date | null = null;
 
-  if (typeof data.close_of_escrow === 'number' && acceptanceDate) {
+  if (typeof parse.closingDate === 'number' && acceptanceDate) {
     // Days after acceptance
-    closeDate = calculateContingencyDate(acceptanceDate, data.close_of_escrow);
-  } else if (typeof data.close_of_escrow === 'string') {
+    closeDate = calculateContingencyDate(acceptanceDate, parse.closingDate);
+  } else if (typeof parse.closingDate === 'string') {
     // Specific date
-    closeDate = parseDate(data.close_of_escrow);
+    closeDate = parseDate(parse.closingDate);
   }
 
   if (closeDate) {
