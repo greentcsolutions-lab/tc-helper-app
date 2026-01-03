@@ -10,7 +10,7 @@ export interface TimelineEvent {
   start: Date;
   end: Date;
   allDay: boolean;
-  type: 'deadline' | 'contingency' | 'closing' | 'deposit';
+  type: 'acceptance' | 'deadline' | 'contingency' | 'closing' | 'deposit';
   parseId: string;
   propertyAddress?: string;
   status: 'upcoming' | 'overdue' | 'completed';
@@ -67,7 +67,7 @@ export function extractTimelineEvents(parse: any): TimelineEvent[] {
   const parseId = parse.id;
   const propertyAddress = parse.propertyAddress || 'Unknown Property';
 
-  // 1. Effective Date (Acceptance Date)
+  // 1. Effective Date (Acceptance Date) - Never marked as overdue
   const effectiveDate = parseDate(parse.effectiveDate);
   if (effectiveDate) {
     events.push({
@@ -76,10 +76,10 @@ export function extractTimelineEvents(parse: any): TimelineEvent[] {
       start: effectiveDate,
       end: effectiveDate,
       allDay: true,
-      type: 'deadline',
+      type: 'acceptance',
       parseId,
       propertyAddress,
-      status: getEventStatus(effectiveDate),
+      status: 'completed', // Acceptance dates are always completed, never overdue
     });
   }
 

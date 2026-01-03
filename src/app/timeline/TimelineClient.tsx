@@ -43,6 +43,8 @@ export default function TimelineClient({ parses }: TimelineClientProps) {
 
     if (event.status === 'overdue') {
       backgroundColor = '#ef4444'; // red
+    } else if (event.type === 'acceptance') {
+      backgroundColor = '#6366f1'; // indigo for acceptance dates
     } else if (event.type === 'closing') {
       backgroundColor = '#10b981'; // green
     } else if (event.type === 'contingency') {
@@ -210,6 +212,10 @@ export default function TimelineClient({ parses }: TimelineClientProps) {
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-4">
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 rounded bg-[#6366f1]" />
+              <span className="text-sm">Acceptance</span>
+            </div>
             <div className="flex items-center gap-2">
               <div className="w-4 h-4 rounded bg-[#10b981]" />
               <span className="text-sm">Closing</span>
