@@ -31,13 +31,38 @@ interface TimelineClientProps {
 export default function TimelineClient({ parses }: TimelineClientProps) {
   const [selectedEvent, setSelectedEvent] = useState<TimelineEvent | null>(null);
   const [showOverdueDetails, setShowOverdueDetails] = useState(false);
+  const [showUpcomingDetails, setShowUpcomingDetails] = useState(false);
+  const [showCompletedDetails, setShowCompletedDetails] = useState(false);
+  const [statusOverrides, setStatusOverrides] = useState<Record<string, TimelineEvent['status']>>({});
 
-  const events = useMemo(() => getAllTimelineEvents(parses), [parses]);
+  const allEvents = useMemo(() => getAllTimelineEvents(parses), [parses]);
+
+  // Apply status overrides and filter out not_applicable
+  const events = useMemo(() => {
+    return allEvents
+      .map(event => ({
+        ...event,
+        status: statusOverrides[event.id] || event.status
+      }))
+      .filter(e => e.status !== 'not_applicable');
+  }, [allEvents, statusOverrides]);
 
   // Group events by status
-  const upcomingCount = events.filter(e => e.status === 'upcoming').length;
-  const overdueCount = events.filter(e => e.status === 'overdue').length;
+  const upcomingEvents = events.filter(e => e.status === 'upcoming');
   const overdueEvents = events.filter(e => e.status === 'overdue');
+  const completedEvents = events.filter(e => e.status === 'completed');
+
+  const upcomingCount = upcomingEvents.length;
+  const overdueCount = overdueEvents.length;
+  const completedCount = completedEvents.length;
+
+  // Function to update event status
+  const updateEventStatus = (eventId: string, newStatus: TimelineEvent['status']) => {
+    setStatusOverrides(prev => ({
+      ...prev,
+      [eventId]: newStatus
+    }));
+  };
 
   // Custom event style based on type and status
   const eventStyleGetter = (event: TimelineEvent) => {
@@ -74,6 +99,67 @@ export default function TimelineClient({ parses }: TimelineClientProps) {
   const handleSelectEvent = (event: TimelineEvent) => {
     setSelectedEvent(event);
   };
+
+  // Render event details card with status controls
+  const renderEventDetailsCard = (
+    events: TimelineEvent[],
+    title: string,
+    titleColor: string,
+    borderColor: string,
+    bgColor: string,
+    onClose: () => void
+  ) => (
+    <Card className={`${borderColor} ${bgColor}`}>
+      <CardHeader>
+        <CardTitle className="flex items-center justify-between">
+          <span className={titleColor}>{title} ({events.length})</span>
+          <button
+            onClick={onClose}
+            className="text-sm text-muted-foreground hover:text-foreground"
+          >
+            Close
+          </button>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-3">
+          {events.map((event) => (
+            <div key={event.id} className="p-4 bg-white rounded-lg border border-gray-200">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1">
+                  <p className="font-semibold text-gray-900">{event.title}</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Due: {format(event.start, "MMMM d, yyyy")}
+                  </p>
+                  {event.propertyAddress && (
+                    <p className="text-sm text-muted-foreground">
+                      Property: {event.propertyAddress}
+                    </p>
+                  )}
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">Status:</span>
+                    <select
+                      value={event.status}
+                      onChange={(e) => updateEventStatus(event.id, e.target.value as TimelineEvent['status'])}
+                      className="text-xs border rounded px-2 py-1"
+                    >
+                      <option value="upcoming">Upcoming</option>
+                      <option value="overdue">Past Due</option>
+                      <option value="completed">Completed</option>
+                      <option value="not_applicable">Not Applicable</option>
+                    </select>
+                  </div>
+                </div>
+                <Badge variant={event.status === 'overdue' ? 'destructive' : 'default'}>
+                  {event.type}
+                </Badge>
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
 
   // Custom Event component with hover tooltip
   const CustomEvent = ({ event }: { event: TimelineEvent }) => {
@@ -118,63 +204,37 @@ export default function TimelineClient({ parses }: TimelineClientProps) {
         </div>
       </div>
 
-      {/* Overdue Details Card - Shows when clicked */}
-      {showOverdueDetails && (
-        <Card className="border-red-200 bg-red-50">
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <span className="text-red-700">Overdue Events Details ({overdueCount})</span>
-              <button
-                onClick={() => setShowOverdueDetails(false)}
-                className="text-sm text-muted-foreground hover:text-foreground"
-              >
-                Close
-              </button>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {overdueEvents.map((event) => (
-                <div key={event.id} className="p-4 bg-white rounded-lg border border-red-200">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <p className="font-semibold text-gray-900">{event.title}</p>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        Due: {format(event.start, "MMMM d, yyyy")}
-                      </p>
-                      {event.propertyAddress && (
-                        <p className="text-sm text-muted-foreground">
-                          Property: {event.propertyAddress}
-                        </p>
-                      )}
-                    </div>
-                    <Badge variant="destructive" className="ml-4">
-                      {event.type}
-                    </Badge>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+      {/* Expandable Event Details Cards */}
+      {showOverdueDetails && renderEventDetailsCard(
+        overdueEvents,
+        'Past Due Events',
+        'text-red-700',
+        'border-red-200',
+        'bg-red-50',
+        () => setShowOverdueDetails(false)
       )}
 
-      {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
-                <Clock className="h-5 w-5 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{upcomingCount}</p>
-                <p className="text-sm text-muted-foreground">Upcoming</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      {showUpcomingDetails && renderEventDetailsCard(
+        upcomingEvents,
+        'Upcoming Events',
+        'text-blue-700',
+        'border-blue-200',
+        'bg-blue-50',
+        () => setShowUpcomingDetails(false)
+      )}
 
+      {showCompletedDetails && renderEventDetailsCard(
+        completedEvents,
+        'Completed Events',
+        'text-green-700',
+        'border-green-200',
+        'bg-green-50',
+        () => setShowCompletedDetails(false)
+      )}
+
+      {/* Stats Cards - Rearranged: Overdue, Upcoming, Completed */}
+      <div className="grid gap-4 md:grid-cols-3">
+        {/* Past Due Card */}
         <Card
           className="cursor-pointer hover:bg-red-50 transition-colors"
           onClick={() => setShowOverdueDetails(!showOverdueDetails)}
@@ -187,22 +247,48 @@ export default function TimelineClient({ parses }: TimelineClientProps) {
               <div>
                 <p className="text-2xl font-bold">{overdueCount}</p>
                 <p className="text-sm text-muted-foreground">
-                  Overdue {overdueCount > 0 && '(click to view)'}
+                  Past Due {overdueCount > 0 && '(click to view)'}
                 </p>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card>
+        {/* Upcoming Card */}
+        <Card
+          className="cursor-pointer hover:bg-blue-50 transition-colors"
+          onClick={() => setShowUpcomingDetails(!showUpcomingDetails)}
+        >
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
+                <Clock className="h-5 w-5 text-blue-600" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{upcomingCount}</p>
+                <p className="text-sm text-muted-foreground">
+                  Upcoming {upcomingCount > 0 && '(click to view)'}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Completed Card */}
+        <Card
+          className="cursor-pointer hover:bg-green-50 transition-colors"
+          onClick={() => setShowCompletedDetails(!showCompletedDetails)}
+        >
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
                 <CheckCircle className="h-5 w-5 text-green-600" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{events.length}</p>
-                <p className="text-sm text-muted-foreground">Total Events</p>
+                <p className="text-2xl font-bold">{completedCount}</p>
+                <p className="text-sm text-muted-foreground">
+                  Completed {completedCount > 0 && '(click to view)'}
+                </p>
               </div>
             </div>
           </CardContent>

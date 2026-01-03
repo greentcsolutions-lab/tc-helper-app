@@ -13,7 +13,7 @@ export interface TimelineEvent {
   type: 'acceptance' | 'deadline' | 'contingency' | 'closing' | 'deposit';
   parseId: string;
   propertyAddress?: string;
-  status: 'upcoming' | 'overdue' | 'completed';
+  status: 'upcoming' | 'overdue' | 'completed' | 'not_applicable';
 }
 
 /**
