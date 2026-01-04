@@ -27,6 +27,7 @@ import { TASK_STATUS, getTaskStatus } from "@/types/task";
 
 type Task = any; // Use Prisma-generated type
 import TaskCard from "./TaskCard";
+import TaskOverview from "./TaskOverview";
 import { Filter, Plus } from "lucide-react";
 
 interface TasksClientProps {
@@ -56,7 +57,16 @@ function DroppableColumn({ id, children }: { id: string; children: React.ReactNo
 }
 
 export default function TasksClient({ initialTasks }: TasksClientProps) {
-  const [tasks, setTasks] = useState<Task[]>(initialTasks);
+  // Deserialize dates from server-side rendered data
+  const [tasks, setTasks] = useState<Task[]>(() =>
+    initialTasks.map((task) => ({
+      ...task,
+      dueDate: new Date(task.dueDate),
+      createdAt: new Date(task.createdAt),
+      updatedAt: new Date(task.updatedAt),
+      completedAt: task.completedAt ? new Date(task.completedAt) : null,
+    }))
+  );
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [originalColumnId, setOriginalColumnId] = useState<string | null>(null);
   const [columnVisibility, setColumnVisibility] = useState({
@@ -73,8 +83,8 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
     }),
     useSensor(TouchSensor, {
       activationConstraint: {
-        delay: 250,
-        tolerance: 5,
+        delay: 600, // Long delay to ensure it's intentional and doesn't block scrolling
+        tolerance: 8, // Allow slight finger movement during long press
       },
     })
   );
@@ -111,6 +121,15 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
       });
     });
 
+    // Debug log after calculation (not during to avoid hydration issues)
+    if (typeof window !== 'undefined') {
+      console.log('📊 tasksByColumn calculated:', {
+        not_started: grouped.not_started?.length || 0,
+        pending: grouped.pending?.length || 0,
+        completed: grouped.completed?.length || 0,
+      });
+    }
+
     return grouped;
   }, [tasks]);
 
@@ -128,7 +147,12 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
     const task = tasks.find((t) => t.id === active.id);
     if (task) {
       setActiveTask(task);
-      setOriginalColumnId(task.columnId); // Save original column for potential rollback
+      // Use task.status as source of truth for the visual column position
+      // (task.columnId might be stale from a previous drag that didn't persist)
+      const status = getTaskStatus(task);
+      const visualColumnId = status === 'overdue' ? task.columnId : task.status;
+      console.log('🎬 DragStart:', { taskId: task.id, status: task.status, columnId: task.columnId, visualColumnId });
+      setOriginalColumnId(visualColumnId);
     }
   };
 
@@ -145,10 +169,11 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
     // Check if we're over a column
     const overColumn = COLUMNS.find((col) => col.id === overId);
     if (overColumn && activeTask.columnId !== overColumn.id) {
+      console.log('🔄 DragOver: Moving task to column', { taskId: activeId, from: activeTask.columnId, to: overColumn.id });
       // Optimistically move task to the new column for visual feedback
       setTasks((prev) =>
         prev.map((t) =>
-          t.id === activeId ? { ...t, columnId: overColumn.id } : t
+          t.id === activeId ? { ...t, columnId: overColumn.id, status: overColumn.id } : t
         )
       );
       return;
@@ -157,10 +182,11 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
     // Check if we're over another task
     const overTask = tasks.find((t) => t.id === overId);
     if (overTask && activeTask.columnId !== overTask.columnId) {
+      console.log('🔄 DragOver: Moving task to another task\'s column', { taskId: activeId, from: activeTask.columnId, to: overTask.columnId });
       // Move to the column containing the task we're over
       setTasks((prev) =>
         prev.map((t) =>
-          t.id === activeId ? { ...t, columnId: overTask.columnId } : t
+          t.id === activeId ? { ...t, columnId: overTask.columnId, status: overTask.columnId } : t
         )
       );
     }
@@ -170,9 +196,12 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
     const { active, over } = event;
     const taskId = active.id as string;
 
+    console.log('🎯 DragEnd started', { taskId, overId: over?.id, originalColumnId });
+
     setActiveTask(null);
 
     if (!over || !originalColumnId) {
+      console.log('❌ DragEnd: Dropped outside or no original column, reverting');
       // Dragged outside or no original column - revert to original position
       if (originalColumnId) {
         setTasks((prev) =>
@@ -187,11 +216,13 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
 
     const task = tasks.find((t) => t.id === taskId);
     if (!task) {
+      console.log('❌ DragEnd: Task not found');
       setOriginalColumnId(null);
       return;
     }
 
     const currentColumnId = task.columnId;
+    console.log('📍 DragEnd: Current task state', { taskId, currentColumnId, taskStatus: task.status });
 
     // Determine target column
     let targetColumnId = currentColumnId;
@@ -199,16 +230,22 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
     const targetColumn = COLUMNS.find((col) => col.id === over.id);
     if (targetColumn) {
       targetColumnId = targetColumn.id;
+      console.log('🎯 DragEnd: Dropped on column', targetColumnId);
     } else {
       const overTask = tasks.find((t) => t.id === over.id);
       if (overTask) {
         targetColumnId = overTask.columnId;
+        console.log('🎯 DragEnd: Dropped on task in column', targetColumnId);
       }
     }
+
+    console.log('🔍 DragEnd: Comparison', { originalColumnId, targetColumnId, willPersist: originalColumnId !== targetColumnId });
 
     // If column changed from original, persist to database
     if (originalColumnId !== targetColumnId) {
       await persistTaskColumn(taskId, targetColumnId, originalColumnId);
+    } else {
+      console.log('⏭️  DragEnd: No change, skipping persist');
     }
 
     setOriginalColumnId(null);
@@ -275,6 +312,8 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
     fallbackColumnId: string
   ) => {
     // Persist to database (UI already updated by dragOver)
+    console.log('Persisting task:', { taskId, newColumnId, fallbackColumnId });
+
     try {
       const response = await fetch(`/api/tasks/${taskId}`, {
         method: 'PATCH',
@@ -285,8 +324,11 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
         }),
       });
 
+      console.log('API response status:', response.status);
+
       if (!response.ok) {
         // Rollback to original column on error
+        console.error('API call failed, rolling back to:', fallbackColumnId);
         setTasks((prev) =>
           prev.map((t) =>
             t.id === taskId ? { ...t, columnId: fallbackColumnId, status: fallbackColumnId } : t
@@ -297,20 +339,15 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
         return;
       }
 
-      // Confirm with server data
+      // Success - UI already updated by dragOver, just log confirmation
       const { task: updatedTask } = await response.json();
+      console.log('✅ Server confirmed task update. columnId:', updatedTask.columnId, 'status:', updatedTask.status);
 
-      // Convert date strings back to Date objects
-      if (updatedTask.dueDate) updatedTask.dueDate = new Date(updatedTask.dueDate);
-      if (updatedTask.createdAt) updatedTask.createdAt = new Date(updatedTask.createdAt);
-      if (updatedTask.updatedAt) updatedTask.updatedAt = new Date(updatedTask.updatedAt);
-      if (updatedTask.completedAt) updatedTask.completedAt = new Date(updatedTask.completedAt);
-
-      setTasks((prev) =>
-        prev.map((t) => (t.id === taskId ? { ...t, ...updatedTask } : t))
-      );
+      // Don't update state here - dragOver already did it and we don't want to trigger re-render
+      // The task should stay in the position dragOver put it in
     } catch (error) {
       // Rollback on error
+      console.error('Exception during persist, rolling back:', error);
       setTasks((prev) =>
         prev.map((t) =>
           t.id === taskId ? { ...t, columnId: fallbackColumnId, status: fallbackColumnId } : t
@@ -343,96 +380,104 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
   };
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Tasks</h1>
-          <p className="text-muted-foreground">
-            Manage your transaction tasks and deadlines
-          </p>
+    <div className="flex gap-0.5 h-full">
+      {/* Main Content */}
+      <div className="flex-1 p-6 space-y-6 overflow-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold">Tasks</h1>
+            <p className="text-muted-foreground">
+              Manage your transaction tasks and deadlines
+            </p>
+          </div>
+          <Button>
+            <Plus className="mr-2 h-4 w-4" />
+            New Task
+          </Button>
         </div>
-        <Button>
-          <Plus className="mr-2 h-4 w-4" />
-          New Task
-        </Button>
-      </div>
 
-      {/* Column Visibility Toggles */}
-      <div className="flex items-center gap-2">
-        <Filter className="h-4 w-4 text-muted-foreground" />
-        <span className="text-sm text-muted-foreground mr-2">Show:</span>
-        {COLUMNS.map((column) => (
-          <Badge
-            key={column.id}
-            variant={columnVisibility[column.id] ? "default" : "outline"}
-            className="cursor-pointer"
-            onClick={() => toggleColumnVisibility(column.id)}
-          >
-            {column.title} ({taskCounts[column.id]})
-          </Badge>
-        ))}
-      </div>
-
-      {/* Task Board */}
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCorners}
-        onDragStart={handleDragStart}
-        onDragOver={handleDragOver}
-        onDragEnd={handleDragEnd}
-      >
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Column Visibility Toggles */}
+        <div className="flex items-center gap-2">
+          <Filter className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm text-muted-foreground mr-2">Show:</span>
           {COLUMNS.map((column) => (
-            <div
+            <Badge
               key={column.id}
-              className={`space-y-4 ${
-                !columnVisibility[column.id] ? "hidden" : ""
-              }`}
+              variant={columnVisibility[column.id] ? "default" : "outline"}
+              className="cursor-pointer"
+              onClick={() => toggleColumnVisibility(column.id)}
             >
-              {/* Column Header */}
-              <Card className={column.color}>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-lg flex items-center justify-between">
-                    <span>{column.title}</span>
-                    <Badge variant="secondary">{taskCounts[column.id]}</Badge>
-                  </CardTitle>
-                </CardHeader>
-              </Card>
-
-              {/* Column Content */}
-              <SortableContext
-                items={tasksByColumn[column.id].map((t) => t.id)}
-                strategy={verticalListSortingStrategy}
-              >
-                <DroppableColumn id={column.id}>
-                  {tasksByColumn[column.id].map((task) => {
-                    const columnIndex = COLUMNS.findIndex((col) => col.id === column.id);
-                    return (
-                      <TaskCard
-                        key={task.id}
-                        task={task}
-                        onShiftLeft={columnIndex > 0 ? () => shiftTask(task.id, 'left') : undefined}
-                        onShiftRight={columnIndex < COLUMNS.length - 1 ? () => shiftTask(task.id, 'right') : undefined}
-                      />
-                    );
-                  })}
-                  {tasksByColumn[column.id].length === 0 && (
-                    <div className="text-center py-8 text-sm text-muted-foreground">
-                      No tasks
-                    </div>
-                  )}
-                </DroppableColumn>
-              </SortableContext>
-            </div>
+              {column.title} ({taskCounts[column.id]})
+            </Badge>
           ))}
         </div>
 
-        {/* Drag Overlay */}
-        <DragOverlay>
-          {activeTask && <TaskCard task={activeTask} />}
-        </DragOverlay>
-      </DndContext>
+        {/* Task Board */}
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCorners}
+          onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
+          onDragEnd={handleDragEnd}
+        >
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {COLUMNS.map((column) => (
+              <div
+                key={column.id}
+                className={`space-y-4 ${
+                  !columnVisibility[column.id] ? "hidden" : ""
+                }`}
+              >
+                {/* Column Header */}
+                <Card className={column.color}>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-lg flex items-center justify-between">
+                      <span>{column.title}</span>
+                      <Badge variant="secondary">{taskCounts[column.id]}</Badge>
+                    </CardTitle>
+                  </CardHeader>
+                </Card>
+
+                {/* Column Content */}
+                <SortableContext
+                  items={tasksByColumn[column.id].map((t) => t.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <DroppableColumn id={column.id}>
+                    {tasksByColumn[column.id].map((task) => {
+                      const columnIndex = COLUMNS.findIndex((col) => col.id === column.id);
+                      return (
+                        <TaskCard
+                          key={task.id}
+                          task={task}
+                          onShiftLeft={columnIndex > 0 ? () => shiftTask(task.id, 'left') : undefined}
+                          onShiftRight={columnIndex < COLUMNS.length - 1 ? () => shiftTask(task.id, 'right') : undefined}
+                        />
+                      );
+                    })}
+                    {tasksByColumn[column.id].length === 0 && (
+                      <div className="text-center py-8 text-sm text-muted-foreground">
+                        No tasks
+                      </div>
+                    )}
+                  </DroppableColumn>
+                </SortableContext>
+              </div>
+            ))}
+          </div>
+
+          {/* Drag Overlay */}
+          <DragOverlay dropAnimation={null}>
+            {activeTask && <TaskCard task={activeTask} />}
+          </DragOverlay>
+        </DndContext>
+      </div>
+
+      {/* Right Sidebar */}
+      <div className="w-80 p-6 border-l bg-muted/20">
+        <TaskOverview tasks={tasks} />
+      </div>
     </div>
   );
 }
