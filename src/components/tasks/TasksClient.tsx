@@ -56,7 +56,18 @@ function DroppableColumn({ id, children }: { id: string; children: React.ReactNo
 }
 
 export default function TasksClient({ initialTasks }: TasksClientProps) {
-  const [tasks, setTasks] = useState<Task[]>(initialTasks);
+  // Deserialize dates from server-side rendered data
+  const deserializedTasks = useMemo(() => {
+    return initialTasks.map((task) => ({
+      ...task,
+      dueDate: new Date(task.dueDate),
+      createdAt: new Date(task.createdAt),
+      updatedAt: new Date(task.updatedAt),
+      completedAt: task.completedAt ? new Date(task.completedAt) : null,
+    }));
+  }, [initialTasks]);
+
+  const [tasks, setTasks] = useState<Task[]>(deserializedTasks);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [originalColumnId, setOriginalColumnId] = useState<string | null>(null);
   const [columnVisibility, setColumnVisibility] = useState({
@@ -302,28 +313,12 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
         return;
       }
 
-      // Success - update state with server response to ensure dates are properly deserialized
+      // Success - UI already updated by dragOver, just log confirmation
       const { task: updatedTask } = await response.json();
       console.log('✅ Server confirmed task update. columnId:', updatedTask.columnId, 'status:', updatedTask.status);
 
-      // Convert date strings back to Date objects
-      if (updatedTask.dueDate) {
-        updatedTask.dueDate = new Date(updatedTask.dueDate);
-      }
-      if (updatedTask.createdAt) {
-        updatedTask.createdAt = new Date(updatedTask.createdAt);
-      }
-      if (updatedTask.updatedAt) {
-        updatedTask.updatedAt = new Date(updatedTask.updatedAt);
-      }
-      if (updatedTask.completedAt) {
-        updatedTask.completedAt = new Date(updatedTask.completedAt);
-      }
-
-      // Update with real data from server to ensure consistency
-      setTasks((prev) =>
-        prev.map((t) => (t.id === taskId ? { ...t, ...updatedTask } : t))
-      )
+      // Don't update state here - dragOver already did it and we don't want to trigger re-render
+      // The task should stay in the position dragOver put it in
     } catch (error) {
       // Rollback on error
       console.error('Exception during persist, rolling back:', error);
