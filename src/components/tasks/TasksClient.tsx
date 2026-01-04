@@ -57,17 +57,15 @@ function DroppableColumn({ id, children }: { id: string; children: React.ReactNo
 
 export default function TasksClient({ initialTasks }: TasksClientProps) {
   // Deserialize dates from server-side rendered data
-  const deserializedTasks = useMemo(() => {
-    return initialTasks.map((task) => ({
+  const [tasks, setTasks] = useState<Task[]>(() =>
+    initialTasks.map((task) => ({
       ...task,
       dueDate: new Date(task.dueDate),
       createdAt: new Date(task.createdAt),
       updatedAt: new Date(task.updatedAt),
       completedAt: task.completedAt ? new Date(task.completedAt) : null,
-    }));
-  }, [initialTasks]);
-
-  const [tasks, setTasks] = useState<Task[]>(deserializedTasks);
+    }))
+  );
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [originalColumnId, setOriginalColumnId] = useState<string | null>(null);
   const [columnVisibility, setColumnVisibility] = useState({
