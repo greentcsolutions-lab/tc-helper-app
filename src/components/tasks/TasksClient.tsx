@@ -10,9 +10,11 @@ import {
   DragOverlay,
   DragStartEvent,
   PointerSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   closestCorners,
+  useDroppable,
 } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -34,6 +36,22 @@ const COLUMNS = [
   { id: TASK_STATUS.COMPLETED, title: "Completed", color: "bg-green-100" },
 ] as const;
 
+// Droppable Column Component
+function DroppableColumn({ id, children }: { id: string; children: React.ReactNode }) {
+  const { setNodeRef, isOver } = useDroppable({ id });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`space-y-3 min-h-[200px] p-2 rounded-lg border-2 border-dashed ${
+        isOver ? 'border-primary bg-primary/5' : 'border-muted-foreground/20'
+      }`}
+    >
+      {children}
+    </div>
+  );
+}
+
 export default function TasksClient({ initialTasks }: TasksClientProps) {
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
@@ -47,6 +65,12 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
     useSensor(PointerSensor, {
       activationConstraint: {
         distance: 8,
+      },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 250,
+        tolerance: 5,
       },
     })
   );
@@ -177,6 +201,19 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
     }));
   };
 
+  const shiftTask = async (taskId: string, direction: 'left' | 'right') => {
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task) return;
+
+    const currentIndex = COLUMNS.findIndex((col) => col.id === task.columnId);
+    const newIndex = direction === 'left' ? currentIndex - 1 : currentIndex + 1;
+
+    if (newIndex < 0 || newIndex >= COLUMNS.length) return;
+
+    const newColumnId = COLUMNS[newIndex].id;
+    await updateTaskColumn(taskId, newColumnId);
+  };
+
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       {/* Header */}
@@ -239,19 +276,24 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
                 items={tasksByColumn[column.id].map((t) => t.id)}
                 strategy={verticalListSortingStrategy}
               >
-                <div
-                  className="space-y-3 min-h-[200px] p-2 rounded-lg border-2 border-dashed border-muted-foreground/20"
-                  data-column-id={column.id}
-                >
-                  {tasksByColumn[column.id].map((task) => (
-                    <TaskCard key={task.id} task={task} />
-                  ))}
+                <DroppableColumn id={column.id}>
+                  {tasksByColumn[column.id].map((task) => {
+                    const columnIndex = COLUMNS.findIndex((col) => col.id === column.id);
+                    return (
+                      <TaskCard
+                        key={task.id}
+                        task={task}
+                        onShiftLeft={columnIndex > 0 ? () => shiftTask(task.id, 'left') : undefined}
+                        onShiftRight={columnIndex < COLUMNS.length - 1 ? () => shiftTask(task.id, 'right') : undefined}
+                      />
+                    );
+                  })}
                   {tasksByColumn[column.id].length === 0 && (
                     <div className="text-center py-8 text-sm text-muted-foreground">
                       No tasks
                     </div>
                   )}
-                </div>
+                </DroppableColumn>
               </SortableContext>
             </div>
           ))}

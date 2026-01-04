@@ -5,7 +5,7 @@
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Clock, AlertTriangle, MessageSquare, Paperclip } from "lucide-react";
+import { Clock, AlertTriangle, MessageSquare, ChevronLeft, ChevronRight } from "lucide-react";
 import { getTaskStatus, formatDaysUntilDue, TASK_TYPES } from "@/types/task";
 
 type Task = any; // Use Prisma-generated type
@@ -15,6 +15,8 @@ import { CSS } from "@dnd-kit/utilities";
 interface TaskCardProps {
   task: Task;
   onEdit?: (task: Task) => void;
+  onShiftLeft?: () => void;
+  onShiftRight?: () => void;
 }
 
 /**
@@ -44,7 +46,7 @@ function getTaskTypeColor(taskType: string): string {
   }
 }
 
-export default function TaskCard({ task, onEdit }: TaskCardProps) {
+export default function TaskCard({ task, onEdit, onShiftLeft, onShiftRight }: TaskCardProps) {
   const {
     attributes,
     listeners,
@@ -123,6 +125,38 @@ export default function TaskCard({ task, onEdit }: TaskCardProps) {
               )}
             </div>
           </div>
+
+          {/* Navigation Buttons */}
+          {(onShiftLeft || onShiftRight) && (
+            <div className="flex items-center justify-center gap-2 pt-2 border-t">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onShiftLeft?.();
+                }}
+                disabled={!onShiftLeft}
+                className={`p-1.5 rounded hover:bg-muted transition-colors ${
+                  !onShiftLeft ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer'
+                }`}
+                title="Move left"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onShiftRight?.();
+                }}
+                disabled={!onShiftRight}
+                className={`p-1.5 rounded hover:bg-muted transition-colors ${
+                  !onShiftRight ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer'
+                }`}
+                title="Move right"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
