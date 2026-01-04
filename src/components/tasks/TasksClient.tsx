@@ -275,6 +275,8 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
     fallbackColumnId: string
   ) => {
     // Persist to database (UI already updated by dragOver)
+    console.log('Persisting task:', { taskId, newColumnId, fallbackColumnId });
+
     try {
       const response = await fetch(`/api/tasks/${taskId}`, {
         method: 'PATCH',
@@ -285,8 +287,11 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
         }),
       });
 
+      console.log('API response status:', response.status);
+
       if (!response.ok) {
         // Rollback to original column on error
+        console.error('API call failed, rolling back to:', fallbackColumnId);
         setTasks((prev) =>
           prev.map((t) =>
             t.id === taskId ? { ...t, columnId: fallbackColumnId, status: fallbackColumnId } : t
@@ -297,20 +302,15 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
         return;
       }
 
-      // Confirm with server data
+      // Success - UI already updated by dragOver, just log confirmation
       const { task: updatedTask } = await response.json();
+      console.log('✅ Server confirmed task update. columnId:', updatedTask.columnId, 'status:', updatedTask.status);
 
-      // Convert date strings back to Date objects
-      if (updatedTask.dueDate) updatedTask.dueDate = new Date(updatedTask.dueDate);
-      if (updatedTask.createdAt) updatedTask.createdAt = new Date(updatedTask.createdAt);
-      if (updatedTask.updatedAt) updatedTask.updatedAt = new Date(updatedTask.updatedAt);
-      if (updatedTask.completedAt) updatedTask.completedAt = new Date(updatedTask.completedAt);
-
-      setTasks((prev) =>
-        prev.map((t) => (t.id === taskId ? { ...t, ...updatedTask } : t))
-      );
+      // Don't update state here - dragOver already did it and we don't want to trigger re-render
+      // The task should stay in the position dragOver put it in
     } catch (error) {
       // Rollback on error
+      console.error('Exception during persist, rolling back:', error);
       setTasks((prev) =>
         prev.map((t) =>
           t.id === taskId ? { ...t, columnId: fallbackColumnId, status: fallbackColumnId } : t
