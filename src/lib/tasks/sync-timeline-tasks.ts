@@ -58,8 +58,13 @@ export async function syncTimelineTasks(parseId: string, userId: string): Promis
   // Track which timeline events we've processed
   const processedEventIds = new Set<string>();
 
-  // Upsert tasks for each timeline event
+  // Upsert tasks for each timeline event (skip acceptance events)
   for (const event of timelineEvents) {
+    // Skip acceptance events - they're not actionable tasks
+    if (event.type === 'acceptance') {
+      continue;
+    }
+
     processedEventIds.add(event.id);
 
     const existingTask = existingTaskMap.get(event.id);

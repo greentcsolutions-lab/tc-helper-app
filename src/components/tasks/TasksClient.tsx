@@ -9,10 +9,15 @@ import {
   DragEndEvent,
   DragOverlay,
   DragStartEvent,
+  DragOverEvent,
   PointerSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   closestCorners,
+  useDroppable,
+  pointerWithin,
+  rectIntersection,
 } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -34,9 +39,26 @@ const COLUMNS = [
   { id: TASK_STATUS.COMPLETED, title: "Completed", color: "bg-green-100" },
 ] as const;
 
+// Droppable Column Component
+function DroppableColumn({ id, children }: { id: string; children: React.ReactNode }) {
+  const { setNodeRef, isOver } = useDroppable({ id });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`space-y-3 min-h-[200px] p-2 rounded-lg border-2 border-dashed ${
+        isOver ? 'border-primary bg-primary/5' : 'border-muted-foreground/20'
+      }`}
+    >
+      {children}
+    </div>
+  );
+}
+
 export default function TasksClient({ initialTasks }: TasksClientProps) {
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
+  const [originalColumnId, setOriginalColumnId] = useState<string | null>(null);
   const [columnVisibility, setColumnVisibility] = useState({
     [TASK_STATUS.NOT_STARTED]: true,
     [TASK_STATUS.PENDING]: true,
@@ -47,6 +69,12 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
     useSensor(PointerSensor, {
       activationConstraint: {
         distance: 8,
+      },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 250,
+        tolerance: 5,
       },
     })
   );
@@ -100,36 +128,103 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
     const task = tasks.find((t) => t.id === active.id);
     if (task) {
       setActiveTask(task);
+      setOriginalColumnId(task.columnId); // Save original column for potential rollback
+    }
+  };
+
+  const handleDragOver = (event: DragOverEvent) => {
+    const { active, over } = event;
+    if (!over) return;
+
+    const activeId = active.id as string;
+    const overId = over.id as string;
+
+    const activeTask = tasks.find((t) => t.id === activeId);
+    if (!activeTask) return;
+
+    // Check if we're over a column
+    const overColumn = COLUMNS.find((col) => col.id === overId);
+    if (overColumn && activeTask.columnId !== overColumn.id) {
+      // Optimistically move task to the new column for visual feedback
+      setTasks((prev) =>
+        prev.map((t) =>
+          t.id === activeId ? { ...t, columnId: overColumn.id } : t
+        )
+      );
+      return;
+    }
+
+    // Check if we're over another task
+    const overTask = tasks.find((t) => t.id === overId);
+    if (overTask && activeTask.columnId !== overTask.columnId) {
+      // Move to the column containing the task we're over
+      setTasks((prev) =>
+        prev.map((t) =>
+          t.id === activeId ? { ...t, columnId: overTask.columnId } : t
+        )
+      );
     }
   };
 
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
+    const taskId = active.id as string;
+
     setActiveTask(null);
 
-    if (!over) return;
+    if (!over || !originalColumnId) {
+      // Dragged outside or no original column - revert to original position
+      if (originalColumnId) {
+        setTasks((prev) =>
+          prev.map((t) =>
+            t.id === taskId ? { ...t, columnId: originalColumnId, status: originalColumnId } : t
+          )
+        );
+      }
+      setOriginalColumnId(null);
+      return;
+    }
 
-    const taskId = active.id as string;
     const task = tasks.find((t) => t.id === taskId);
-    if (!task) return;
+    if (!task) {
+      setOriginalColumnId(null);
+      return;
+    }
 
-    // Check if dropped over a column
+    const currentColumnId = task.columnId;
+
+    // Determine target column
+    let targetColumnId = currentColumnId;
+
     const targetColumn = COLUMNS.find((col) => col.id === over.id);
     if (targetColumn) {
-      // Moved to a different column
-      if (task.columnId !== targetColumn.id) {
-        await updateTaskColumn(taskId, targetColumn.id);
-      }
+      targetColumnId = targetColumn.id;
     } else {
-      // Dropped over another task - update sort order
       const overTask = tasks.find((t) => t.id === over.id);
-      if (overTask && task.columnId === overTask.columnId) {
-        await updateTaskSortOrder(taskId, overTask.sortOrder);
+      if (overTask) {
+        targetColumnId = overTask.columnId;
       }
     }
+
+    // If column changed from original, persist to database
+    if (originalColumnId !== targetColumnId) {
+      await persistTaskColumn(taskId, targetColumnId, originalColumnId);
+    }
+
+    setOriginalColumnId(null);
   };
 
   const updateTaskColumn = async (taskId: string, newColumnId: string) => {
+    // Optimistic update - update UI immediately
+    const previousTasks = tasks;
+    setTasks((prev) =>
+      prev.map((t) =>
+        t.id === taskId
+          ? { ...t, columnId: newColumnId, status: newColumnId, updatedAt: new Date() }
+          : t
+      )
+    );
+
     try {
       const response = await fetch(`/api/tasks/${taskId}`, {
         method: 'PATCH',
@@ -140,41 +235,111 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
         }),
       });
 
-      if (response.ok) {
-        const { task: updatedTask } = await response.json();
-        setTasks((prev) =>
-          prev.map((t) => (t.id === taskId ? { ...t, ...updatedTask } : t))
-        );
+      if (!response.ok) {
+        // Rollback on error
+        setTasks(previousTasks);
+        const error = await response.json();
+        console.error('Failed to update task column:', error);
+        throw new Error(error.error || 'Failed to update task');
       }
+
+      const { task: updatedTask } = await response.json();
+
+      // Convert date strings back to Date objects
+      if (updatedTask.dueDate) {
+        updatedTask.dueDate = new Date(updatedTask.dueDate);
+      }
+      if (updatedTask.createdAt) {
+        updatedTask.createdAt = new Date(updatedTask.createdAt);
+      }
+      if (updatedTask.updatedAt) {
+        updatedTask.updatedAt = new Date(updatedTask.updatedAt);
+      }
+      if (updatedTask.completedAt) {
+        updatedTask.completedAt = new Date(updatedTask.completedAt);
+      }
+
+      // Update with real data from server
+      setTasks((prev) =>
+        prev.map((t) => (t.id === taskId ? { ...t, ...updatedTask } : t))
+      );
     } catch (error) {
       console.error('Failed to update task column:', error);
+      // Rollback already happened above
     }
   };
 
-  const updateTaskSortOrder = async (taskId: string, newSortOrder: number) => {
+  const persistTaskColumn = async (
+    taskId: string,
+    newColumnId: string,
+    fallbackColumnId: string
+  ) => {
+    // Persist to database (UI already updated by dragOver)
     try {
       const response = await fetch(`/api/tasks/${taskId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sortOrder: newSortOrder }),
+        body: JSON.stringify({
+          columnId: newColumnId,
+          status: newColumnId,
+        }),
       });
 
-      if (response.ok) {
-        const { task: updatedTask } = await response.json();
+      if (!response.ok) {
+        // Rollback to original column on error
         setTasks((prev) =>
-          prev.map((t) => (t.id === taskId ? { ...t, ...updatedTask } : t))
+          prev.map((t) =>
+            t.id === taskId ? { ...t, columnId: fallbackColumnId, status: fallbackColumnId } : t
+          )
         );
+        const error = await response.json();
+        console.error('Failed to persist task column:', error);
+        return;
       }
+
+      // Confirm with server data
+      const { task: updatedTask } = await response.json();
+
+      // Convert date strings back to Date objects
+      if (updatedTask.dueDate) updatedTask.dueDate = new Date(updatedTask.dueDate);
+      if (updatedTask.createdAt) updatedTask.createdAt = new Date(updatedTask.createdAt);
+      if (updatedTask.updatedAt) updatedTask.updatedAt = new Date(updatedTask.updatedAt);
+      if (updatedTask.completedAt) updatedTask.completedAt = new Date(updatedTask.completedAt);
+
+      setTasks((prev) =>
+        prev.map((t) => (t.id === taskId ? { ...t, ...updatedTask } : t))
+      );
     } catch (error) {
-      console.error('Failed to update task sort order:', error);
+      // Rollback on error
+      setTasks((prev) =>
+        prev.map((t) =>
+          t.id === taskId ? { ...t, columnId: fallbackColumnId, status: fallbackColumnId } : t
+        )
+      );
+      console.error('Failed to persist task column:', error);
     }
   };
+
 
   const toggleColumnVisibility = (columnId: string) => {
     setColumnVisibility((prev) => ({
       ...prev,
       [columnId]: !prev[columnId as keyof typeof prev],
     }));
+  };
+
+  const shiftTask = (taskId: string, direction: 'left' | 'right') => {
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task) return;
+
+    const currentIndex = COLUMNS.findIndex((col) => col.id === task.columnId);
+    const newIndex = direction === 'left' ? currentIndex - 1 : currentIndex + 1;
+
+    if (newIndex < 0 || newIndex >= COLUMNS.length) return;
+
+    const newColumnId = COLUMNS[newIndex].id;
+    // Don't await - optimistic update handles it
+    updateTaskColumn(taskId, newColumnId);
   };
 
   return (
@@ -214,6 +379,7 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
         sensors={sensors}
         collisionDetection={closestCorners}
         onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
       >
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -239,19 +405,24 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
                 items={tasksByColumn[column.id].map((t) => t.id)}
                 strategy={verticalListSortingStrategy}
               >
-                <div
-                  className="space-y-3 min-h-[200px] p-2 rounded-lg border-2 border-dashed border-muted-foreground/20"
-                  data-column-id={column.id}
-                >
-                  {tasksByColumn[column.id].map((task) => (
-                    <TaskCard key={task.id} task={task} />
-                  ))}
+                <DroppableColumn id={column.id}>
+                  {tasksByColumn[column.id].map((task) => {
+                    const columnIndex = COLUMNS.findIndex((col) => col.id === column.id);
+                    return (
+                      <TaskCard
+                        key={task.id}
+                        task={task}
+                        onShiftLeft={columnIndex > 0 ? () => shiftTask(task.id, 'left') : undefined}
+                        onShiftRight={columnIndex < COLUMNS.length - 1 ? () => shiftTask(task.id, 'right') : undefined}
+                      />
+                    );
+                  })}
                   {tasksByColumn[column.id].length === 0 && (
                     <div className="text-center py-8 text-sm text-muted-foreground">
                       No tasks
                     </div>
                   )}
-                </div>
+                </DroppableColumn>
               </SortableContext>
             </div>
           ))}
