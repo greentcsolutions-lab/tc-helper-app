@@ -35,8 +35,7 @@ export default async function ManualUploadPage() {
           </Link>
           <h1 className="text-3xl font-bold">Create Transaction Manually</h1>
           <p className="text-muted-foreground mt-2">
-            Fill out the form below to create a new transaction without uploading
-            documents
+            Fill out the form below to create a new transaction manually.
           </p>
         </div>
       </div>
