@@ -27,6 +27,7 @@ import { TASK_STATUS, getTaskStatus } from "@/types/task";
 
 type Task = any; // Use Prisma-generated type
 import TaskCard from "./TaskCard";
+import TaskOverview from "./TaskOverview";
 import { Filter, Plus } from "lucide-react";
 
 interface TasksClientProps {
@@ -379,96 +380,104 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
   };
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Tasks</h1>
-          <p className="text-muted-foreground">
-            Manage your transaction tasks and deadlines
-          </p>
+    <div className="flex gap-0.5 h-full">
+      {/* Main Content */}
+      <div className="flex-1 p-6 space-y-6 overflow-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold">Tasks</h1>
+            <p className="text-muted-foreground">
+              Manage your transaction tasks and deadlines
+            </p>
+          </div>
+          <Button>
+            <Plus className="mr-2 h-4 w-4" />
+            New Task
+          </Button>
         </div>
-        <Button>
-          <Plus className="mr-2 h-4 w-4" />
-          New Task
-        </Button>
-      </div>
 
-      {/* Column Visibility Toggles */}
-      <div className="flex items-center gap-2">
-        <Filter className="h-4 w-4 text-muted-foreground" />
-        <span className="text-sm text-muted-foreground mr-2">Show:</span>
-        {COLUMNS.map((column) => (
-          <Badge
-            key={column.id}
-            variant={columnVisibility[column.id] ? "default" : "outline"}
-            className="cursor-pointer"
-            onClick={() => toggleColumnVisibility(column.id)}
-          >
-            {column.title} ({taskCounts[column.id]})
-          </Badge>
-        ))}
-      </div>
-
-      {/* Task Board */}
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCorners}
-        onDragStart={handleDragStart}
-        onDragOver={handleDragOver}
-        onDragEnd={handleDragEnd}
-      >
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Column Visibility Toggles */}
+        <div className="flex items-center gap-2">
+          <Filter className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm text-muted-foreground mr-2">Show:</span>
           {COLUMNS.map((column) => (
-            <div
+            <Badge
               key={column.id}
-              className={`space-y-4 ${
-                !columnVisibility[column.id] ? "hidden" : ""
-              }`}
+              variant={columnVisibility[column.id] ? "default" : "outline"}
+              className="cursor-pointer"
+              onClick={() => toggleColumnVisibility(column.id)}
             >
-              {/* Column Header */}
-              <Card className={column.color}>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-lg flex items-center justify-between">
-                    <span>{column.title}</span>
-                    <Badge variant="secondary">{taskCounts[column.id]}</Badge>
-                  </CardTitle>
-                </CardHeader>
-              </Card>
-
-              {/* Column Content */}
-              <SortableContext
-                items={tasksByColumn[column.id].map((t) => t.id)}
-                strategy={verticalListSortingStrategy}
-              >
-                <DroppableColumn id={column.id}>
-                  {tasksByColumn[column.id].map((task) => {
-                    const columnIndex = COLUMNS.findIndex((col) => col.id === column.id);
-                    return (
-                      <TaskCard
-                        key={task.id}
-                        task={task}
-                        onShiftLeft={columnIndex > 0 ? () => shiftTask(task.id, 'left') : undefined}
-                        onShiftRight={columnIndex < COLUMNS.length - 1 ? () => shiftTask(task.id, 'right') : undefined}
-                      />
-                    );
-                  })}
-                  {tasksByColumn[column.id].length === 0 && (
-                    <div className="text-center py-8 text-sm text-muted-foreground">
-                      No tasks
-                    </div>
-                  )}
-                </DroppableColumn>
-              </SortableContext>
-            </div>
+              {column.title} ({taskCounts[column.id]})
+            </Badge>
           ))}
         </div>
 
-        {/* Drag Overlay */}
-        <DragOverlay dropAnimation={null}>
-          {activeTask && <TaskCard task={activeTask} />}
-        </DragOverlay>
-      </DndContext>
+        {/* Task Board */}
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCorners}
+          onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
+          onDragEnd={handleDragEnd}
+        >
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {COLUMNS.map((column) => (
+              <div
+                key={column.id}
+                className={`space-y-4 ${
+                  !columnVisibility[column.id] ? "hidden" : ""
+                }`}
+              >
+                {/* Column Header */}
+                <Card className={column.color}>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-lg flex items-center justify-between">
+                      <span>{column.title}</span>
+                      <Badge variant="secondary">{taskCounts[column.id]}</Badge>
+                    </CardTitle>
+                  </CardHeader>
+                </Card>
+
+                {/* Column Content */}
+                <SortableContext
+                  items={tasksByColumn[column.id].map((t) => t.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <DroppableColumn id={column.id}>
+                    {tasksByColumn[column.id].map((task) => {
+                      const columnIndex = COLUMNS.findIndex((col) => col.id === column.id);
+                      return (
+                        <TaskCard
+                          key={task.id}
+                          task={task}
+                          onShiftLeft={columnIndex > 0 ? () => shiftTask(task.id, 'left') : undefined}
+                          onShiftRight={columnIndex < COLUMNS.length - 1 ? () => shiftTask(task.id, 'right') : undefined}
+                        />
+                      );
+                    })}
+                    {tasksByColumn[column.id].length === 0 && (
+                      <div className="text-center py-8 text-sm text-muted-foreground">
+                        No tasks
+                      </div>
+                    )}
+                  </DroppableColumn>
+                </SortableContext>
+              </div>
+            ))}
+          </div>
+
+          {/* Drag Overlay */}
+          <DragOverlay dropAnimation={null}>
+            {activeTask && <TaskCard task={activeTask} />}
+          </DragOverlay>
+        </DndContext>
+      </div>
+
+      {/* Right Sidebar */}
+      <div className="w-80 p-6 border-l bg-muted/20">
+        <TaskOverview tasks={tasks} />
+      </div>
     </div>
   );
 }
