@@ -111,20 +111,15 @@ export async function POST(request: NextRequest) {
       dueDate,
       dueDateType,
       dueDateValue,
+      status,
+      columnId,
+      isCustom,
     } = body;
 
     // Validation
     if (!title || !taskType || !dueDate) {
       return NextResponse.json(
         { error: 'Missing required fields' },
-        { status: 400 }
-      );
-    }
-
-    // Don't allow creating timeline tasks via API (they're auto-synced)
-    if (taskType === TASK_TYPES.TIMELINE) {
-      return NextResponse.json(
-        { error: 'Cannot create timeline tasks manually' },
         { status: 400 }
       );
     }
@@ -140,9 +135,9 @@ export async function POST(request: NextRequest) {
         dueDate: new Date(dueDate),
         dueDateType: dueDateType || 'specific',
         dueDateValue: dueDateValue || null,
-        status: TASK_STATUS.NOT_STARTED,
-        columnId: TASK_STATUS.NOT_STARTED,
-        isCustom: true,
+        status: status || TASK_STATUS.NOT_STARTED,
+        columnId: columnId || TASK_STATUS.NOT_STARTED,
+        isCustom: isCustom !== undefined ? isCustom : true,
       },
       include: {
         parse: {

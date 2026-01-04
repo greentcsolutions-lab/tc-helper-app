@@ -28,6 +28,7 @@ import { TASK_STATUS, getTaskStatus } from "@/types/task";
 type Task = any; // Use Prisma-generated type
 import TaskCard from "./TaskCard";
 import TaskOverview from "./TaskOverview";
+import NewTaskDialog from "./NewTaskDialog";
 import { Filter, Plus } from "lucide-react";
 
 interface TasksClientProps {
@@ -69,6 +70,7 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
   );
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [originalColumnId, setOriginalColumnId] = useState<string | null>(null);
+  const [newTaskDialogOpen, setNewTaskDialogOpen] = useState(false);
   const [columnVisibility, setColumnVisibility] = useState({
     [TASK_STATUS.NOT_STARTED]: true,
     [TASK_STATUS.PENDING]: true,
@@ -379,6 +381,29 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
     updateTaskColumn(taskId, newColumnId);
   };
 
+  const handleTaskCreated = async () => {
+    // Refresh tasks from server
+    try {
+      const response = await fetch('/api/tasks');
+      if (!response.ok) throw new Error('Failed to fetch tasks');
+
+      const { tasks: newTasks } = await response.json();
+
+      // Deserialize dates
+      const deserializedTasks = newTasks.map((task: any) => ({
+        ...task,
+        dueDate: new Date(task.dueDate),
+        createdAt: new Date(task.createdAt),
+        updatedAt: new Date(task.updatedAt),
+        completedAt: task.completedAt ? new Date(task.completedAt) : null,
+      }));
+
+      setTasks(deserializedTasks);
+    } catch (error) {
+      console.error('Failed to refresh tasks:', error);
+    }
+  };
+
   return (
     <div className="flex gap-0.5 h-full">
       {/* Main Content */}
@@ -391,7 +416,7 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
               Manage your transaction tasks and deadlines
             </p>
           </div>
-          <Button>
+          <Button onClick={() => setNewTaskDialogOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
             New Task
           </Button>
@@ -478,6 +503,13 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
       <div className="w-80 p-6 border-l bg-muted/20">
         <TaskOverview tasks={tasks} />
       </div>
+
+      {/* New Task Dialog */}
+      <NewTaskDialog
+        open={newTaskDialogOpen}
+        onOpenChange={setNewTaskDialogOpen}
+        onTaskCreated={handleTaskCreated}
+      />
     </div>
   );
 }
