@@ -9,6 +9,7 @@ import { redirect } from "next/navigation";
 import { FileUp, FileText, Sparkles, TrendingUp, Clock, CheckCircle } from "lucide-react";
 import NextDueCard from "@/components/dashboard/NextDueCard";
 import NextClosingCard from "@/components/dashboard/NextClosingCard";
+import NextTaskCard from "@/components/dashboard/NextTaskCard";
 
 export const dynamic = "force-dynamic";
 
@@ -57,6 +58,24 @@ export default async function Dashboard() {
     },
   });
 
+  // Fetch tasks for NextTaskCard
+  const tasks = await prisma.task.findMany({
+    where: {
+      userId: dbUser.id,
+    },
+    include: {
+      parse: {
+        select: {
+          id: true,
+          propertyAddress: true,
+        },
+      },
+    },
+    orderBy: {
+      dueDate: 'asc',
+    },
+  });
+
   const thisMonthCount = recentParses.filter(p => {
     const monthAgo = new Date();
     monthAgo.setMonth(monthAgo.getMonth() - 1);
@@ -73,10 +92,11 @@ export default async function Dashboard() {
         </p>
       </div>
 
-      {/* PRIORITY 1: Next Due & Next Closing - Most Important */}
-      <div className="grid gap-6 md:grid-cols-2">
+      {/* PRIORITY 1: Next Due, Next Closing & Next Task - Most Important */}
+      <div className="grid gap-6 md:grid-cols-3">
         <NextDueCard parses={completedParses} />
         <NextClosingCard parses={completedParses} />
+        <NextTaskCard tasks={tasks} />
       </div>
 
       {/* PRIORITY 2: Quick Actions - Primary Workflow */}

@@ -1,10 +1,50 @@
-//src/app/tasks/page.tsx
+// src/app/tasks/page.tsx
+// Tasks page - Server component that fetches tasks and renders TasksClient
 
-export default function TasksPage() {
-  return (
-    <main className="flex min-h-screen flex-col items-center justify-center bg-gray-50">
-      <h1 className="text-6xl font-bold text-gray-800 mb-8">Tasks</h1>
-      <p className="text-4xl text-gray-600">Coming soon!</p>
-    </main>
-  );
+import { currentUser } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
+import { prisma } from "@/lib/prisma";
+import TasksClient from "@/components/tasks/TasksClient";
+import { syncAllTimelineTasks } from "@/lib/tasks/sync-timeline-tasks";
+
+export const dynamic = "force-dynamic";
+
+export default async function TasksPage() {
+  const user = await currentUser();
+  if (!user) redirect("/sign-in");
+
+  const dbUser = await prisma.user.findUnique({
+    where: { clerkId: user.id },
+    select: { id: true },
+  });
+
+  if (!dbUser) redirect("/onboarding");
+
+  // Sync timeline tasks before fetching
+  await syncAllTimelineTasks(dbUser.id);
+
+  // Fetch all tasks for the user
+  const tasks = await prisma.task.findMany({
+    where: {
+      userId: dbUser.id,
+    },
+    include: {
+      parse: {
+        select: {
+          id: true,
+          propertyAddress: true,
+          effectiveDate: true,
+          closingDate: true,
+          status: true,
+        },
+      },
+    },
+    orderBy: [
+      { columnId: 'asc' },
+      { sortOrder: 'asc' },
+      { dueDate: 'asc' },
+    ],
+  });
+
+  return <TasksClient initialTasks={tasks} />;
 }

@@ -23,12 +23,15 @@ model User {
   stripeSubscriptionId String?
   priceId              String?
   currentPeriodEnd     DateTime?
+  customTaskCount      Int       @default(0)  // Tracks number of custom task templates (max 10 in free tier)
 
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 
   usage                UserUsage?
   parses               Parse[]
+  tasks                Task[]
+  taskTemplates        UserTaskTemplate[]
 
   @@map("users")
 }
@@ -142,6 +145,78 @@ model Parse {
   updatedAt            DateTime  @updatedAt
   finalizedAt          DateTime? // When extraction completed
 
+  tasks                Task[]    // Tasks associated with this transaction
+
   @@index([userId, createdAt])
   @@map("parses")
+}
+
+// ============================================================================
+// TASKS SYSTEM
+// ============================================================================
+model Task {
+  id                   String    @id @default(cuid())
+  userId               String
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parseId              String?   // Null for user-created tasks not tied to a transaction
+  parse                Parse?    @relation(fields: [parseId], references: [id], onDelete: Cascade)
+
+  // Task Classification
+  taskType             String    // 'timeline' | 'broker' | 'escrow' | 'lender'
+  timelineEventId      String?   // For timeline tasks, references the timeline event ID (e.g., "parseId-deposit")
+
+  // Task Details
+  title                String
+  description          String?
+  propertyAddress      String?   // Simplified address from parse
+  amount               Float?    // For deposit/payment tasks
+
+  // Scheduling
+  dueDate              DateTime
+  dueDateType          String    @default("specific") // 'specific' | 'days_after_acceptance' | 'days_from_close'
+  dueDateValue         Int?      // If dueDateType is relative, stores the number of days
+
+  // Status & Organization
+  status               String    @default("not_started") // 'not_started' | 'pending' | 'completed'
+  sortOrder            Int       @default(0)  // For drag-drop positioning within columns
+  columnId             String    @default("not_started") // Which column the task appears in
+
+  // Metadata
+  isCustom             Boolean   @default(false) // false for timeline tasks, true for user-created
+  templateId           String?   // If created from a template, reference to UserTaskTemplate
+
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  completedAt          DateTime? // When task was marked completed
+
+  @@index([userId, parseId])
+  @@index([userId, status])
+  @@index([userId, dueDate])
+  @@map("tasks")
+}
+
+model UserTaskTemplate {
+  id                      String    @id @default(cuid())
+  userId                  String
+  user                    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Template Details
+  title                   String
+  description             String?
+  taskType                String    // 'broker' | 'escrow' | 'lender' (timeline tasks are auto-generated, not templated)
+
+  // Default Application Rules
+  isDefaultForAll         Boolean   @default(false) // Apply to every new transaction
+  isDefaultForListings    Boolean   @default(false) // Apply only to listing transactions
+  isDefaultForBuyerSide   Boolean   @default(false) // Apply only to buyer-side transactions
+
+  // Scheduling Template
+  dueDateType             String    @default("days_after_acceptance") // 'days_after_acceptance' | 'days_from_close' | 'specific'
+  dueDateValue            Int?      // Number of days for relative dates
+
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("user_task_templates")
 }
