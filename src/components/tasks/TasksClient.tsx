@@ -418,10 +418,7 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
       >
-        <div
-          className="grid grid-cols-1 md:grid-cols-3 gap-6"
-          style={{ touchAction: activeTask ? 'none' : 'auto' }}
-        >
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {COLUMNS.map((column) => (
             <div
               key={column.id}
@@ -469,11 +466,7 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
 
         {/* Drag Overlay */}
         <DragOverlay dropAnimation={null}>
-          {activeTask && (
-            <div style={{ cursor: 'grabbing', touchAction: 'none' }}>
-              <TaskCard task={activeTask} />
-            </div>
-          )}
+          {activeTask && <TaskCard task={activeTask} />}
         </DragOverlay>
       </DndContext>
     </div>
