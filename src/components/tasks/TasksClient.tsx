@@ -90,7 +90,6 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
 
   // Group tasks by column
   const tasksByColumn = useMemo(() => {
-    console.log('📊 Recalculating tasksByColumn, total tasks:', tasks.length);
     const grouped: Record<string, Task[]> = {
       [TASK_STATUS.NOT_STARTED]: [],
       [TASK_STATUS.PENDING]: [],
@@ -103,8 +102,6 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
 
       // Overdue tasks stay in their current column but are highlighted
       const columnId = status === 'overdue' ? task.columnId : task.status;
-
-      console.log(`  Task ${task.id.slice(0, 8)}: status=${task.status}, columnId=${task.columnId}, computed=${columnId}`);
 
       if (grouped[columnId]) {
         grouped[columnId].push(task);
@@ -123,6 +120,15 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
       });
     });
 
+    // Debug log after calculation (not during to avoid hydration issues)
+    if (typeof window !== 'undefined') {
+      console.log('📊 tasksByColumn calculated:', {
+        not_started: grouped.not_started?.length || 0,
+        pending: grouped.pending?.length || 0,
+        completed: grouped.completed?.length || 0,
+      });
+    }
+
     return grouped;
   }, [tasks]);
 
@@ -140,7 +146,12 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
     const task = tasks.find((t) => t.id === active.id);
     if (task) {
       setActiveTask(task);
-      setOriginalColumnId(task.columnId); // Save original column for potential rollback
+      // Use task.status as source of truth for the visual column position
+      // (task.columnId might be stale from a previous drag that didn't persist)
+      const status = getTaskStatus(task);
+      const visualColumnId = status === 'overdue' ? task.columnId : task.status;
+      console.log('🎬 DragStart:', { taskId: task.id, status: task.status, columnId: task.columnId, visualColumnId });
+      setOriginalColumnId(visualColumnId);
     }
   };
 
