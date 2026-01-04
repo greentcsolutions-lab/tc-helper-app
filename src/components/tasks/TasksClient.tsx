@@ -302,12 +302,28 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
         return;
       }
 
-      // Success - UI already updated by dragOver, just log confirmation
+      // Success - update state with server response to ensure dates are properly deserialized
       const { task: updatedTask } = await response.json();
       console.log('✅ Server confirmed task update. columnId:', updatedTask.columnId, 'status:', updatedTask.status);
 
-      // Don't update state here - dragOver already did it and we don't want to trigger re-render
-      // The task should stay in the position dragOver put it in
+      // Convert date strings back to Date objects
+      if (updatedTask.dueDate) {
+        updatedTask.dueDate = new Date(updatedTask.dueDate);
+      }
+      if (updatedTask.createdAt) {
+        updatedTask.createdAt = new Date(updatedTask.createdAt);
+      }
+      if (updatedTask.updatedAt) {
+        updatedTask.updatedAt = new Date(updatedTask.updatedAt);
+      }
+      if (updatedTask.completedAt) {
+        updatedTask.completedAt = new Date(updatedTask.completedAt);
+      }
+
+      // Update with real data from server to ensure consistency
+      setTasks((prev) =>
+        prev.map((t) => (t.id === taskId ? { ...t, ...updatedTask } : t))
+      )
     } catch (error) {
       // Rollback on error
       console.error('Exception during persist, rolling back:', error);
