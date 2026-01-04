@@ -95,7 +95,11 @@ export async function POST(request: NextRequest) {
     // Get user from database
     const dbUser = await prisma.user.findUnique({
       where: { clerkId: user.id },
-      select: { id: true },
+      select: {
+        id: true,
+        customTaskCount: true,
+        priceId: true,
+      },
     });
 
     if (!dbUser) {
@@ -129,34 +133,59 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create the task
-    const task = await prisma.task.create({
-      data: {
-        userId: dbUser.id,
-        parseId: parseId || null,
-        taskType,
-        title,
-        description: description || null,
-        dueDate: new Date(dueDate),
-        dueDateType: dueDateType || 'specific',
-        dueDateValue: dueDateValue || null,
-        status: TASK_STATUS.NOT_STARTED,
-        columnId: TASK_STATUS.NOT_STARTED,
-        isCustom: true,
-      },
-      include: {
-        parse: {
-          select: {
-            id: true,
-            propertyAddress: true,
-            effectiveDate: true,
-            closingDate: true,
+    // Check custom task limit for free tier (1 task max)
+    const isFreeUser = !dbUser.priceId;
+    const isCreatingCustomTask = isCustom !== false; // Default to true if not specified
+
+    if (isFreeUser && isCreatingCustomTask) {
+      if (dbUser.customTaskCount >= 1) {
+        return NextResponse.json(
+          { error: 'Free tier limited to 1 custom task. Upgrade to create more.' },
+          { status: 403 }
+        );
+      }
+    }
+
+    // Create the task and increment custom task count in a transaction
+    const result = await prisma.$transaction(async (tx) => {
+      const task = await tx.task.create({
+        data: {
+          userId: dbUser.id,
+          parseId: parseId || null,
+          taskType,
+          title,
+          description: description || null,
+          dueDate: new Date(dueDate),
+          dueDateType: dueDateType || 'specific',
+          dueDateValue: dueDateValue || null,
+          status: status || TASK_STATUS.NOT_STARTED,
+          columnId: columnId || TASK_STATUS.NOT_STARTED,
+          isCustom: isCustom !== undefined ? isCustom : true,
+        },
+        include: {
+          parse: {
+            select: {
+              id: true,
+              propertyAddress: true,
+              effectiveDate: true,
+              closingDate: true,
+            },
           },
         },
-      },
+      });
+
+      // Increment custom task count if this is a custom task
+      if (isCreatingCustomTask) {
+        await tx.user.update({
+          where: { id: dbUser.id },
+          data: { customTaskCount: { increment: 1 } },
+        });
+      }
+
+      return task;
     });
 
-    return NextResponse.json({ task }, { status: 201 });
+    return NextResponse.json({ task: result }, { status: 201 });
   } catch (error) {
     console.error('Error creating task:', error);
     return NextResponse.json(
