@@ -92,6 +92,7 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
 
   // Group tasks by column
   const tasksByColumn = useMemo(() => {
+    console.log('📊 Recalculating tasksByColumn, total tasks:', tasks.length);
     const grouped: Record<string, Task[]> = {
       [TASK_STATUS.NOT_STARTED]: [],
       [TASK_STATUS.PENDING]: [],
@@ -104,6 +105,8 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
 
       // Overdue tasks stay in their current column but are highlighted
       const columnId = status === 'overdue' ? task.columnId : task.status;
+
+      console.log(`  Task ${task.id.slice(0, 8)}: status=${task.status}, columnId=${task.columnId}, computed=${columnId}`);
 
       if (grouped[columnId]) {
         grouped[columnId].push(task);
@@ -156,6 +159,7 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
     // Check if we're over a column
     const overColumn = COLUMNS.find((col) => col.id === overId);
     if (overColumn && activeTask.columnId !== overColumn.id) {
+      console.log('🔄 DragOver: Moving task to column', { taskId: activeId, from: activeTask.columnId, to: overColumn.id });
       // Optimistically move task to the new column for visual feedback
       setTasks((prev) =>
         prev.map((t) =>
@@ -168,6 +172,7 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
     // Check if we're over another task
     const overTask = tasks.find((t) => t.id === overId);
     if (overTask && activeTask.columnId !== overTask.columnId) {
+      console.log('🔄 DragOver: Moving task to another task\'s column', { taskId: activeId, from: activeTask.columnId, to: overTask.columnId });
       // Move to the column containing the task we're over
       setTasks((prev) =>
         prev.map((t) =>
@@ -181,9 +186,12 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
     const { active, over } = event;
     const taskId = active.id as string;
 
+    console.log('🎯 DragEnd started', { taskId, overId: over?.id, originalColumnId });
+
     setActiveTask(null);
 
     if (!over || !originalColumnId) {
+      console.log('❌ DragEnd: Dropped outside or no original column, reverting');
       // Dragged outside or no original column - revert to original position
       if (originalColumnId) {
         setTasks((prev) =>
@@ -198,11 +206,13 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
 
     const task = tasks.find((t) => t.id === taskId);
     if (!task) {
+      console.log('❌ DragEnd: Task not found');
       setOriginalColumnId(null);
       return;
     }
 
     const currentColumnId = task.columnId;
+    console.log('📍 DragEnd: Current task state', { taskId, currentColumnId, taskStatus: task.status });
 
     // Determine target column
     let targetColumnId = currentColumnId;
@@ -210,16 +220,22 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
     const targetColumn = COLUMNS.find((col) => col.id === over.id);
     if (targetColumn) {
       targetColumnId = targetColumn.id;
+      console.log('🎯 DragEnd: Dropped on column', targetColumnId);
     } else {
       const overTask = tasks.find((t) => t.id === over.id);
       if (overTask) {
         targetColumnId = overTask.columnId;
+        console.log('🎯 DragEnd: Dropped on task in column', targetColumnId);
       }
     }
+
+    console.log('🔍 DragEnd: Comparison', { originalColumnId, targetColumnId, willPersist: originalColumnId !== targetColumnId });
 
     // If column changed from original, persist to database
     if (originalColumnId !== targetColumnId) {
       await persistTaskColumn(taskId, targetColumnId, originalColumnId);
+    } else {
+      console.log('⏭️  DragEnd: No change, skipping persist');
     }
 
     setOriginalColumnId(null);
