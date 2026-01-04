@@ -164,14 +164,34 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
         }),
       });
 
-      if (response.ok) {
-        const { task: updatedTask } = await response.json();
-        setTasks((prev) =>
-          prev.map((t) => (t.id === taskId ? { ...t, ...updatedTask } : t))
-        );
+      if (!response.ok) {
+        const error = await response.json();
+        console.error('Failed to update task column:', error);
+        throw new Error(error.error || 'Failed to update task');
       }
+
+      const { task: updatedTask } = await response.json();
+
+      // Convert date strings back to Date objects
+      if (updatedTask.dueDate) {
+        updatedTask.dueDate = new Date(updatedTask.dueDate);
+      }
+      if (updatedTask.createdAt) {
+        updatedTask.createdAt = new Date(updatedTask.createdAt);
+      }
+      if (updatedTask.updatedAt) {
+        updatedTask.updatedAt = new Date(updatedTask.updatedAt);
+      }
+      if (updatedTask.completedAt) {
+        updatedTask.completedAt = new Date(updatedTask.completedAt);
+      }
+
+      setTasks((prev) =>
+        prev.map((t) => (t.id === taskId ? { ...t, ...updatedTask } : t))
+      );
     } catch (error) {
       console.error('Failed to update task column:', error);
+      // TODO: Show error toast to user
     }
   };
 
@@ -183,12 +203,31 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
         body: JSON.stringify({ sortOrder: newSortOrder }),
       });
 
-      if (response.ok) {
-        const { task: updatedTask } = await response.json();
-        setTasks((prev) =>
-          prev.map((t) => (t.id === taskId ? { ...t, ...updatedTask } : t))
-        );
+      if (!response.ok) {
+        const error = await response.json();
+        console.error('Failed to update task sort order:', error);
+        throw new Error(error.error || 'Failed to update task');
       }
+
+      const { task: updatedTask } = await response.json();
+
+      // Convert date strings back to Date objects
+      if (updatedTask.dueDate) {
+        updatedTask.dueDate = new Date(updatedTask.dueDate);
+      }
+      if (updatedTask.createdAt) {
+        updatedTask.createdAt = new Date(updatedTask.createdAt);
+      }
+      if (updatedTask.updatedAt) {
+        updatedTask.updatedAt = new Date(updatedTask.updatedAt);
+      }
+      if (updatedTask.completedAt) {
+        updatedTask.completedAt = new Date(updatedTask.completedAt);
+      }
+
+      setTasks((prev) =>
+        prev.map((t) => (t.id === taskId ? { ...t, ...updatedTask } : t))
+      );
     } catch (error) {
       console.error('Failed to update task sort order:', error);
     }
