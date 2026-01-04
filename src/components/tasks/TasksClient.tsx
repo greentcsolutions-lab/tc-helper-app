@@ -148,7 +148,7 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
       // Optimistically move task to the new column for visual feedback
       setTasks((prev) =>
         prev.map((t) =>
-          t.id === activeId ? { ...t, columnId: overColumn.id } : t
+          t.id === activeId ? { ...t, columnId: overColumn.id, status: overColumn.id } : t
         )
       );
       return;
@@ -160,7 +160,7 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
       // Move to the column containing the task we're over
       setTasks((prev) =>
         prev.map((t) =>
-          t.id === activeId ? { ...t, columnId: overTask.columnId } : t
+          t.id === activeId ? { ...t, columnId: overTask.columnId, status: overTask.columnId } : t
         )
       );
     }
