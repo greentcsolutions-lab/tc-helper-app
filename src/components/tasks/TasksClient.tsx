@@ -9,12 +9,15 @@ import {
   DragEndEvent,
   DragOverlay,
   DragStartEvent,
+  DragOverEvent,
   PointerSensor,
   TouchSensor,
   useSensor,
   useSensors,
   closestCorners,
   useDroppable,
+  pointerWithin,
+  rectIntersection,
 } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -127,30 +130,76 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
     }
   };
 
+  const handleDragOver = (event: DragOverEvent) => {
+    const { active, over } = event;
+    if (!over) return;
+
+    const activeId = active.id as string;
+    const overId = over.id as string;
+
+    const activeTask = tasks.find((t) => t.id === activeId);
+    if (!activeTask) return;
+
+    // Check if we're over a column
+    const overColumn = COLUMNS.find((col) => col.id === overId);
+    if (overColumn && activeTask.columnId !== overColumn.id) {
+      // Optimistically move task to the new column for visual feedback
+      setTasks((prev) =>
+        prev.map((t) =>
+          t.id === activeId ? { ...t, columnId: overColumn.id } : t
+        )
+      );
+      return;
+    }
+
+    // Check if we're over another task
+    const overTask = tasks.find((t) => t.id === overId);
+    if (overTask && activeTask.columnId !== overTask.columnId) {
+      // Move to the column containing the task we're over
+      setTasks((prev) =>
+        prev.map((t) =>
+          t.id === activeId ? { ...t, columnId: overTask.columnId } : t
+        )
+      );
+    }
+  };
+
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     setActiveTask(null);
 
-    if (!over) return;
+    if (!over) {
+      // Dragged outside - revert any optimistic updates
+      setTasks((prev) => [...prev]);
+      return;
+    }
 
     const taskId = active.id as string;
     const task = tasks.find((t) => t.id === taskId);
     if (!task) return;
 
-    // Check if dropped over a column
+    // Get the original column before any optimistic updates
+    const originalTask = tasks.find((t) => t.id === taskId);
+    const currentColumnId = task.columnId;
+
+    // Determine target column
+    let targetColumnId = currentColumnId;
+
     const targetColumn = COLUMNS.find((col) => col.id === over.id);
     if (targetColumn) {
-      // Moved to a different column
-      if (task.columnId !== targetColumn.id) {
-        // Don't await - let optimistic update handle it
-        updateTaskColumn(taskId, targetColumn.id);
-      }
+      targetColumnId = targetColumn.id;
     } else {
-      // Dropped over another task - update sort order
       const overTask = tasks.find((t) => t.id === over.id);
-      if (overTask && task.columnId === overTask.columnId) {
-        updateTaskSortOrder(taskId, overTask.sortOrder);
+      if (overTask) {
+        targetColumnId = overTask.columnId;
       }
+    }
+
+    // If column changed, persist to database
+    if (currentColumnId !== targetColumnId || (originalTask && originalTask.columnId !== targetColumnId)) {
+      // The updateTaskColumn already has optimistic update, but task might already be in the right column from dragOver
+      // So we update the database without changing UI again
+      updateTaskColumnInDb(taskId, targetColumnId);
     }
   };
 
@@ -209,43 +258,28 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
     }
   };
 
-  const updateTaskSortOrder = async (taskId: string, newSortOrder: number) => {
+  const updateTaskColumnInDb = async (taskId: string, newColumnId: string) => {
+    // Just persist to database without UI update (UI already updated by dragOver)
     try {
       const response = await fetch(`/api/tasks/${taskId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sortOrder: newSortOrder }),
+        body: JSON.stringify({
+          columnId: newColumnId,
+          status: newColumnId,
+        }),
       });
 
       if (!response.ok) {
         const error = await response.json();
-        console.error('Failed to update task sort order:', error);
-        throw new Error(error.error || 'Failed to update task');
+        console.error('Failed to persist task column:', error);
+        // TODO: Could add error toast here
       }
-
-      const { task: updatedTask } = await response.json();
-
-      // Convert date strings back to Date objects
-      if (updatedTask.dueDate) {
-        updatedTask.dueDate = new Date(updatedTask.dueDate);
-      }
-      if (updatedTask.createdAt) {
-        updatedTask.createdAt = new Date(updatedTask.createdAt);
-      }
-      if (updatedTask.updatedAt) {
-        updatedTask.updatedAt = new Date(updatedTask.updatedAt);
-      }
-      if (updatedTask.completedAt) {
-        updatedTask.completedAt = new Date(updatedTask.completedAt);
-      }
-
-      setTasks((prev) =>
-        prev.map((t) => (t.id === taskId ? { ...t, ...updatedTask } : t))
-      );
     } catch (error) {
-      console.error('Failed to update task sort order:', error);
+      console.error('Failed to persist task column:', error);
     }
   };
+
 
   const toggleColumnVisibility = (columnId: string) => {
     setColumnVisibility((prev) => ({
@@ -305,6 +339,7 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
         sensors={sensors}
         collisionDetection={closestCorners}
         onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
       >
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
