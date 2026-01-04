@@ -60,6 +60,7 @@ export default function TaskCard({ task, onEdit, onShiftLeft, onShiftRight }: Ta
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
+    touchAction: 'none', // Prevent browser scroll on mobile during drag
   };
 
   const status = getTaskStatus(task);
