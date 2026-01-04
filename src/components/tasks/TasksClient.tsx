@@ -58,6 +58,7 @@ function DroppableColumn({ id, children }: { id: string; children: React.ReactNo
 export default function TasksClient({ initialTasks }: TasksClientProps) {
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
+  const [originalColumnId, setOriginalColumnId] = useState<string | null>(null);
   const [columnVisibility, setColumnVisibility] = useState({
     [TASK_STATUS.NOT_STARTED]: true,
     [TASK_STATUS.PENDING]: true,
@@ -127,6 +128,7 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
     const task = tasks.find((t) => t.id === active.id);
     if (task) {
       setActiveTask(task);
+      setOriginalColumnId(task.columnId); // Save original column for potential rollback
     }
   };
 
@@ -166,20 +168,29 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
 
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
+    const taskId = active.id as string;
+
     setActiveTask(null);
 
-    if (!over) {
-      // Dragged outside - revert any optimistic updates
-      setTasks((prev) => [...prev]);
+    if (!over || !originalColumnId) {
+      // Dragged outside or no original column - revert to original position
+      if (originalColumnId) {
+        setTasks((prev) =>
+          prev.map((t) =>
+            t.id === taskId ? { ...t, columnId: originalColumnId, status: originalColumnId } : t
+          )
+        );
+      }
+      setOriginalColumnId(null);
       return;
     }
 
-    const taskId = active.id as string;
     const task = tasks.find((t) => t.id === taskId);
-    if (!task) return;
+    if (!task) {
+      setOriginalColumnId(null);
+      return;
+    }
 
-    // Get the original column before any optimistic updates
-    const originalTask = tasks.find((t) => t.id === taskId);
     const currentColumnId = task.columnId;
 
     // Determine target column
@@ -195,12 +206,12 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
       }
     }
 
-    // If column changed, persist to database
-    if (currentColumnId !== targetColumnId || (originalTask && originalTask.columnId !== targetColumnId)) {
-      // The updateTaskColumn already has optimistic update, but task might already be in the right column from dragOver
-      // So we update the database without changing UI again
-      updateTaskColumnInDb(taskId, targetColumnId);
+    // If column changed from original, persist to database
+    if (originalColumnId !== targetColumnId) {
+      await persistTaskColumn(taskId, targetColumnId, originalColumnId);
     }
+
+    setOriginalColumnId(null);
   };
 
   const updateTaskColumn = async (taskId: string, newColumnId: string) => {
@@ -258,8 +269,12 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
     }
   };
 
-  const updateTaskColumnInDb = async (taskId: string, newColumnId: string) => {
-    // Just persist to database without UI update (UI already updated by dragOver)
+  const persistTaskColumn = async (
+    taskId: string,
+    newColumnId: string,
+    fallbackColumnId: string
+  ) => {
+    // Persist to database (UI already updated by dragOver)
     try {
       const response = await fetch(`/api/tasks/${taskId}`, {
         method: 'PATCH',
@@ -271,11 +286,36 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
       });
 
       if (!response.ok) {
+        // Rollback to original column on error
+        setTasks((prev) =>
+          prev.map((t) =>
+            t.id === taskId ? { ...t, columnId: fallbackColumnId, status: fallbackColumnId } : t
+          )
+        );
         const error = await response.json();
         console.error('Failed to persist task column:', error);
-        // TODO: Could add error toast here
+        return;
       }
+
+      // Confirm with server data
+      const { task: updatedTask } = await response.json();
+
+      // Convert date strings back to Date objects
+      if (updatedTask.dueDate) updatedTask.dueDate = new Date(updatedTask.dueDate);
+      if (updatedTask.createdAt) updatedTask.createdAt = new Date(updatedTask.createdAt);
+      if (updatedTask.updatedAt) updatedTask.updatedAt = new Date(updatedTask.updatedAt);
+      if (updatedTask.completedAt) updatedTask.completedAt = new Date(updatedTask.completedAt);
+
+      setTasks((prev) =>
+        prev.map((t) => (t.id === taskId ? { ...t, ...updatedTask } : t))
+      );
     } catch (error) {
+      // Rollback on error
+      setTasks((prev) =>
+        prev.map((t) =>
+          t.id === taskId ? { ...t, columnId: fallbackColumnId, status: fallbackColumnId } : t
+        )
+      );
       console.error('Failed to persist task column:', error);
     }
   };
