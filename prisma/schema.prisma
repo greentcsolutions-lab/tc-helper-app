@@ -17,13 +17,13 @@ model User {
   email                String?
   state                String?
   onboarded            Boolean   @default(false)
-  quota                Int       @default(5)
+  quota                Int       @default(1)
   credits              Int       @default(1)
   stripeCustomerId     String?
   stripeSubscriptionId String?
   priceId              String?
   currentPeriodEnd     DateTime?
-  customTaskCount      Int       @default(0)  // Tracks number of custom task templates (max 10 in free tier)
+  customTaskCount      Int       @default(0)  // Tracks number of custom tasks created (max 1 in free tier)
 
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt

@@ -165,9 +165,17 @@ export async function DELETE(
       );
     }
 
-    // Delete the task
-    await prisma.task.delete({
-      where: { id },
+    // Delete the task and decrement custom task count in a transaction
+    await prisma.$transaction(async (tx) => {
+      await tx.task.delete({
+        where: { id },
+      });
+
+      // Decrement custom task count
+      await tx.user.update({
+        where: { id: dbUser.id },
+        data: { customTaskCount: { decrement: 1 } },
+      });
     });
 
     return NextResponse.json({ success: true });
