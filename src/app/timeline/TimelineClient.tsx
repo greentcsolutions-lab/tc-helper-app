@@ -259,20 +259,28 @@ export default function TimelineClient({ parses }: TimelineClientProps) {
                       Property: {event.propertyAddress}
                     </p>
                   )}
-                  {/* Status dropdown for all events */}
-                  <div className="mt-2 flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">Status:</span>
-                    <select
-                      value={event.status}
-                      onChange={(e) => updateEventStatus(event.id, e.target.value as TimelineEvent['status'])}
-                      className="text-xs border rounded px-2 py-1"
-                    >
-                      <option value="upcoming">Upcoming</option>
-                      <option value="overdue">Past Due</option>
-                      <option value="completed">Completed</option>
-                      <option value="not_applicable">Not Applicable</option>
-                    </select>
-                  </div>
+                  {/* Status dropdown - NOT for acceptance dates */}
+                  {event.type !== 'acceptance' ? (
+                    <div className="mt-2 flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">Status:</span>
+                      <select
+                        value={event.status}
+                        onChange={(e) => updateEventStatus(event.id, e.target.value as TimelineEvent['status'])}
+                        className="text-xs border rounded px-2 py-1"
+                      >
+                        <option value="upcoming">Upcoming</option>
+                        <option value="overdue">Past Due</option>
+                        <option value="completed">Completed</option>
+                        <option value="not_applicable">Not Applicable</option>
+                      </select>
+                    </div>
+                  ) : (
+                    <div className="mt-2">
+                      <span className="text-xs text-muted-foreground">
+                        Status: <span className="font-semibold">Completed (Fixed)</span>
+                      </span>
+                    </div>
+                  )}
                 </div>
                 <Badge variant={event.status === 'overdue' ? 'destructive' : 'default'}>
                   {event.type}
@@ -583,22 +591,32 @@ export default function TimelineClient({ parses }: TimelineClientProps) {
                 </div>
               )}
 
-              {/* Status Change */}
-              <div>
-                <p className="text-sm text-muted-foreground mb-2">Change Status</p>
-                <select
-                  value={selectedEvent.status}
-                  onChange={(e) => {
-                    updateEventStatus(selectedEvent.id, e.target.value as TimelineEvent['status']);
-                  }}
-                  className="w-full text-sm border rounded px-3 py-2"
-                >
-                  <option value="upcoming">Upcoming</option>
-                  <option value="overdue">Past Due</option>
-                  <option value="completed">Completed</option>
-                  <option value="not_applicable">Not Applicable</option>
-                </select>
-              </div>
+              {/* Status Change - NOT for acceptance dates */}
+              {selectedEvent.type !== 'acceptance' ? (
+                <div>
+                  <p className="text-sm text-muted-foreground mb-2">Change Status</p>
+                  <select
+                    value={selectedEvent.status}
+                    onChange={(e) => {
+                      updateEventStatus(selectedEvent.id, e.target.value as TimelineEvent['status']);
+                    }}
+                    className="w-full text-sm border rounded px-3 py-2"
+                  >
+                    <option value="upcoming">Upcoming</option>
+                    <option value="overdue">Past Due</option>
+                    <option value="completed">Completed</option>
+                    <option value="not_applicable">Not Applicable</option>
+                  </select>
+                </div>
+              ) : (
+                <div className="p-3 bg-gray-50 rounded-lg border">
+                  <p className="text-xs text-muted-foreground">
+                    <span className="font-semibold">Status: Completed (Fixed)</span>
+                    <br />
+                    Acceptance date status cannot be changed. Only the date is editable.
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </DialogContent>
