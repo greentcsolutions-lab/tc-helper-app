@@ -142,18 +142,29 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
     if (targetColumn) {
       // Moved to a different column
       if (task.columnId !== targetColumn.id) {
-        await updateTaskColumn(taskId, targetColumn.id);
+        // Don't await - let optimistic update handle it
+        updateTaskColumn(taskId, targetColumn.id);
       }
     } else {
       // Dropped over another task - update sort order
       const overTask = tasks.find((t) => t.id === over.id);
       if (overTask && task.columnId === overTask.columnId) {
-        await updateTaskSortOrder(taskId, overTask.sortOrder);
+        updateTaskSortOrder(taskId, overTask.sortOrder);
       }
     }
   };
 
   const updateTaskColumn = async (taskId: string, newColumnId: string) => {
+    // Optimistic update - update UI immediately
+    const previousTasks = tasks;
+    setTasks((prev) =>
+      prev.map((t) =>
+        t.id === taskId
+          ? { ...t, columnId: newColumnId, status: newColumnId, updatedAt: new Date() }
+          : t
+      )
+    );
+
     try {
       const response = await fetch(`/api/tasks/${taskId}`, {
         method: 'PATCH',
@@ -165,6 +176,8 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
       });
 
       if (!response.ok) {
+        // Rollback on error
+        setTasks(previousTasks);
         const error = await response.json();
         console.error('Failed to update task column:', error);
         throw new Error(error.error || 'Failed to update task');
@@ -186,12 +199,13 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
         updatedTask.completedAt = new Date(updatedTask.completedAt);
       }
 
+      // Update with real data from server
       setTasks((prev) =>
         prev.map((t) => (t.id === taskId ? { ...t, ...updatedTask } : t))
       );
     } catch (error) {
       console.error('Failed to update task column:', error);
-      // TODO: Show error toast to user
+      // Rollback already happened above
     }
   };
 
@@ -240,7 +254,7 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
     }));
   };
 
-  const shiftTask = async (taskId: string, direction: 'left' | 'right') => {
+  const shiftTask = (taskId: string, direction: 'left' | 'right') => {
     const task = tasks.find((t) => t.id === taskId);
     if (!task) return;
 
@@ -250,7 +264,8 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
     if (newIndex < 0 || newIndex >= COLUMNS.length) return;
 
     const newColumnId = COLUMNS[newIndex].id;
-    await updateTaskColumn(taskId, newColumnId);
+    // Don't await - optimistic update handles it
+    updateTaskColumn(taskId, newColumnId);
   };
 
   return (
