@@ -82,8 +82,8 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
     }),
     useSensor(TouchSensor, {
       activationConstraint: {
-        delay: 250,
-        tolerance: 5,
+        delay: 600, // Long delay to ensure it's intentional and doesn't block scrolling
+        tolerance: 8, // Allow slight finger movement during long press
       },
     })
   );
