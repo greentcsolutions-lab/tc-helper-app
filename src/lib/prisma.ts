@@ -23,4 +23,6 @@ export const prisma = {
   user: db.user,        // ← correct (generated name)
   userUsage: db.userUsage, // ← correct
   parse: db.parse,      // ← correct
+  task: db.task,        // ← correct
+  userTaskTemplate: db.userTaskTemplate, // ← correct
 } as const;
