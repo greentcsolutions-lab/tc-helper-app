@@ -1,6 +1,7 @@
-// src/lib/parse/map-to-parse-result.ts 
-// Version: 3.0.1 - 2025-12-29
-// FIX: Added defensive null checks for buyerNames/sellerNames to prevent .length on undefined
+// src/lib/parse/map-to-parse-result.ts
+// Version: 3.1.0 - 2026-01-05
+// FIXED: Maps new flat broker contact fields → nested listingAgentDetails / buyersAgentDetails
+//         Added closeOfEscrowDate support
 
 import type { UniversalExtractionResult } from '@/types/extraction';
 import type { FieldProvenance } from '@/types/parse-result';
@@ -9,7 +10,7 @@ type MapToParseResultParams = {
   universal: UniversalExtractionResult;
   route: string;
   details?: {
-    provenance?: Record<string, number>;  // field → pageNumber
+    provenance?: Record<string, number>;
     pageExtractions?: Array<{
       pageNumber: number;
       pageLabel: string;
@@ -22,10 +23,6 @@ type MapToParseResultParams = {
   timelineEvents?: any[];
 };
 
-/**
- * Builds proper FieldProvenance array from provenance map
- * FIX #2: Converts Record<string, number> → FieldProvenance[]
- */
 function buildFieldProvenance(
   provenance: Record<string, number>,
   pageExtractions: Array<any>,
@@ -33,13 +30,10 @@ function buildFieldProvenance(
 ): FieldProvenance[] {
   return Object.entries(provenance).map(([field, pageNum]) => {
     const page = pageExtractions.find(p => p.pageNumber === pageNum);
-    
-    // Get nested field value (handles "brokers.listingAgent" notation)
     const fieldValue = field.includes('.') 
       ? getNestedValue(finalTerms, field)
       : (finalTerms as any)[field];
     
-    // Get confidence from field scores or page overall
     const confidence = page?.confidence?.fieldScores?.[field] 
       || page?.confidence?.overall 
       || 0;
@@ -54,9 +48,6 @@ function buildFieldProvenance(
   });
 }
 
-/**
- * Helper: Get nested value from object (e.g., "brokers.listingAgent")
- */
 function getNestedValue(obj: any, path: string): any {
   return path.split('.').reduce((current, key) => current?.[key], obj);
 }
@@ -67,7 +58,6 @@ export function mapExtractionToParseResult({
   details,
   timelineEvents = [],
 }: MapToParseResultParams) {
-  // Build field provenance if we have the data (FIX #2)
   let fieldProvenance: FieldProvenance[] = [];
   
   if (details?.provenance && details?.pageExtractions) {
@@ -76,30 +66,40 @@ export function mapExtractionToParseResult({
       details.pageExtractions,
       universal
     );
-    
     console.log(`[map-to-parse-result] Built ${fieldProvenance.length} field provenance entries`);
   }
-  
+
+  // === BUILD NESTED BROKER DETAILS FROM FLAT FIELDS ===
+  const brokers = universal.brokers;
+  const listingAgentDetails = brokers ? {
+    name: brokers.listingAgent || null,
+    company: brokers.listingBrokerage || null,
+    email: brokers.listingAgentEmail || null,
+    phone: brokers.listingAgentPhone || null,
+  } : null;
+
+  const buyersAgentDetails = brokers ? {
+    name: brokers.sellingAgent || null,
+    company: brokers.sellingBrokerage || null,
+    email: brokers.sellingAgentEmail || null,
+    phone: brokers.sellingAgentPhone || null,
+  } : null;
+
   return {
-    // === UNIVERSAL CORE SCALARS (backward compat) ===
-    // FIX: Added defensive null/undefined checks before accessing .length
+    // Core scalars
     buyerNames: (universal.buyerNames && universal.buyerNames.length > 0) ? universal.buyerNames : undefined,
     sellerNames: (universal.sellerNames && universal.sellerNames.length > 0) ? universal.sellerNames : undefined,
     propertyAddress: universal.propertyAddress || null,
     purchasePrice: universal.purchasePrice || null,
     earnestMoneyAmount: universal.earnestMoneyDeposit?.amount ?? null,
     earnestMoneyHolder: universal.earnestMoneyDeposit?.holder ?? null,
-    closingDate:
-      universal.closingDate == null
-        ? null
-        : typeof universal.closingDate === 'string'
-          ? universal.closingDate
-          : null,
+    closingDate: universal.closeOfEscrowDate || null, // ← Use calculated COE
     effectiveDate: universal.effectiveDate || null,
+
     isAllCash: universal.financing?.isAllCash ?? null,
     loanType: universal.financing?.loanType ?? null,
 
-    // === FULL NESTED FIELDS ===
+    // Full nested
     earnestMoneyDeposit: universal.earnestMoneyDeposit
       ? {
           amount: universal.earnestMoneyDeposit.amount,
@@ -132,27 +132,29 @@ export function mapExtractionToParseResult({
         }
       : null,
 
-    brokers: universal.brokers
+    // === BROKERS: Map flat → nested structure expected by UI ===
+    brokers: brokers
       ? {
-          listingBrokerage: universal.brokers.listingBrokerage,
-          listingAgent: universal.brokers.listingAgent,
-          sellingBrokerage: universal.brokers.sellingBrokerage,
-          sellingAgent: universal.brokers.sellingAgent,
+          listingBrokerage: brokers.listingBrokerage,
+          listingAgent: brokers.listingAgent,
+          sellingBrokerage: brokers.sellingBrokerage,
+          sellingAgent: brokers.sellingAgent,
+          listingAgentDetails,
+          buyersAgentDetails,
         }
       : null,
 
     personalPropertyIncluded: universal.personalPropertyIncluded ?? null,
     escrowHolder: universal.escrowHolder ?? null,
 
-    // === RICH DATA (FIX #2: now includes field provenance) ===
+    // Rich data
     extractionDetails: { 
       route,
-      fieldProvenance,  // ← NOW PROPERLY POPULATED!
+      fieldProvenance,
       confidenceBreakdown: details?.confidenceBreakdown || {},
       missingConfidenceFields: details?.missingConfidenceFields || [],
     },
 
-    // === TIMELINE ===
     ...(timelineEvents.length > 0 ? { timelineEvents } : {}),
   };
 }
