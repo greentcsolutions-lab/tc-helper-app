@@ -69,9 +69,9 @@ export async function callMistralChunk(
   const payload = {
     model: 'mistral-ocr-latest',
     document: {
-      type: 'document_url',
-      document_url: { url: dataUri },
-    },
+        type: 'document_url',
+         document_url: dataUri,  // plain string
+        },
     document_annotation_format: {
       type: 'json_schema',
       json_schema: mistralJsonSchema,
