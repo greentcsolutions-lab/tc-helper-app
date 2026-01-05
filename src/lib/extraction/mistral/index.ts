@@ -1,7 +1,6 @@
 // src/lib/extraction/mistral/index.ts
-// Version: 2.2.0 - 2026-01-05
-// UPDATED: Now processes one page per Mistral API call for strict per-page extractions
-// This ensures 1:1 mapping and full compatibility with existing post-processor logic
+// Version: 2.3.1 - 2026-01-05
+// FIXED: Use correct originalPageNumber from pageMapping object
 
 import { assemblePdfChunk, ChunkImage } from './assemblePdf';
 import { callMistralChunk } from './mistralClient';
@@ -88,18 +87,13 @@ export async function mistralExtractor(
       };
     });
 
-    // Optional: clean up the temporary blob after successful extraction
-    // import { del } from '@vercel/blob';
-    // del(pdfUrl).catch(() => {}); // fire-and-forget
-
     return { perPageExtractions, pageMapping };
   });
 
   const chunkResults = await Promise.allSettled(chunkPromises);
 
-  // Collect results
-  const allPerPage: PerPageExtraction[] = [];
-  let totalPages = 0;
+  // === FIXED COLLECTION: Preserve original page order ===
+  const pageExtractionMap = new Map<number, PerPageExtraction>();
 
   for (const result of chunkResults) {
     if (result.status === 'rejected') {
@@ -107,13 +101,27 @@ export async function mistralExtractor(
       throw new Error(`Mistral chunk failed: ${result.reason}`);
     }
 
-    const { perPageExtractions } = result.value;
-    allPerPage.push(...perPageExtractions);
-    totalPages += perPageExtractions.length;
+    const { perPageExtractions, pageMapping } = result.value;
+    // Single-page chunk → exactly one extraction and one mapping
+    const extraction = perPageExtractions[0];
+    const originalPageNumber = pageMapping[0].originalPageNumber;  // ← FIXED: access the number field
+
+    pageExtractionMap.set(originalPageNumber, extraction);
   }
 
-  if (totalPages !== sortedImages.length) {
-    console.warn(`[mistral] Page count mismatch: expected ${sortedImages.length}, got ${totalPages}`);
+  // Rebuild in correct sorted document order
+  const allPerPage: PerPageExtraction[] = [];
+  sortedImages.forEach((img) => {
+    const extraction = pageExtractionMap.get(img.pageNumber);
+    if (!extraction) {
+      throw new Error(`Missing extraction for page ${img.pageNumber}`);
+    }
+    allPerPage.push(extraction);
+  });
+  // === END OF FIX ===
+
+  if (allPerPage.length !== sortedImages.length) {
+    console.warn(`[mistral] Page count mismatch: expected ${sortedImages.length}, got ${allPerPage.length}`);
   }
 
   console.log('[mistral] All chunks complete – running post-processor merge');
