@@ -1,6 +1,8 @@
 // src/lib/extraction/extract/universal/helpers/date-utils.ts
-// Version: 1.0.0 - 2025-12-31
-// Date normalization and effective date calculation
+// Version: 2.0.0 - 2026-01-05
+// ENHANCED: Full support for new closing object (specificDate / daysAfterAcceptance)
+//          Computes closeOfEscrowDate with correct priority
+//          Adds calculated contingency deadlines for UI use
 
 import type { EnrichedPageExtraction } from '@/types/extraction';
 
@@ -16,7 +18,7 @@ export function calculateEffectiveDate(
       if (!dates || !Array.isArray(dates)) return;
       dates.forEach(dateStr => {
         if (dateStr && typeof dateStr === 'string') {
-          allDates.push({ date: dateStr, party, pageNumber: page.pageNumber, pageLabel: page.pageLabel });
+          allDates.push({ date: dateStr.trim(), party, pageNumber: page.pageNumber, pageLabel: page.pageLabel });
         }
       });
     };
@@ -41,7 +43,13 @@ export function calculateEffectiveDate(
       }
       return { ...item, normalized };
     })
-    .filter(item => item.normalized !== null);
+    .filter(item => item.normalized !== null) as Array<{
+      date: string;
+      party: string;
+      pageNumber: number;
+      pageLabel: string;
+      normalized: string;
+    }>;
   
   if (normalizedDates.length === 0) {
     log.push('⚠️ No valid dates could be normalized');
@@ -49,7 +57,7 @@ export function calculateEffectiveDate(
   }
   
   const latest = normalizedDates.sort((a, b) => 
-    (b.normalized || '').localeCompare(a.normalized || '')
+    b.normalized.localeCompare(a.normalized)
   )[0];
   
   log.push(`✅ Latest signature: ${latest.party} on ${latest.normalized} (${latest.pageLabel})`);
@@ -67,17 +75,18 @@ export function normalizeDateString(dateStr: string): string | null {
   
   // Try common patterns
   const patterns = [
-    { regex: /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/, order: [2, 0, 1] }, // M/D/YY
+    { regex: /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/, order: [2, 0, 1] }, // M/D/YY or M/D/YYYY
     { regex: /^(\d{1,2})-(\d{1,2})-(\d{2,4})$/, order: [2, 0, 1] },  // M-D-YY
+    { regex: /^(\d{4})\/(\d{1,2})\/(\d{1,2})$/, order: [0, 1, 2] }, // YYYY/M/D
+    { regex: /^(\d{4})-(\d{1,2})-(\d{1,2})$/, order: [0, 1, 2] }, // YYYY-M-D
   ];
   
   for (const pattern of patterns) {
     const match = cleaned.match(pattern.regex);
     if (match) {
-      let [, ...parts] = match;
-      let year = parts[pattern.order[0]];
-      const month = parts[pattern.order[1]];
-      const day = parts[pattern.order[2]];
+      let year = match[pattern.order[0] + 1];
+      const month = match[pattern.order[1] + 1];
+      const day = match[pattern.order[2] + 1];
       
       // Handle 2-digit years
       if (year.length === 2) {
@@ -107,52 +116,83 @@ export function normalizeDateString(dateStr: string): string | null {
 
 export function normalizeDates(terms: Record<string, any>, log: string[]): Record<string, any> {
   const acceptanceDate = terms.effectiveDate;
-  
+
   if (!acceptanceDate) {
-    log.push('⚠️ No effective date found - cannot normalize relative dates');
-    return terms;
+    log.push('⚠️ No effective date found - skipping relative date normalization');
+  } else {
+    log.push(`📅 Using effective date ${acceptanceDate} for relative date calculations`);
   }
-  
-  const normalizeSingleDate = (value: number | string): number | string => {
-    if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
-    if (typeof value === 'string' && isNaN(Number(value))) return value;
-    
-    const days = typeof value === 'number' ? value : parseInt(value, 10);
-    if (isNaN(days)) return value;
-    
+
+  const calculateDateFromDays = (days: number | string | null | undefined): string | null => {
+    if (days == null) return null;
+    const daysNum = typeof days === 'number' ? days : parseInt(days as string, 10);
+    if (isNaN(daysNum)) return null;
+    if (!acceptanceDate) return null;
+
     try {
       const baseDate = new Date(acceptanceDate);
-      baseDate.setDate(baseDate.getDate() + days);
+      baseDate.setDate(baseDate.getDate() + daysNum);
       const year = baseDate.getFullYear();
       const month = String(baseDate.getMonth() + 1).padStart(2, '0');
       const day = String(baseDate.getDate()).padStart(2, '0');
       return `${year}-${month}-${day}`;
-    } catch {
-      return value;
+    } catch (e) {
+      log.push(`⚠️ Failed to calculate date from ${daysNum} days after ${acceptanceDate}`);
+      return null;
     }
   };
-  
-  // Normalize closingDate
-  if (terms.closingDate != null) {
-    const normalized = normalizeSingleDate(terms.closingDate);
-    if (normalized !== terms.closingDate) {
-      log.push(`📅 closingDate normalized: ${terms.closingDate} → ${normalized}`);
-      terms.closingDate = normalized;
+
+  // === PRIMARY: Handle new closing object with correct priority ===
+  if (terms.closing) {
+    const closing = terms.closing;
+
+    if (closing.specificDate) {
+      // Counter offer set a hard date — use it directly
+      terms.closeOfEscrowDate = closing.specificDate;
+      log.push(`✅ COE: Using specific calendar date from counter: ${closing.specificDate}`);
+    } else if (closing.daysAfterAcceptance != null) {
+      // Standard RPA: X days after acceptance
+      const calculated = calculateDateFromDays(closing.daysAfterAcceptance);
+      if (calculated) {
+        terms.closeOfEscrowDate = calculated;
+        log.push(`✅ COE: Calculated ${closing.daysAfterAcceptance} days after acceptance → ${calculated}`);
+      } else {
+        terms.closeOfEscrowDate = null;
+        log.push(`⚠️ COE: Could not calculate from daysAfterAcceptance (missing effective date?)`);
+      }
+    } else {
+      terms.closeOfEscrowDate = null;
+      log.push(`⚠️ COE: No specificDate or daysAfterAcceptance provided`);
     }
   }
-  
-  // Normalize contingencies
+
+  // === LEGACY: Support old flat closingDate field (for backward compatibility) ===
+  if (terms.closingDate != null && terms.closeOfEscrowDate == null) {
+    if (typeof terms.closingDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(terms.closingDate.trim())) {
+      terms.closeOfEscrowDate = terms.closingDate.trim();
+      log.push(`📅 Legacy closingDate used as COE: ${terms.closeOfEscrowDate}`);
+    } else {
+      const calculated = calculateDateFromDays(terms.closingDate);
+      if (calculated) {
+        terms.closeOfEscrowDate = calculated;
+        log.push(`📅 Legacy closingDate (${terms.closingDate} days) normalized → ${calculated}`);
+      }
+    }
+  }
+
+  // === CONTINGENCY DEADLINES (useful for UI timelines) ===
   if (terms.contingencies) {
     ['inspectionDays', 'appraisalDays', 'loanDays'].forEach(field => {
       if (terms.contingencies[field] != null) {
-        const normalized = normalizeSingleDate(terms.contingencies[field]);
-        if (normalized !== terms.contingencies[field]) {
-          log.push(`📅 ${field} normalized: ${terms.contingencies[field]} → ${normalized}`);
-          terms.contingencies[field] = normalized;
+        const deadline = calculateDateFromDays(terms.contingencies[field]);
+        if (deadline) {
+          const deadlineField = `${field}Deadline` as const;
+          terms.contingencies[deadlineField] = deadline;
+          log.push(`📅 ${field} deadline: ${terms.contingencies[field]} days → ${deadline}`);
         }
       }
     });
   }
-  
+
   return terms;
 }

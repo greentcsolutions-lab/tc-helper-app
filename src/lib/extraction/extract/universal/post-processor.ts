@@ -1,13 +1,13 @@
 // TC Helper App
 // src/lib/extraction/extract/universal/post-processor.ts
-// Version: 6.0.0 - 2025-12-31
-// FIXED: Removed 'signatures' step - signature sections are part of their parent documents
+// Version: 7.0.0 - 2026-01-05
+// REFACTORED: Simplified pipeline using role-based allowlist merge (safe & predictable)
 
 import type { PerPageExtraction, EnrichedPageExtraction, MergeResult } from '@/types/extraction';
 import { enrichWithMetadata } from './helpers/enrichment';
 import { coerceAllTypes } from './helpers/type-coercion';
 import { calculateEffectiveDate, normalizeDates } from './helpers/date-utils';
-import { mergePages, applyOverrides } from './helpers/merge';
+import { mergeWithAllowlist } from './helpers/merge'; // ← New unified merge
 import { validateArrayLength, validateExtractedTerms } from './helpers/validation';
 import { validateAddress } from './helpers/address-validation';
 
@@ -46,11 +46,9 @@ export async function mergePageExtractions(
   let addressNeedsReview = false;
 
   if (addressValidation.verified && addressValidation.correctedAddress) {
-    // Use Mapbox-verified address as source of truth
     finalTerms.propertyAddress = addressValidation.correctedAddress;
     mergeLog.push(`✅ Address updated to Mapbox-verified version`);
   } else if (addressValidation.needsReview) {
-    // Flag for review but keep original address
     addressNeedsReview = true;
     mergeLog.push(`⚠️ Address needs review: ${addressValidation.reviewReason}`);
   }
@@ -75,7 +73,7 @@ export async function mergePageExtractions(
 }
 
 // ============================================================================
-// MERGE PIPELINE
+// MERGE PIPELINE — SIMPLIFIED & SAFE
 // ============================================================================
 
 function executeMergePipeline(
@@ -83,47 +81,25 @@ function executeMergePipeline(
   provenance: Record<string, number>,
   mergeLog: string[]
 ): Record<string, any> {
-  // Pipeline: Main Contract → Counters → Addenda → Brokers → Coercion → Dates
-  // REMOVED: Signatures step - signatures are part of their parent documents
-  
-  const steps = [
-    { filter: (p: EnrichedPageExtraction) => p.pageRole === 'main_contract', name: 'MAIN_CONTRACT', isOverride: false },
-    { filter: (p: EnrichedPageExtraction) => p.pageRole === 'counter_offer', name: 'COUNTER_OFFER', isOverride: true },
-    { filter: (p: EnrichedPageExtraction) => p.pageRole === 'addendum', name: 'ADDENDUM', isOverride: true },
-    { filter: (p: EnrichedPageExtraction) => p.pageRole === 'broker_info', name: 'BROKER_INFO', isOverride: true },
-  ];
-  
-  let finalTerms: Record<string, any> = {};
-  
-  steps.forEach((step, index) => {
-    const pages = enrichedPages.filter(step.filter);
-    
-    if (pages.length === 0) {
-      console.log(`[post-processor] Step ${index + 1}: No ${step.name.toLowerCase()} pages found`);
-      return;
-    }
-    
-    console.log(`[post-processor] Step ${index + 1}: ${step.isOverride ? 'Applying' : 'Found'} ${pages.length} ${step.name.toLowerCase()} pages`);
-    
-    finalTerms = step.isOverride
-      ? applyOverrides(finalTerms, pages, step.name, provenance, mergeLog, enrichedPages)
-      : mergePages(pages, step.name, provenance, mergeLog);
-  });
-  
+  mergeLog.push(`[post-processor] Using role-based allowlist merge for safe field selection`);
+
+  // Single, unified merge using explicit allowlist
+  let finalTerms = mergeWithAllowlist(enrichedPages, provenance, mergeLog);
+
   // Type coercion
-  console.log(`[post-processor] Step ${steps.length + 1}: Coercing types...`);
+  console.log(`[post-processor] Coercing types...`);
   finalTerms = coerceAllTypes(finalTerms, mergeLog);
-  
-  // Effective date calculation
-  console.log(`[post-processor] Step ${steps.length + 2}: Calculating effective date...`);
+
+  // Effective date calculation (from signatures)
+  console.log(`[post-processor] Calculating effective date...`);
   finalTerms.effectiveDate = calculateEffectiveDate(enrichedPages, mergeLog);
   if (finalTerms.effectiveDate) {
     mergeLog.push(`📅 effectiveDate calculated: ${finalTerms.effectiveDate}`);
   }
-  
-  // Date normalization
-  console.log(`[post-processor] Step ${steps.length + 3}: Normalizing dates...`);
+
+  // Date normalization (handles various formats)
+  console.log(`[post-processor] Normalizing dates...`);
   finalTerms = normalizeDates(finalTerms, mergeLog);
-  
+
   return finalTerms;
 }

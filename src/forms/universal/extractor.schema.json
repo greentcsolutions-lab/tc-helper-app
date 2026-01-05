@@ -41,9 +41,22 @@
               },
               "description": "Earnest money details"
             },
-            "closingDate": {
-              "type": ["string", "number", "null"],
-              "description": "Closing date (prefer string like YYYY-MM-DD)"
+            "closing": {
+              "type": ["object", "null"],
+              "properties": {
+                "daysAfterAcceptance": {
+                  "type": ["number", "null"],
+                  "minimum": 0,
+                  "description": "Number of days after acceptance until close of escrow (from RPA paragraph 3C). This is the primary driver in most contracts."
+                },
+                "specificDate": {
+                  "type": ["string", "null"],
+                  "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                  "description": "Hard calendar close of escrow date ONLY if explicitly stated (e.g., in a counter offer). Format YYYY-MM-DD."
+                }
+              },
+              "additionalProperties": false,
+              "description": "Closing mechanics. Prefer daysAfterAcceptance unless a counter explicitly sets a calendar date."
             },
             "financing": {
               "type": ["object", "null"],
@@ -56,11 +69,17 @@
             "contingencies": {
               "type": ["object", "null"],
               "properties": {
+                "daysToClose": {
+                  "type": ["number", "null"],
+                  "minimum": 0,
+                  "description": "DEPRECATED — use closing.daysAfterAcceptance instead. Kept temporarily for backward compatibility."
+                },
                 "inspectionDays": { "type": ["number", "string", "null"] },
                 "appraisalDays": { "type": ["number", "string", "null"] },
                 "loanDays": { "type": ["number", "string", "null"] },
                 "saleOfBuyerProperty": { "type": ["boolean", "null"] }
-              }
+              },
+              "description": "Contingency periods. daysToClose is deprecated — migrate to closing.daysAfterAcceptance."
             },
             "closingCosts": {
               "type": ["object", "null"],
@@ -96,6 +115,11 @@
             "escrowHolder": {
               "type": ["string", "null"]
             },
+            "additionalTerms": {
+               "type": ["array", "null"],
+                "items": { "type": "string" },
+               "description": "List of important additional or other terms from this page. Extract bullet points, numbered items, or full paragraphs from 'Other Terms', 'Additional Provisions', or similar sections. Include any negotiated changes not covered by structured fields (e.g., repair credits, rent-backs, custom contingencies, fee allocations)."
+           },
             "confidence": {
               "type": "object",
               "properties": {
