@@ -90,13 +90,18 @@
               }
             },
             "brokers": {
-              "type": ["object", "null"],
-              "properties": {
-                "listingBrokerage": { "type": ["string", "null"] },
-                "listingAgent": { "type": ["string", "null"] },
-                "sellingBrokerage": { "type": ["string", "null"] },
-                "sellingAgent": { "type": ["string", "null"] }
-              }
+  "type": ["object", "null"],
+  "properties": {
+    "listingBrokerage": { "type": ["string", "null"] },
+    "listingAgent": { "type": ["string", "null"] },
+    "listingAgentEmail": { "type": ["string", "null"], "format": "email" },
+    "listingAgentPhone": { "type": ["string", "null"] },
+    "sellingBrokerage": { "type": ["string", "null"] },
+    "sellingAgent": { "type": ["string", "null"] },
+    "sellingAgentEmail": { "type": ["string", "null"], "format": "email" },
+    "sellingAgentPhone": { "type": ["string", "null"] }
+  },
+  "additionalProperties": false
             },
             "personalPropertyIncluded": {
               "type": ["array", "null"],
