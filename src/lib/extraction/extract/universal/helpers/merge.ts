@@ -1,6 +1,7 @@
 // src/lib/extraction/extract/universal/helpers/merge.ts
-// Version: 3.0.0 - 2026-01-05
-// REFACTORED: Role-based field allowlists — safe, simple, predictable merging
+// Version: 3.1.0 - 2026-01-05
+// ENHANCED: Prefer most complete nested objects (brokers, contingencies, etc.)
+//           Full support for additionalTerms accumulation
 
 import type { EnrichedPageExtraction } from '@/types/extraction';
 import { isEmpty } from '@/lib/grok/type-coercion';
@@ -18,7 +19,7 @@ const FIELD_ALLOWED_ROLES: Readonly<Record<string, readonly EnrichedPageExtracti
   propertyAddress: ['main_contract', 'counter_offer'],
   purchasePrice: ['main_contract', 'counter_offer'],
   earnestMoneyDeposit: ['main_contract', 'counter_offer'],
-  closing: ['main_contract', 'counter_offer'], // new field
+  closing: ['main_contract', 'counter_offer'],
   financing: ['main_contract', 'counter_offer'],
 
   // Contingencies and timelines
@@ -29,7 +30,7 @@ const FIELD_ALLOWED_ROLES: Readonly<Record<string, readonly EnrichedPageExtracti
   escrowHolder: ['main_contract', 'addendum'],
   closingCosts: ['main_contract', 'counter_offer', 'addendum'],
 
-  // Additional terms — usually from addenda
+  // Additional terms — usually from addenda/counters
   additionalTerms: ['main_contract', 'counter_offer', 'addendum'],
 
   // Broker information — ONLY from broker pages (fallback to main_contract)
@@ -51,9 +52,9 @@ export function stripMetadata(pageData: Record<string, any>): void {
  * 
  * Rules:
  * - Only fields explicitly allowed for the page's role are considered
- * - First non-null value wins
- * - Within the same role, higher page number wins (useful for multi-page RPA)
- * - No accidental overrides from wrong document types
+ * - Array fields (personalPropertyIncluded, additionalTerms): accumulate unique items
+ * - Nested objects (brokers, contingencies, etc.): prefer most complete version
+ * - All others: first non-null wins, or higher page number in same role
  */
 export function mergeWithAllowlist(
   enrichedPages: EnrichedPageExtraction[],
@@ -78,8 +79,17 @@ export function mergeWithAllowlist(
     'broker_info',
   ];
 
-  // Fields where we want to accumulate unique items across pages (instead of first-win)
+  // Fields where we want to accumulate unique items across pages
   const ARRAY_ACCUMULATE_FIELDS = ['personalPropertyIncluded', 'additionalTerms'] as const;
+
+  // Nested objects where we prefer the MOST COMPLETE version (most non-null fields)
+  const PREFER_MOST_COMPLETE_FIELDS = [
+    'brokers',
+    'contingencies',
+    'financing',
+    'closingCosts',
+    'closing',
+  ] as const;
 
   for (const role of roleOrder) {
     const pages = pagesByRole.get(role) || [];
@@ -102,7 +112,7 @@ export function mergeWithAllowlist(
           continue;
         }
 
-        // === SPECIAL HANDLING: Accumulate unique array items ===
+        // === ACCUMULATE UNIQUE ARRAY ITEMS ===
         if (ARRAY_ACCUMULATE_FIELDS.includes(key as any) && Array.isArray(value)) {
           const existing = Array.isArray(result[key]) ? result[key] : [];
           const newItems = value.filter((item: string) => typeof item === 'string' && item.trim() !== '');
@@ -110,7 +120,6 @@ export function mergeWithAllowlist(
           if (newItems.length === 0) continue;
 
           const combined = [...existing, ...newItems];
-          // Dedupe: keep first occurrence (preserves original wording/casing)
           const seen = new Set<string>();
           const uniqueCombined: string[] = [];
           for (const item of combined) {
@@ -122,10 +131,43 @@ export function mergeWithAllowlist(
           }
 
           result[key] = uniqueCombined;
-          provenance[key] = page.pageNumber; // Track latest contributing page
+          provenance[key] = page.pageNumber;
           log.push(
             `📑 ${key}: added ${newItems.length} new item(s) → total ${uniqueCombined.length} unique (from ${role} page ${page.pageNumber})`
           );
+          continue;
+        }
+
+        // === PREFER MOST COMPLETE NESTED OBJECT ===
+        if (PREFER_MOST_COMPLETE_FIELDS.includes(key as any) && value && typeof value === 'object' && !Array.isArray(value)) {
+          const current = result[key] || {};
+          const currentFilled = Object.values(current).filter(v => v != null).length;
+          const candidateFilled = Object.values(value).filter(v => v != null).length;
+
+          if (candidateFilled > currentFilled) {
+            result[key] = value;
+            provenance[key] = page.pageNumber;
+            log.push(
+              `⚡ ${key}: upgraded to more complete object (${candidateFilled} filled fields) from ${role} page ${page.pageNumber}`
+            );
+          }
+          // Optional: deep merge if same completeness (to combine partials)
+          else if (candidateFilled === currentFilled && candidateFilled > 0) {
+            // Simple shallow merge favoring non-null values
+            const merged = { ...current, ...value };
+            let changed = false;
+            for (const [subKey, subVal] of Object.entries(value)) {
+              if (subVal != null && current[subKey] == null) {
+                merged[subKey] = subVal;
+                changed = true;
+              }
+            }
+            if (changed) {
+              result[key] = merged;
+              provenance[key] = page.pageNumber;
+              log.push(`⚡ ${key}: deep merged additional fields from ${role} page ${page.pageNumber}`);
+            }
+          }
           continue;
         }
 
