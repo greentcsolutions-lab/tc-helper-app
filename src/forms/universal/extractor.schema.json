@@ -1,4 +1,7 @@
 {
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Real Estate Form Per-Page Extraction",
+  "description": "Array of extractions, one object per page in the document",
   "type": "array",
   "items": {
     "type": "object",
