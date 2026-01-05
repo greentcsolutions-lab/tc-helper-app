@@ -1,13 +1,12 @@
-// TC Helper App
 // src/lib/extraction/router.ts
-// Version: 3.0.0 - 2025-12-31
-// FIXED: Updated universalExtractor call signature (removed packageMetadata parameter)
+// Version: 4.0.0 - 2026-01-05
+// UPDATED: Switched to Mistral OCR extractor (reuses universal post-processor)
+// REMOVED: Legacy california/universal routing logic
 
-import { californiaExtractor } from './extract/california/index';
-import { universalExtractor } from './extract/universal/index';
+import { mistralExtractor } from '@/lib/extraction/mistral';
 
 import type { LabeledCriticalImage } from '@/types/classification';
-import type { UniversalExtractionResult } from '../../types/extraction';
+import type { UniversalExtractionResult } from '@/types/extraction';
 
 export interface RouterInput {
   criticalImages: LabeledCriticalImage[];
@@ -35,22 +34,19 @@ export interface RouterOutput {
     description?: string;
   }>;
   needsReview: boolean;
-  route: 'california' | 'universal' | 'california-fallback-universal';
+  route: 'mistral' | 'universal-mistral';
 }
 
 /**
- * Routes classification results to the appropriate extractor
- * Does NOT run classification — only receives results and decides strategy
+ * Routes classification results to the Mistral extractor
  */
 export async function route(input: RouterInput): Promise<RouterOutput> {
-  const { criticalImages, packageMetadata, highDpiPages, classificationMetadata } = input;
-  const { detectedFormCodes } = packageMetadata;
+  const { criticalImages, highDpiPages, classificationMetadata } = input;
 
   console.log('[router] Received classification results');
-  console.log('[router] Detected forms:', detectedFormCodes.join(', ') || 'none');
   console.log('[router] Critical images:', criticalImages.length);
 
-  // Map critical images to high-DPI versions
+  // Map critical images to high-DPI versions (200 DPI PNGs)
   const highResCriticalImages: LabeledCriticalImage[] = criticalImages.map((crit) => {
     const highRes = highDpiPages.find((p) => p.pageNumber === crit.pageNumber);
     if (!highRes) {
@@ -60,33 +56,18 @@ export async function route(input: RouterInput): Promise<RouterOutput> {
   });
 
   console.log('[router] Mapped to high-DPI images:', highResCriticalImages.length);
+  console.log('[router] Routing to Mistral extractor');
 
-  // ROUTING DECISION: Determine which extractor to use
-  const californiaFormCodes = ['RPA', 'SCO', 'SMCO', 'BCO', 'ADM', 'PRBS', 'AD', 'ZIP'];
-  const isCalifornia = detectedFormCodes.some((code) => californiaFormCodes.includes(code));
-
-  // ROUTE 1: California-specific extraction (if enabled and detected)
-  if (isCalifornia && highResCriticalImages.length > 0) {
-    console.log('[router] Routing to California extractor');
-    console.log('[router] California extractor disabled, using universal fallback');
-  }
-
-  // ROUTE 2: Universal extraction (fallback or primary)
-  console.log('[router] Routing to universal extractor');
-  
-  // FIXED v3.0.0: universalExtractor now only takes 2 parameters:
-  // 1. criticalImages (with high-DPI base64)
-  // 2. classificationMetadata (contains criticalPageNumbers, pageLabels, packageMetadata)
-  const universalResult = await universalExtractor(
+  const mistralResult = await mistralExtractor(
     highResCriticalImages,
     classificationMetadata
   );
 
   return {
-    universal: universalResult.universal,
-    details: universalResult.details,
-    timelineEvents: universalResult.timelineEvents,
-    needsReview: universalResult.needsReview,
-    route: isCalifornia ? 'california-fallback-universal' : 'universal',
+    universal: mistralResult.universal,
+    details: mistralResult.details,
+    timelineEvents: mistralResult.timelineEvents,
+    needsReview: mistralResult.needsReview,
+    route: 'mistral',
   };
 }

@@ -1,9 +1,4 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://yourapp.com/schemas/universal-classifier.schema.json",
-  "title": "Universal U.S. Real Estate Page Classifier Output",
-  "description": "Version 3.1.0 - 2025-12-29 - Universal terminology for all U.S. states",
-  "type": "object",
   "properties": {
     "state": {
       "type": ["string", "null"],

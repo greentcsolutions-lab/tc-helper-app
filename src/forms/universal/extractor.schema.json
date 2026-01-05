@@ -1,10 +1,5 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.com/schemas/universal/extractor.schema.json",
-  "title": "Universal U.S. Real Estate Transaction Extraction (Pure Data Extraction)",
-  "description": "Version 7.0.0 - 2026-01-01 - Added 'sources' field to confidence object for extraction accountability",
   "type": "array",
-  "minItems": 1,
   "items": {
     "type": "object",
     "properties": {
@@ -13,51 +8,52 @@
         "items": { "type": "string", "minLength": 1 },
         "minItems": 1,
         "maxItems": 6,
-        "example": ["John Smith", "Jane Doe"]
+        "description": "Array of buyer full names"
       },
       "sellerNames": {
         "type": ["array", "null"],
         "items": { "type": "string" },
         "minItems": 1,
         "maxItems": 6,
-        "example": ["Robert Johnson"]
+        "description": "Array of seller full names"
       },
       "propertyAddress": {
         "type": ["string", "null"],
         "minLength": 10,
-        "example": "123 Main Street, Los Angeles, CA 90210"
+        "description": "Full property address"
       },
       "purchasePrice": {
         "type": ["number", "null"],
         "minimum": 0,
-        "example": 750000
+        "description": "Purchase price in USD"
       },
       "earnestMoneyDeposit": {
         "type": ["object", "null"],
         "properties": {
-          "amount": { "type": ["number", "null"], "example": 15000 },
-          "holder": { "type": ["string", "null"], "example": "First American Title" }
-        }
+          "amount": { "type": ["number", "null"] },
+          "holder": { "type": ["string", "null"] }
+        },
+        "description": "Earnest money details"
       },
       "closingDate": {
         "type": ["string", "number", "null"],
-        "example": "2024-03-15"
+        "description": "Closing date (prefer string like YYYY-MM-DD)"
       },
       "financing": {
         "type": ["object", "null"],
         "properties": {
-          "isAllCash": { "type": ["boolean", "null"], "example": false },
-          "loanType": { "type": ["string", "null"], "example": "Conventional" },
-          "loanAmount": { "type": ["number", "null"], "example": 600000 }
+          "isAllCash": { "type": ["boolean", "null"] },
+          "loanType": { "type": ["string", "null"] },
+          "loanAmount": { "type": ["number", "null"] }
         }
       },
       "contingencies": {
         "type": ["object", "null"],
         "properties": {
-          "inspectionDays": { "type": ["number", "string", "null"], "example": 17 },
-          "appraisalDays": { "type": ["number", "string", "null"], "example": 17 },
-          "loanDays": { "type": ["number", "string", "null"], "example": 21 },
-          "saleOfBuyerProperty": { "type": ["boolean", "null"], "example": false }
+          "inspectionDays": { "type": ["number", "string", "null"] },
+          "appraisalDays": { "type": ["number", "string", "null"] },
+          "loanDays": { "type": ["number", "string", "null"] },
+          "saleOfBuyerProperty": { "type": ["boolean", "null"] }
         }
       },
       "closingCosts": {
@@ -65,46 +61,40 @@
         "properties": {
           "buyerPays": { 
             "type": ["array", "null"],
-            "items": { "type": "string" },
-            "example": ["Escrow fees", "Title insurance"]
+            "items": { "type": "string" }
           },
           "sellerPays": { 
             "type": ["array", "null"],
-            "items": { "type": "string" },
-            "example": ["Transfer tax", "HOA documents"]
+            "items": { "type": "string" }
           },
-          "sellerCreditAmount": { "type": ["number", "null"], "example": 5000 }
+          "sellerCreditAmount": { "type": ["number", "null"] }
         }
       },
       "brokers": {
         "type": ["object", "null"],
         "properties": {
-          "listingBrokerage": { "type": ["string", "null"], "example": "Keller Williams" },
-          "listingAgent": { "type": ["string", "null"], "example": "Sarah Johnson" },
-          "sellingBrokerage": { "type": ["string", "null"], "example": "Compass Real Estate" },
-          "sellingAgent": { "type": ["string", "null"], "example": "Michael Chen" }
+          "listingBrokerage": { "type": ["string", "null"] },
+          "listingAgent": { "type": ["string", "null"] },
+          "sellingBrokerage": { "type": ["string", "null"] },
+          "sellingAgent": { "type": ["string", "null"] }
         }
       },
       "personalPropertyIncluded": {
         "type": ["array", "null"],
-        "items": { "type": "string" },
-        "example": ["Refrigerator", "Washer/Dryer", "Window coverings"]
+        "items": { "type": "string" }
       },
       "buyerSignatureDates": {
         "type": ["array", "null"],
         "items": { "type": "string" },
-        "description": "Buyer signature dates EXACTLY as written on THIS page. Do NOT normalize format. Extract ALL buyer signatures visible. Examples: '1/15/24', '01-15-2024', 'January 15, 2024'",
-        "example": ["1/15/24", "1/15/24"]
+        "description": "Buyer signature dates EXACTLY as written on THIS page. Do NOT normalize format. Extract ALL visible."
       },
       "sellerSignatureDates": {
         "type": ["array", "null"],
         "items": { "type": "string" },
-        "description": "Seller signature dates EXACTLY as written on THIS page. Do NOT normalize format. Extract ALL seller signatures visible. Examples: '1/10/24', '01-10-2024', 'January 10, 2024'",
-        "example": ["1/10/24"]
+        "description": "Seller signature dates EXACTLY as written on THIS page. Do NOT normalize format. Extract ALL visible."
       },
       "escrowHolder": {
-        "type": ["string", "null"],
-        "example": "First American Title Company"
+        "type": ["string", "null"]
       },
       "confidence": {
         "type": "object",
@@ -127,12 +117,7 @@
           "sources": {
             "type": "object",
             "additionalProperties": { "type": "string" },
-            "description": "REQUIRED: Location on THIS PAGE where each non-null field was found. Prevents hallucination by forcing citation. Example: { 'propertyAddress': 'header table, top 10% of page', 'purchasePrice': 'Section 1A, bold text' }",
-            "example": {
-              "propertyAddress": "top header table labeled 'Property Address'",
-              "purchasePrice": "Section 1A, bold number",
-              "buyerNames": "Print Name field below buyer signature block"
-            }
+            "description": "REQUIRED: Location on THIS PAGE where each non-null field was found (e.g., 'header table, top 10% of page'). Forces citation to reduce hallucinations."
           }
         },
         "required": ["overall", "sources"]
