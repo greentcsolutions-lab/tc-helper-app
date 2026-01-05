@@ -1,8 +1,6 @@
 // src/lib/extraction/mistral/mistralClient.ts
-// Version: 1.0.0 - 2026-01-05
-// Raw client for Mistral /v1/ocr endpoint
-// Handles single chunk request + retry logic
-// Parallel calls are orchestrated in index.ts
+// Version: 1.0.1 - 2026-01-05
+// ADDED: Detailed logging + fixed TS error in catch block
 
 import { mistralJsonSchema } from './schema';
 
@@ -15,7 +13,6 @@ if (!API_KEY) {
 
 export interface MistralChunkResponse {
   extractions: Array<{
-    // Matches PerPageExtraction from types/extraction.ts + confidence.sources
     buyerNames?: string[] | null;
     sellerNames?: string[] | null;
     propertyAddress?: string | null;
@@ -51,17 +48,13 @@ export interface MistralChunkResponse {
     confidence: {
       overall: number;
       fieldScores?: Record<string, number>;
-      sources: Record<string, string>; // REQUIRED by schema
+      sources: Record<string, string>;
     };
   }>;
 }
 
-/**
- * Calls Mistral OCR with structured annotation for one chunk
- * Retries up to 3 times on transient errors (5xx, timeout, rate limit)
- */
 export async function callMistralChunk(
-  pdfUrl: string,  // ← Now a public URL string
+  pdfUrl: string,
   expectedPageCount: number
 ): Promise<MistralChunkResponse> {
 
@@ -69,7 +62,7 @@ export async function callMistralChunk(
     model: 'mistral-ocr-latest',
     document: {
       type: 'document_url',
-      document_url: pdfUrl,  // ← Direct URL (plain string – correct!)
+      document_url: pdfUrl,
     },
     document_annotation_format: {
       type: 'json_schema',
@@ -77,7 +70,7 @@ export async function callMistralChunk(
     },
   };
 
-  let lastError: any;
+  let lastError: unknown;
   const maxRetries = 3;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -94,10 +87,9 @@ export async function callMistralChunk(
       if (!response.ok) {
         const errorText = await response.text().catch(() => '');
         if (response.status >= 500 || response.status === 429) {
-          // Transient: retry
           lastError = new Error(`Mistral API error ${response.status}: ${errorText}`);
           if (attempt < maxRetries) {
-            await new Promise((resolve) => setTimeout(resolve, 1000 * attempt)); // exponential backoff lite
+            await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
             continue;
           }
         }
@@ -106,7 +98,18 @@ export async function callMistralChunk(
 
       const data = await response.json();
 
-      // Basic validation: must have extractions array matching page count
+      // 🔍 DEBUG LOGGING
+      console.log('[mistralClient] === RAW MISTRAL RESPONSE ===');
+      console.log('[mistralClient] Full response keys:', Object.keys(data));
+      console.log('[mistralClient] Has document_annotation:', 'document_annotation' in data);
+      console.log('[mistralClient] document_annotation type:', typeof data.document_annotation);
+      console.log('[mistralClient] document_annotation value:', JSON.stringify(data.document_annotation, null, 2));
+
+      if (data.pages) {
+        console.log(`[mistralClient] OCR pages received: ${data.pages.length}`);
+      }
+
+      // Existing validation
       if (!data.document_annotation?.extractions || !Array.isArray(data.document_annotation.extractions)) {
         throw new Error('Invalid Mistral response: missing or invalid document_annotation.extractions');
       }
@@ -118,8 +121,19 @@ export async function callMistralChunk(
       }
 
       return { extractions: data.document_annotation.extractions };
-    } catch (err) {
-      lastError = err;
+    } catch (err: unknown) {
+      // ← Explicitly typed as unknown
+      let message = 'Unknown error';
+      if (err instanceof Error) {
+        message = err.message;
+      } else if (typeof err === 'string') {
+        message = err;
+      }
+
+      lastError = new Error(message);
+
+      console.log(`[mistralClient] Retry ${attempt + 1}/${maxRetries} after error: ${message}`);
+
       if (attempt < maxRetries) {
         await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
         continue;
@@ -127,5 +141,9 @@ export async function callMistralChunk(
     }
   }
 
-  throw lastError || new Error('Unknown error calling Mistral OCR');
+  // Throw the last captured error safely
+  if (lastError instanceof Error) {
+    throw lastError;
+  }
+  throw new Error('Unknown error calling Mistral OCR');
 }
