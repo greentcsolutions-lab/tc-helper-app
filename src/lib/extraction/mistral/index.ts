@@ -1,6 +1,7 @@
 // src/lib/extraction/mistral/index.ts
-// Version: 2.1.0 - 2026-01-05
-// Fully switched to Vercel Blob public URLs only (no base64 fallback)
+// Version: 2.2.0 - 2026-01-05
+// UPDATED: Now processes one page per Mistral API call for strict per-page extractions
+// This ensures 1:1 mapping and full compatibility with existing post-processor logic
 
 import { assemblePdfChunk, ChunkImage } from './assemblePdf';
 import { callMistralChunk } from './mistralClient';
@@ -57,17 +58,17 @@ export async function mistralExtractor(
     base64: img.base64,
   }));
 
-  // Chunk into ≤8 pages
+  // Chunk into single pages only (1 page per API call)
   const chunks: ChunkImage[][] = [];
-  for (let i = 0; i < chunkImages.length; i += 8) {
-    chunks.push(chunkImages.slice(i, i + 8));
+  for (let i = 0; i < chunkImages.length; i += 1) {
+    chunks.push([chunkImages[i]]);
   }
 
-  console.log(`[mistral] Created ${chunks.length} chunk(s) (max 8 pages each)`);
+  console.log(`[mistral] Created ${chunks.length} chunk(s) (1 page each)`);
 
   // Process chunks in parallel
   const chunkPromises = chunks.map(async (chunk, chunkIndex) => {
-    console.log(`[mistral] Processing chunk ${chunkIndex + 1}/${chunks.length} (${chunk.length} pages)`);
+    console.log(`[mistral] Processing chunk ${chunkIndex + 1}/${chunks.length} (${chunk.length} page)`);
 
     // Assemble PDF → upload to Vercel Blob → get public URL + mapping
     const { url: pdfUrl, pageMapping } = await assemblePdfChunk(chunk, {
