@@ -1,6 +1,6 @@
 // src/lib/extraction/mistral/mistralClient.ts
-// Version: 1.0.1 - 2026-01-05
-// ADDED: Detailed logging + fixed TS error in catch block
+// Version: 1.0.2 - 2026-01-05
+// FIXED: Handle document_annotation returned as JSON string
 
 import { mistralJsonSchema } from './schema';
 
@@ -109,18 +109,31 @@ export async function callMistralChunk(
         console.log(`[mistralClient] OCR pages received: ${data.pages.length}`);
       }
 
-      // Existing validation
-      if (!data.document_annotation?.extractions || !Array.isArray(data.document_annotation.extractions)) {
+      // === FIXED PARSING: Handle document_annotation as string or object ===
+      let annotationObj: any;
+
+      if (typeof data.document_annotation === 'string') {
+        try {
+          annotationObj = JSON.parse(data.document_annotation);
+        } catch (parseErr) {
+          throw new Error('Invalid Mistral response: document_annotation is not valid JSON string');
+        }
+      } else {
+        annotationObj = data.document_annotation;
+      }
+
+      // Existing validation (now works on parsed object)
+      if (!annotationObj?.extractions || !Array.isArray(annotationObj.extractions)) {
         throw new Error('Invalid Mistral response: missing or invalid document_annotation.extractions');
       }
 
-      if (data.document_annotation.extractions.length !== expectedPageCount) {
+      if (annotationObj.extractions.length !== expectedPageCount) {
         console.warn(
-          `[mistralClient] Page count mismatch: expected ${expectedPageCount}, got ${data.document_annotation.extractions.length}`
+          `[mistralClient] Page count mismatch: expected ${expectedPageCount}, got ${annotationObj.extractions.length}`
         );
       }
 
-      return { extractions: data.document_annotation.extractions };
+      return { extractions: annotationObj.extractions };
     } catch (err: unknown) {
       // ← Explicitly typed as unknown
       let message = 'Unknown error';
