@@ -107,29 +107,17 @@ export async function callMistralChunk(
       const data = await response.json();
 
       // Basic validation: must have extractions array matching page count
-      // Handle both possible shapes:
-// 1. Root array → document_annotation is directly the array
-// 2. Root object with .extractions → legacy/wrapped format (if you ever change schema)
+      if (!data.document_annotation?.extractions || !Array.isArray(data.document_annotation.extractions)) {
+        throw new Error('Invalid Mistral response: missing or invalid document_annotation.extractions');
+      }
 
-let extractions;
+      if (data.document_annotation.extractions.length !== expectedPageCount) {
+        console.warn(
+          `[mistralClient] Page count mismatch: expected ${expectedPageCount}, got ${data.document_annotation.extractions.length}`
+        );
+      }
 
-if (Array.isArray(data.document_annotation)) {
-  extractions = data.document_annotation;
-} else if (data.document_annotation?.extractions && Array.isArray(data.document_annotation.extractions)) {
-  extractions = data.document_annotation.extractions;
-} else {
-  throw new Error('Invalid Mistral response: missing or invalid document_annotation (expected array or {extractions: array})');
-}
-
-if (extractions.length !== expectedPageCount) {
-  console.warn(
-    `[mistralClient] Page count mismatch: expected ${expectedPageCount}, got ${extractions.length}`
-  );
-}
-
-return { extractions };
-
-      
+      return { extractions: data.document_annotation.extractions };
     } catch (err) {
       lastError = err;
       if (attempt < maxRetries) {

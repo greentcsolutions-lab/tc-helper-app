@@ -2,114 +2,121 @@
   "name": "RealEstateFormPerPageExtractions",
   "strict": true,
   "schema": {
-    "type": "array",
-    "items": {
-      "type": "object",
-      "properties": {
-        "buyerNames": {
-          "type": ["array", "null"],
-          "items": { "type": "string", "minLength": 1 },
-          "minItems": 1,
-          "maxItems": 6,
-          "description": "Array of buyer full names"
-        },
-        "sellerNames": {
-          "type": ["array", "null"],
-          "items": { "type": "string" },
-          "minItems": 1,
-          "maxItems": 6,
-          "description": "Array of seller full names"
-        },
-        "propertyAddress": {
-          "type": ["string", "null"],
-          "minLength": 10,
-          "description": "Full property address"
-        },
-        "purchasePrice": {
-          "type": ["number", "null"],
-          "minimum": 0,
-          "description": "Purchase price in USD"
-        },
-        "earnestMoneyDeposit": {
-          "type": ["object", "null"],
-          "properties": {
-            "amount": { "type": ["number", "null"] },
-            "holder": { "type": ["string", "null"] }
-          },
-          "description": "Earnest money details"
-        },
-        "closingDate": {
-          "type": ["string", "number", "null"],
-          "description": "Closing date (prefer string like YYYY-MM-DD)"
-        },
-        "financing": {
-          "type": ["object", "null"],
-          "properties": {
-            "isAllCash": { "type": ["boolean", "null"] },
-            "loanType": { "type": ["string", "null"] },
-            "loanAmount": { "type": ["number", "null"] }
-          }
-        },
-        "contingencies": {
-          "type": ["object", "null"],
-          "properties": {
-            "inspectionDays": { "type": ["number", "string", "null"] },
-            "appraisalDays": { "type": ["number", "string", "null"] },
-            "loanDays": { "type": ["number", "string", "null"] },
-            "saleOfBuyerProperty": { "type": ["boolean", "null"] }
-          }
-        },
-        "closingCosts": {
-          "type": ["object", "null"],
-          "properties": {
-            "buyerPays": { "type": ["array", "null"], "items": { "type": "string" } },
-            "sellerPays": { "type": ["array", "null"], "items": { "type": "string" } },
-            "sellerCreditAmount": { "type": ["number", "null"] }
-          }
-        },
-        "brokers": {
-          "type": ["object", "null"],
-          "properties": {
-            "listingBrokerage": { "type": ["string", "null"] },
-            "listingAgent": { "type": ["string", "null"] },
-            "sellingBrokerage": { "type": ["string", "null"] },
-            "sellingAgent": { "type": ["string", "null"] }
-          }
-        },
-        "personalPropertyIncluded": {
-          "type": ["array", "null"],
-          "items": { "type": "string" }
-        },
-        "buyerSignatureDates": {
-          "type": ["array", "null"],
-          "items": { "type": "string" },
-          "description": "Buyer signature dates EXACTLY as written on THIS page. Do NOT normalize format. Extract ALL visible."
-        },
-        "sellerSignatureDates": {
-          "type": ["array", "null"],
-          "items": { "type": "string" },
-          "description": "Seller signature dates EXACTLY as written on THIS page. Do NOT normalize format. Extract ALL visible."
-        },
-        "escrowHolder": {
-          "type": ["string", "null"]
-        },
-        "confidence": {
+    "type": "object",
+    "properties": {
+      "extractions": {
+        "type": "array",
+        "items": {
           "type": "object",
           "properties": {
-            "overall": { "type": "integer", "minimum": 0, "maximum": 100 },
-            "fieldScores": {
-              "type": "object",
-              "additionalProperties": { "type": "integer", "minimum": 0, "maximum": 100 }
+            "buyerNames": {
+              "type": ["array", "null"],
+              "items": { "type": "string", "minLength": 1 },
+              "minItems": 1,
+              "maxItems": 6,
+              "description": "Array of buyer full names"
             },
-            "sources": {
+            "sellerNames": {
+              "type": ["array", "null"],
+              "items": { "type": "string" },
+              "minItems": 1,
+              "maxItems": 6,
+              "description": "Array of seller full names"
+            },
+            "propertyAddress": {
+              "type": ["string", "null"],
+              "minLength": 10,
+              "description": "Full property address"
+            },
+            "purchasePrice": {
+              "type": ["number", "null"],
+              "minimum": 0,
+              "description": "Purchase price in USD"
+            },
+            "earnestMoneyDeposit": {
+              "type": ["object", "null"],
+              "properties": {
+                "amount": { "type": ["number", "null"] },
+                "holder": { "type": ["string", "null"] }
+              },
+              "description": "Earnest money details"
+            },
+            "closingDate": {
+              "type": ["string", "number", "null"],
+              "description": "Closing date (prefer string like YYYY-MM-DD)"
+            },
+            "financing": {
+              "type": ["object", "null"],
+              "properties": {
+                "isAllCash": { "type": ["boolean", "null"] },
+                "loanType": { "type": ["string", "null"] },
+                "loanAmount": { "type": ["number", "null"] }
+              }
+            },
+            "contingencies": {
+              "type": ["object", "null"],
+              "properties": {
+                "inspectionDays": { "type": ["number", "string", "null"] },
+                "appraisalDays": { "type": ["number", "string", "null"] },
+                "loanDays": { "type": ["number", "string", "null"] },
+                "saleOfBuyerProperty": { "type": ["boolean", "null"] }
+              }
+            },
+            "closingCosts": {
+              "type": ["object", "null"],
+              "properties": {
+                "buyerPays": { "type": ["array", "null"], "items": { "type": "string" } },
+                "sellerPays": { "type": ["array", "null"], "items": { "type": "string" } },
+                "sellerCreditAmount": { "type": ["number", "null"] }
+              }
+            },
+            "brokers": {
+              "type": ["object", "null"],
+              "properties": {
+                "listingBrokerage": { "type": ["string", "null"] },
+                "listingAgent": { "type": ["string", "null"] },
+                "sellingBrokerage": { "type": ["string", "null"] },
+                "sellingAgent": { "type": ["string", "null"] }
+              }
+            },
+            "personalPropertyIncluded": {
+              "type": ["array", "null"],
+              "items": { "type": "string" }
+            },
+            "buyerSignatureDates": {
+              "type": ["array", "null"],
+              "items": { "type": "string" },
+              "description": "Buyer signature dates EXACTLY as written on THIS page. Do NOT normalize format. Extract ALL visible."
+            },
+            "sellerSignatureDates": {
+              "type": ["array", "null"],
+              "items": { "type": "string" },
+              "description": "Seller signature dates EXACTLY as written on THIS page. Do NOT normalize format. Extract ALL visible."
+            },
+            "escrowHolder": {
+              "type": ["string", "null"]
+            },
+            "confidence": {
               "type": "object",
-              "additionalProperties": { "type": "string" }
+              "properties": {
+                "overall": { "type": "integer", "minimum": 0, "maximum": 100 },
+                "fieldScores": {
+                  "type": "object",
+                  "additionalProperties": { "type": "integer", "minimum": 0, "maximum": 100 }
+                },
+                "sources": {
+                  "type": "object",
+                  "additionalProperties": { "type": "string" }
+                }
+              },
+              "required": ["overall", "sources"]
             }
           },
-          "required": ["overall", "sources"]
+          "required": ["confidence"]
         }
-      },
-      "required": ["confidence"]
-    }
+      }
+    },
+    "required": ["extractions"],
+    "additionalProperties": false
   }
 }
