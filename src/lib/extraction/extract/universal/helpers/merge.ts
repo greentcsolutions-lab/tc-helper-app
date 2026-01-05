@@ -1,7 +1,7 @@
 // src/lib/extraction/extract/universal/helpers/merge.ts
-// Version: 3.1.0 - 2026-01-05
-// ENHANCED: Prefer most complete nested objects (brokers, contingencies, etc.)
-//           Full support for additionalTerms accumulation
+// Version: 3.3.0 - 2026-01-05
+// FIXED: Brokers (and other nested objects) now fully protected from null overwrites
+//         Stronger "most complete" logic with null/empty protection
 
 import type { EnrichedPageExtraction } from '@/types/extraction';
 import { isEmpty } from '@/lib/grok/type-coercion';
@@ -22,7 +22,7 @@ const FIELD_ALLOWED_ROLES: Readonly<Record<string, readonly EnrichedPageExtracti
   closing: ['main_contract', 'counter_offer'],
   financing: ['main_contract', 'counter_offer'],
 
-  // Contingencies and timelines
+  // Contingencies and timelines — allowed from main and counters
   contingencies: ['main_contract', 'counter_offer'],
 
   // Supplemental terms (often from addenda)
@@ -49,12 +49,6 @@ export function stripMetadata(pageData: Record<string, any>): void {
 
 /**
  * Unified merge function used for ALL roles.
- * 
- * Rules:
- * - Only fields explicitly allowed for the page's role are considered
- * - Array fields (personalPropertyIncluded, additionalTerms): accumulate unique items
- * - Nested objects (brokers, contingencies, etc.): prefer most complete version
- * - All others: first non-null wins, or higher page number in same role
  */
 export function mergeWithAllowlist(
   enrichedPages: EnrichedPageExtraction[],
@@ -82,10 +76,9 @@ export function mergeWithAllowlist(
   // Fields where we want to accumulate unique items across pages
   const ARRAY_ACCUMULATE_FIELDS = ['personalPropertyIncluded', 'additionalTerms'] as const;
 
-  // Nested objects where we prefer the MOST COMPLETE version (most non-null fields)
+  // Nested objects where we prefer the MOST COMPLETE version (most non-null/non-empty fields)
   const PREFER_MOST_COMPLETE_FIELDS = [
     'brokers',
-    'contingencies',
     'financing',
     'closingCosts',
     'closing',
@@ -97,7 +90,6 @@ export function mergeWithAllowlist(
 
     log.push(`[merge] Processing ${pages.length} ${role} page(s)`);
 
-    // Sort pages by pageNumber ascending so higher numbers can contribute later
     for (const page of pages.sort((a, b) => a.pageNumber - b.pageNumber)) {
       const pageData: Record<string, any> = { ...page };
       stripMetadata(pageData);
@@ -105,7 +97,7 @@ export function mergeWithAllowlist(
       for (const [key, value] of Object.entries(pageData)) {
         if (value == null || isEmpty(value)) continue;
 
-        // === SAFETY CHECK: Is this field allowed from this role? ===
+        // === SAFETY CHECK ===
         const allowedRoles = FIELD_ALLOWED_ROLES[key];
         if (!allowedRoles || !allowedRoles.includes(role)) {
           log.push(`⊘ BLOCKED ${key} from ${role} page ${page.pageNumber} (not allowed)`);
@@ -138,36 +130,61 @@ export function mergeWithAllowlist(
           continue;
         }
 
-        // === PREFER MOST COMPLETE NESTED OBJECT ===
+        // === CONTINGENCIES: Field-level override (non-null wins over null) ===
+        if (key === 'contingencies' && value && typeof value === 'object' && !Array.isArray(value)) {
+          const current = result[key] || {};
+          let merged = { ...current };
+          let changed = false;
+
+          for (const [subKey, subVal] of Object.entries(value)) {
+            if (subVal != null && current[subKey] == null) {
+              merged[subKey] = subVal;
+              changed = true;
+            }
+          }
+
+          if (changed) {
+            result[key] = merged;
+            provenance[key] = page.pageNumber;
+            log.push(`⚡ contingencies: updated fields from ${role} page ${page.pageNumber}`);
+          }
+          continue;
+        }
+
+        // === PREFER MOST COMPLETE NESTED OBJECT (null/empty never overwrites real data) ===
         if (PREFER_MOST_COMPLETE_FIELDS.includes(key as any) && value && typeof value === 'object' && !Array.isArray(value)) {
           const current = result[key] || {};
-          const currentFilled = Object.values(current).filter(v => v != null).length;
-          const candidateFilled = Object.values(value).filter(v => v != null).length;
+          const currentFilled = Object.values(current).filter(v => v != null && v !== '').length;
+          const candidateFilled = Object.values(value).filter(v => v != null && v !== '').length;
+
+          let shouldUpdate = false;
+          let newValue = { ...current };
 
           if (candidateFilled > currentFilled) {
-            result[key] = value;
-            provenance[key] = page.pageNumber;
-            log.push(
-              `⚡ ${key}: upgraded to more complete object (${candidateFilled} filled fields) from ${role} page ${page.pageNumber}`
-            );
-          }
-          // Optional: deep merge if same completeness (to combine partials)
-          else if (candidateFilled === currentFilled && candidateFilled > 0) {
-            // Simple shallow merge favoring non-null values
-            const merged = { ...current, ...value };
-            let changed = false;
+            // More complete → take full object
+            newValue = { ...value };
+            shouldUpdate = true;
+            log.push(`⚡ ${key}: upgraded to more complete object (${candidateFilled} filled fields) from ${role} page ${page.pageNumber}`);
+          } else {
+            // Same or less complete — merge only non-null/non-empty fields
+            let mergedCount = 0;
             for (const [subKey, subVal] of Object.entries(value)) {
-              if (subVal != null && current[subKey] == null) {
-                merged[subKey] = subVal;
-                changed = true;
+              if (subVal != null && subVal !== '' && (current[subKey] == null || current[subKey] === '')) {
+                newValue[subKey] = subVal;
+                mergedCount++;
               }
             }
-            if (changed) {
-              result[key] = merged;
-              provenance[key] = page.pageNumber;
-              log.push(`⚡ ${key}: deep merged additional fields from ${role} page ${page.pageNumber}`);
+            if (mergedCount > 0) {
+              shouldUpdate = true;
+              log.push(`⚡ ${key}: merged ${mergedCount} additional non-null fields from ${role} page ${page.pageNumber}`);
             }
           }
+
+          if (shouldUpdate) {
+            result[key] = newValue;
+            provenance[key] = page.pageNumber;
+          }
+
           continue;
         }
 
