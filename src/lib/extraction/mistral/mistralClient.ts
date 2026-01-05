@@ -61,24 +61,20 @@ export interface MistralChunkResponse {
  * Retries up to 3 times on transient errors (5xx, timeout, rate limit)
  */
 export async function callMistralChunk(
-  pdfBase64: string,
+  pdfUrl: string,  // ← Now a public URL string
   expectedPageCount: number
 ): Promise<MistralChunkResponse> {
-  const dataUri = `data:application/pdf;base64,${pdfBase64}`;
 
   const payload = {
     model: 'mistral-ocr-latest',
     document: {
-        type: 'document_url',
-         document_url: dataUri,  // plain string
-        },
+      type: 'document_url',
+      document_url: pdfUrl,  // ← Direct URL (plain string – correct!)
+    },
     document_annotation_format: {
       type: 'json_schema',
       json_schema: mistralJsonSchema,
     },
-    // Optional enhancements – can tune later
-    // include_image_base64: false,
-    // table_format: 'html',
   };
 
   let lastError: any;

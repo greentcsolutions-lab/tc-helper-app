@@ -1,9 +1,9 @@
 // src/lib/extraction/mistral/assemblePdf.ts
-// Version: 1.0.0 - 2026-01-05
-// Helper: Takes a chunk of critical images (sorted, ≤8 pages) and builds a multi-page PDF
-// Returns pure base64 string (no data: prefix) + mapping for provenance
+// Version: 2.0.1 - 2026-01-05
+// Uploads assembled PDF to Vercel Blob, returns public URL + mapping
 
 import { PDFDocument, PageSizes } from 'pdf-lib';
+import { put, PutBlobResult } from '@vercel/blob'; // ← Correct import
 
 export interface ChunkImage {
   pageNumber: number;
@@ -12,42 +12,42 @@ export interface ChunkImage {
   base64: string; // full data:image/png;base64,... or pure base64
 }
 
-export interface AssembledPdf {
-  pdfBase64: string; // pure base64, ready for data URI
+export interface AssembledPdfBlob {
+  url: string;
+  blob: PutBlobResult;
   pageMapping: Array<{
-    chunkPageIndex: number; // 0-based index in this PDF
+    chunkPageIndex: number;
     originalPageNumber: number;
     label: string;
     pageRole: string;
   }>;
 }
 
-/**
- * Assembles a chunk of ≤8 PNG images into a single multi-page PDF
- * Preserves original 200 DPI quality, embeds as full-page images
- */
-export async function assemblePdfChunk(images: ChunkImage[]): Promise<AssembledPdf> {
+export async function assemblePdfChunk(
+  images: ChunkImage[],
+  options: {
+    pathname?: string;
+    addRandomSuffix?: boolean;
+  } = {}
+): Promise<AssembledPdfBlob> {
   if (images.length === 0) throw new Error('Empty chunk');
   if (images.length > 8) throw new Error(`Chunk too large: ${images.length} pages (max 8)`);
 
   const pdfDoc = await PDFDocument.create();
 
-  const pageMapping: AssembledPdf['pageMapping'] = [];
+  const pageMapping: AssembledPdfBlob['pageMapping'] = [];
 
   for (let i = 0; i < images.length; i++) {
     const img = images[i];
 
-    // Strip data URI prefix if present
     const pngBase64 = img.base64.replace(/^data:image\/png;base64,/, '');
     const pngBytes = Uint8Array.from(atob(pngBase64), (c) => c.charCodeAt(0));
 
     const pngImage = await pdfDoc.embedPng(pngBytes);
 
-    // Use Letter size (standard for real estate forms) – image will be scaled to fit
     const page = pdfDoc.addPage(PageSizes.Letter);
     const { width, height } = page.getSize();
 
-    // Scale image to fit page while preserving aspect ratio
     const scale = Math.min(width / pngImage.width, height / pngImage.height);
     const scaledWidth = pngImage.width * scale;
     const scaledHeight = pngImage.height * scale;
@@ -67,8 +67,23 @@ export async function assemblePdfChunk(images: ChunkImage[]): Promise<AssembledP
     });
   }
 
+  // Save PDF as Uint8Array → convert to Buffer for type safety
   const pdfBytes = await pdfDoc.save({ useObjectStreams: false });
-  const pdfBase64 = Buffer.from(pdfBytes).toString('base64');
+  const pdfBuffer = Buffer.from(pdfBytes); // ← This fixes the TS error
 
-  return { pdfBase64, pageMapping };
+  // Generate pathname
+  const defaultPath = `temp-extract/chunk-${Date.now()}-${Math.random().toString(36).slice(2)}.pdf`;
+  const pathname = options.pathname || defaultPath;
+
+  // Upload
+  const result = await put(pathname, pdfBuffer, {
+    access: 'public',
+    addRandomSuffix: options.addRandomSuffix ?? true,
+  });
+
+  return {
+    url: result.url,
+    blob: result,
+    pageMapping,
+  };
 }

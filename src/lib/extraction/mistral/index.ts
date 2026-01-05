@@ -1,10 +1,6 @@
 // src/lib/extraction/mistral/index.ts
-// Version: 1.0.0 - 2026-01-05
-// Orchestrator: Mistral extractor
-// - Chunks ≤8 pages
-// - Parallel calls to Mistral OCR (structured schema)
-// - Merges results back into original page order
-// - Reuses existing universal post-processor pipeline (merge, provenance, needsReview, etc.)
+// Version: 2.1.0 - 2026-01-05
+// Fully switched to Vercel Blob public URLs only (no base64 fallback)
 
 import { assemblePdfChunk, ChunkImage } from './assemblePdf';
 import { callMistralChunk } from './mistralClient';
@@ -23,7 +19,6 @@ export interface MistralExtractorResult {
   details: {
     provenance: Record<string, number>;
     pageExtractions: EnrichedPageExtraction[];
-    // Add confidence aggregates or other debug info later if needed
   } | null;
   timelineEvents: Array<{
     date: string;
@@ -35,9 +30,7 @@ export interface MistralExtractorResult {
 }
 
 /**
- * Main Mistral extractor – replaces old universalExtractor
- * Input: high-DPI critical images + classification metadata
- * Output: shape compatible with router.ts expectations
+ * Main Mistral extractor – uses only public Vercel Blob URLs
  */
 export async function mistralExtractor(
   highResCriticalImages: LabeledCriticalImage[],
@@ -54,15 +47,13 @@ export async function mistralExtractor(
     throw new Error('No critical images provided');
   }
 
-  // Sort images by pageNumber ascending (ensures consistent order matching criticalPageNumbers)
+  // Sort images by pageNumber ascending
   const sortedImages = [...highResCriticalImages].sort((a, b) => a.pageNumber - b.pageNumber);
 
-  // Enrich with pageRole – classificationMetadata doesn't have pageRole directly,
-  // but post-processor enrichment will add it later. We only need pageNumber/label here.
   const chunkImages: ChunkImage[] = sortedImages.map((img) => ({
     pageNumber: img.pageNumber,
     label: img.label,
-    pageRole: 'unknown', // placeholder – post-processor will override with correct role
+    pageRole: 'unknown',
     base64: img.base64,
   }));
 
@@ -78,26 +69,34 @@ export async function mistralExtractor(
   const chunkPromises = chunks.map(async (chunk, chunkIndex) => {
     console.log(`[mistral] Processing chunk ${chunkIndex + 1}/${chunks.length} (${chunk.length} pages)`);
 
-    const { pdfBase64, pageMapping } = await assemblePdfChunk(chunk);
+    // Assemble PDF → upload to Vercel Blob → get public URL + mapping
+    const { url: pdfUrl, pageMapping } = await assemblePdfChunk(chunk, {
+      pathname: `extracts/temp/chunk-${Date.now()}-${chunkIndex}.pdf`,
+      addRandomSuffix: true,
+    });
 
-    const response = await callMistralChunk(pdfBase64, chunk.length);
+    // Call Mistral with ONLY the public URL
+    const response = await callMistralChunk(pdfUrl, chunk.length);
 
-    // Map Mistral's per-page extractions back to original page info
+    // Map per-page extractions back to original document context
     const perPageExtractions: PerPageExtraction[] = response.extractions.map((ext, idx) => {
       const mapping = pageMapping[idx];
       return {
         ...ext,
-        // Note: pageNumber/pageLabel/pageRole added later in post-processor enrichment
-        // We keep raw extraction clean here
+        // pageNumber, label, pageRole enriched later in post-processor
       };
     });
+
+    // Optional: clean up the temporary blob after successful extraction
+    // import { del } from '@vercel/blob';
+    // del(pdfUrl).catch(() => {}); // fire-and-forget
 
     return { perPageExtractions, pageMapping };
   });
 
   const chunkResults = await Promise.allSettled(chunkPromises);
 
-  // Collect successful results + throw on any failure
+  // Collect results
   const allPerPage: PerPageExtraction[] = [];
   let totalPages = 0;
 
@@ -118,7 +117,6 @@ export async function mistralExtractor(
 
   console.log('[mistral] All chunks complete – running post-processor merge');
 
-  // === REUSE EXISTING POST-PROCESSOR ===
   const mergeResult: MergeResult = await mergePageExtractions(allPerPage, classificationMetadata);
 
   console.log('[mistral] Post-processor complete');
@@ -130,7 +128,7 @@ export async function mistralExtractor(
       provenance: mergeResult.provenance,
       pageExtractions: mergeResult.pageExtractions,
     },
-    timelineEvents: [], // Placeholder – can generate later if needed
+    timelineEvents: [],
     needsReview: mergeResult.needsReview,
   };
 }
