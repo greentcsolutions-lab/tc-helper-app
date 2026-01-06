@@ -2,5 +2,16 @@
   "crons": [{
     "path": "/api/cron/cleanup-stale-temp-data",
     "schedule": "0 0 * * *"
-  }]
+  }],
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/next"
+    }
+  ],
+  "routes": [
+    { "handle": "filesystem" },
+    { "src": "/.*", "dest": "/" }
+  ],
+  "dockerfile": "Dockerfile"
 }
