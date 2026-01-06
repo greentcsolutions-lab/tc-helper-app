@@ -1,4 +1,5 @@
 // src/app/page.tsx
+
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { CheckCircle2, Sparkles, Zap, Shield, Clock, Users, Award } from "lucide-react";
