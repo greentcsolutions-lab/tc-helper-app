@@ -16,7 +16,7 @@ export default function PrivacyPage() {
           <h2>1. What We Do (In Plain English)</h2>
           <p>
             You upload a real estate purchase contract (purchase agreement, counters, disclosures, etc.).
-            We turn it into images, run Grok vision over the critical pages, and give you back a clean JSON
+            We turn it into images, run AI vision over the critical pages, and give you back a clean JSON
             with price, buyer/seller names, dates, contingencies, etc. That’s it.
           </p>
         </section>
@@ -26,7 +26,7 @@ export default function PrivacyPage() {
           <ul className="list-disc pl-6 space-y-2">
             <li>PDF arrives → instantly flattened in memory with pdf-lib (no storage)</li>
             <li>Static PDF sent to Nutriend API → converted to PNGs → auto-deleted within 10 minutes</li>
-            <li>PNGs sent to xAI Grok (U.S.) → vision extraction → deleted after extraction completes</li>
+            <li>PNGs sent to Mistral AI (U.S.) → vision extraction → deleted after extraction completes</li>
             <li>Original PDF buffer deleted from our database the second extraction finishes</li>
             <li>Final extracted JSON kept only while you need it (you can delete anytime)</li>
           </ul>

@@ -1,6 +1,7 @@
 // src/lib/extraction/extract/universal/index.ts
 // Version: 13.0.0 - 2025-12-31
 // FIXED: Import PerPageExtraction from @/types/extraction (not post-processor)
+// Deprecated Universal Extractor using Mistral AI for extraction
 
 import type { LabeledCriticalImage } from '@/types/classification';
 import type { UniversalExtractionResult, PerPageExtraction } from '@/types/extraction';

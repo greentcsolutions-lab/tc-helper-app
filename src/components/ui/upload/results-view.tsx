@@ -58,7 +58,7 @@ export function ResultsView({
             Critical Pages Extracted (for debugging)
           </h3>
           <p className="text-sm text-center text-muted-foreground">
-            These are the pages Grok analyzed to extract your transaction data.
+            These are the pages the AI analyzed to extract your transaction data.
           </p>
           <PreviewGallery parseId={parseId} />
         </div>

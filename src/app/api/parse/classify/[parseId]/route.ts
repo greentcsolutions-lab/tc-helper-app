@@ -72,7 +72,7 @@ export async function GET(
           return;
         }
 
-        logSuccess("CLASSIFY:1", `Validated — ${parse.pageCount} pages rendered at 200 DPI`);
+        logSuccess("CLASSIFY:1", `Validated — ${parse.pageCount} pages`);
 
         emit(controller, {
           type: "progress",
@@ -85,7 +85,7 @@ export async function GET(
 
         const pages = await downloadAndExtractZip(parse.renderZipUrl);  // CHANGED: Use universal ZIP
 
-        logSuccess("CLASSIFY:2", `Extracted ${pages.length} pages at 200 DPI`);
+        logSuccess("CLASSIFY:2", `Extracted ${pages.length} pages`);
 
         emit(controller, {
           type: "progress",
@@ -94,7 +94,7 @@ export async function GET(
         });
 
         // STEP 3: CLASSIFY CRITICAL PAGES
-        logStep("CLASSIFY:3", "🧠 Running Grok classification...");
+        logStep("CLASSIFY:3", "Finding the important pages...");
 
         const {
           criticalImages,

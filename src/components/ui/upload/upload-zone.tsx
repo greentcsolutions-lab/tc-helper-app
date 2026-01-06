@@ -22,12 +22,12 @@ import { FileEdit } from "lucide-react";
 
 const JOKES = [
   "Don't trust AI to identify mushrooms...",
-  "This is why we don't let Grok drive...",
+  "This is why we don't let AI drive...",
   "Parsing legalese — the leading cause of AI therapy bills",
   "Fun fact: This PDF has more pages than my attention span",
   "Still faster than a human reading this packet",
   "Beep boop... processing state bureaucracy...",
-  "Grok is now judging your buyer's handwriting",
+  "The AI is now judging your buyer's handwriting",
   "Hang tight — we're teaching the AI to read realtor scribbles",
 ];
 
@@ -188,7 +188,7 @@ export default function UploadZone() {
             </Button>
 
             <p className="text-sm text-muted-foreground">
-              Don't have documents? Enter transaction details yourself.
+              Don't have documents? Enter transaction details manually.
             </p>
           </div>
 

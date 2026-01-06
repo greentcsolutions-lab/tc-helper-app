@@ -41,7 +41,7 @@ export async function renderPdfSingle(
   console.log(`[Nutrient:200DPI] PDF size: ${(buffer.length / 1024).toFixed(2)} KB`);
   console.log(`[Nutrient:200DPI] Total pages: ${totalPages ?? "auto-detect"}`);
   console.log(`[Nutrient:200DPI] Strategy: Flatten → 200 DPI (classify + extract)`);
-  console.log(`[Nutrient:200DPI] DISCOVERY: 200 DPI is sufficient for Grok extraction quality`);
+  console.log(`[Nutrient:200DPI] DISCOVERY: 200 DPI is sufficient for AI extraction quality`);
   console.log("━".repeat(80) + "\n");
 
   // Validate PDF

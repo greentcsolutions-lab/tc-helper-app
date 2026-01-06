@@ -76,7 +76,7 @@ export async function GET(
 
         emit(controller, { 
           type: "progress", 
-          message: "Starting 200 DPI rendering...",
+          message: "Formatting for the AI...",
           phase: "render"
         });
 
@@ -89,7 +89,7 @@ export async function GET(
 
         emit(controller, { 
           type: "progress", 
-          message: `Rendered ${renderResult.pageCount} pages`,
+          message: `Identified ${renderResult.pageCount} pages`,
           phase: "render"
         });
 
