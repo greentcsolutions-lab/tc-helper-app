@@ -42,7 +42,7 @@ export default async function BillingPage() {
             </Suspense>
           </div>
           <p className="text-muted-foreground">
-            Free tier: 1 parse. Unlimited coming soon.
+            Free tier: 1 parse. Pro plans coming soon.
           </p>
         </CardContent>
       </Card>
