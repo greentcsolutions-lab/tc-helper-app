@@ -36,16 +36,20 @@ export async function callMistralClassify(
   pdfUrl: string
 ): Promise<MistralClassifyResponse> {
   const payload = {
-    model: 'mistral-ocr-latest',
-    document: {
-      type: 'document_url',
-      document_url: pdfUrl,
+  model: 'mistral-ocr-latest',
+  document: {
+    type: 'document_url',
+    document_url: pdfUrl,
+  },
+  document_annotation_format: {
+    type: "json_schema",
+    json_schema: {
+      name: "real_estate_contract_classifier",  // any descriptive string, required
+      strict: true,                             // optional but helps enforcement
+      schema: mistralClassifierSchema,          // ← move the raw schema here
     },
-    document_annotation_format: {
-      type: 'json_schema',
-      json_schema: mistralClassifierSchema,
-    },
-  };
+  },
+};
 
   let lastError: unknown;
   const maxRetries = 3;

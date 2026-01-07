@@ -1,7 +1,6 @@
 // src/app/api/parse/extract/[parseId]/route.ts
-// Version: 5.0.1 - 2026-01-07
-// FIXED: Wrap details properly for mapExtractionToParseResult (add provenance + pageExtractions)
-// FIXED: Ensure personalPropertyIncluded is array or undefined (not null) for Prisma update
+// Version: 5.0.2 - 2026-01-07
+// FIXED: Wrap Mistral extractor schema in proper structured-output envelope (name + strict + schema)
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
@@ -103,17 +102,20 @@ Return structured JSON exactly matching the provided schema for each of these pa
     logStep("EXTRACT:3", "Calling Mistral Document AI for targeted extraction...");
 
     const payload = {
-      model: "mistral-ocr-latest",
-      document: {
-        type: "document_url",
-        document_url: parse.pdfPublicUrl,
+    model: "mistral-ocr-latest",
+    document: {
+      type: "document_url",
+      document_url: parse.pdfPublicUrl,
+    },
+    document_annotation_format: {
+      type: "json_schema",
+      json_schema: {
+        name: "real_estate_transaction_extractor",  // required
+        strict: true,                               // recommended for enforcement
+        schema: mistralExtractorSchema,             // ← your full schema object goes here
       },
-      system_prompt: systemPrompt,
-      document_annotation_format: {
-        type: "json_schema",
-        json_schema: mistralExtractorSchema,
-      },
-    };
+    },
+  };
 
     const response = await fetch(MISTRAL_API_URL, {
       method: "POST",
