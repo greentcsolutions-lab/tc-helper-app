@@ -62,7 +62,7 @@ export default function UploadZone() {
       return;
     }
 
-    if (['render', 'classify', 'extract', 'cleanup'].includes(orchestratorState.phase)) {
+    if (['classify', 'extract', 'cleanup'].includes(orchestratorState.phase)) {
       setView("processing");
       lastActivity.current = Date.now();
     }
@@ -92,7 +92,7 @@ export default function UploadZone() {
 
     console.log("[upload-zone] Upload complete, starting pipeline:", newParseId);
 
-    // Run pipeline (render → classify → extract)
+    // Run pipeline (classify → extract)
     const result = await runPipeline(newParseId);
 
     if (result.success) {

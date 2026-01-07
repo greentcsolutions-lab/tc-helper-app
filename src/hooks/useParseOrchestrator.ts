@@ -9,7 +9,6 @@ import { useState, useCallback } from "react";
 
 export type ParsePhase = 
   | "idle" 
-  | "render" 
   | "classify" 
   | "extract" 
   | "cleanup"
@@ -34,24 +33,10 @@ export function useParseOrchestrator() {
 
   const runPipeline = useCallback(async (parseId: string) => {
     try {
-      // PHASE 1: RENDER
-      setState({ phase: 'render', message: 'Starting dual-DPI rendering...' });
-      
-      const renderResult = await runRender(parseId, (msg) => {
-        setState({ phase: 'render', message: msg });
-      });
-
-      if (!renderResult.success) {
-        throw new Error(renderResult.error || 'Rendering failed');
-      }
-
-      console.log('[orchestrator] Render complete:', renderResult.pageCount, 'pages');
-
-      // PHASE 2: CLASSIFY
+      // PHASE 1: CLASSIFY
       setState({ 
         phase: 'classify', 
         message: 'Analyzing document structure...',
-        pageCount: renderResult.pageCount,
       });
 
       const classifyResult = await runClassify(parseId, (msg) => {
@@ -64,11 +49,10 @@ export function useParseOrchestrator() {
 
       console.log('[orchestrator] Classification complete:', classifyResult.criticalPageCount, 'critical pages');
 
-      // PHASE 3: EXTRACT (server reads from cache, no data passed)
+      // PHASE 2: EXTRACT (server reads from cache, no data passed)
       setState({
         phase: 'extract',
         message: 'Extracting transaction data...',
-        pageCount: renderResult.pageCount,
         criticalPageCount: classifyResult.criticalPageCount,
         detectedForms: classifyResult.detectedForms,
       });
@@ -99,7 +83,6 @@ export function useParseOrchestrator() {
         message: extractResult.needsReview 
           ? 'Extraction complete — review recommended'
           : 'Transaction extracted successfully',
-        pageCount: renderResult.pageCount,
         criticalPageCount: classifyResult.criticalPageCount,
         detectedForms: classifyResult.detectedForms,
         needsReview: extractResult.needsReview,
@@ -155,37 +138,6 @@ export function useParseOrchestrator() {
 // HELPER FUNCTIONS (SSE + REST)
 // ============================================================================
 
-async function runRender(
-  parseId: string,
-  onProgress: (message: string) => void
-): Promise<{ success: boolean; pageCount?: number; error?: string }> {
-  return new Promise((resolve) => {
-    const eventSource = new EventSource(`/api/parse/render/${parseId}`);
-
-    eventSource.addEventListener('message', (event) => {
-      try {
-        const data = JSON.parse(event.data);
-
-        if (data.type === 'progress') {
-          onProgress(data.message);
-        } else if (data.type === 'complete') {
-          eventSource.close();
-          resolve({ success: true, pageCount: data.pageCount });
-        } else if (data.type === 'error') {
-          eventSource.close();
-          resolve({ success: false, error: data.message });
-        }
-      } catch (e) {
-        console.error('[render] Failed to parse SSE event:', e);
-      }
-    });
-
-    eventSource.onerror = () => {
-      eventSource.close();
-      resolve({ success: false, error: 'Connection lost' });
-    };
-  });
-}
 
 async function runClassify(
   parseId: string,
