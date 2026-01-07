@@ -1,20 +1,15 @@
 // src/app/api/parse/extract/[parseId]/route.ts
-// Version: 5.0.2 - 2026-01-07
-// FIXED: Wrap Mistral extractor schema in proper structured-output envelope (name + strict + schema)
+// Version: 5.2.0 - 2026-01-07
+// UPDATED: Parallel batched extraction via extractFromCriticalPages
+// Chunks run concurrently with Promise.all() for speed
+// Full classificationMetadata passed for provenance
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
-import { mistralExtractorSchema } from "@/lib/extraction/mistral/schema";
 import { mapExtractionToParseResult } from "@/lib/parse/map-to-parse-result";
+import { extractFromCriticalPages } from "@/lib/extraction/mistral/extractPdf";
 import { logStep, logSuccess, logError } from "@/lib/debug/parse-logger";
-
-const MISTRAL_API_URL = "https://api.mistral.ai/v1/ocr";
-const API_KEY = process.env.MISTRAL_API_KEY;
-
-if (!API_KEY) {
-  throw new Error("MISTRAL_API_KEY required");
-}
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -73,103 +68,32 @@ export async function POST(
     };
 
     const criticalPages = classificationMetadata.criticalPageNumbers;
-    const pageLabels = classificationMetadata.pageLabels;
 
     console.log(
       `[extract] Critical pages: ${criticalPages.length} [${criticalPages.join(", ")}]`
     );
     logSuccess("EXTRACT:1", `Loaded ${criticalPages.length} critical pages`);
 
-    logStep("EXTRACT:2", "Building focused prompt for Mistral...");
+    logStep("EXTRACT:2", "Starting parallel batched Mistral extraction (≤8 pages per call)...");
 
-    // Build human-readable page list for the prompt
-    const pageList = criticalPages
-      .map((num) => {
-        const label = pageLabels[num] || `Page ${num}`;
-        return `Page ${num}: ${label}`;
-      })
-      .join("\n");
+    // Parallel extraction – chunks run concurrently
+    const mergeResult = await extractFromCriticalPages(
+      parse.pdfPublicUrl,
+      classificationMetadata
+    );
 
-    const systemPrompt = `You are an expert real estate transaction extractor. 
-Extract ALL transaction terms EXCLUSIVELY from the following critical pages only — ignore all other pages completely:
+    logSuccess("EXTRACT:2", `Parallel extraction complete – needsReview: ${mergeResult.needsReview}`);
 
-${pageList}
-
-Focus only on filled/substantive content on these pages. 
-Do not hallucinate data from boilerplate, disclosures, or non-critical pages.
-Return structured JSON exactly matching the provided schema for each of these pages individually.`;
-
-    logStep("EXTRACT:3", "Calling Mistral Document AI for targeted extraction...");
-
-    const payload = {
-    model: "mistral-ocr-latest",
-    document: {
-      type: "document_url",
-      document_url: parse.pdfPublicUrl,
-    },
-    document_annotation_format: {
-      type: "json_schema",
-      json_schema: {
-        name: "real_estate_transaction_extractor",  // required
-        strict: true,                               // recommended for enforcement
-        schema: mistralExtractorSchema,             // ← your full schema object goes here
-      },
-    },
-  };
-
-    const response = await fetch(MISTRAL_API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${API_KEY}`,
-      },
-      body: JSON.stringify(payload),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Mistral extraction failed ${response.status}: ${errorText}`);
-    }
-
-    const data = await response.json();
-
-    // Handle document_annotation same as before (string or object)
-    let annotationObj: any;
-    if (typeof data.document_annotation === "string") {
-      annotationObj = JSON.parse(data.document_annotation);
-    } else {
-      annotationObj = data.document_annotation;
-    }
-
-    if (!annotationObj?.extractions || !Array.isArray(annotationObj.extractions)) {
-      throw new Error("Invalid extraction response: missing extractions array");
-    }
-
-    const perPageExtractions = annotationObj.extractions;
-
-    logSuccess("EXTRACT:3", `Received ${perPageExtractions.length} page extractions`);
-
-    // Run our existing universal post-processor merge (unchanged)
-    logStep("EXTRACT:4", "Merging page extractions...");
-
-    // We import the merge function directly – it expects per-page format with confidence/sources
-    const { mergePageExtractions } = await import("@/lib/extraction/extract/universal/post-processor");
-
-    const mergeResult = await mergePageExtractions(perPageExtractions, classificationMetadata);
-
-    logSuccess("EXTRACT:4", `Merge complete – needsReview: ${mergeResult.needsReview}`);
-
-    // Map to DB fields exactly as before
-    logStep("EXTRACT:5", "Mapping to Parse fields...");
+    logStep("EXTRACT:3", "Mapping to Parse fields...");
 
     const mappedFields = mapExtractionToParseResult({
       universal: mergeResult.finalTerms,
-      route: "mistral-direct-pdf",
+      route: "mistral-parallel-batched-pdf",
       details: {
         provenance: mergeResult.provenance,
         pageExtractions: mergeResult.pageExtractions,
       },
-      timelineEvents: [], // can be added later if needed
+      timelineEvents: [],
     });
 
     const finalStatus = mergeResult.needsReview ? "NEEDS_REVIEW" : "COMPLETED";
@@ -178,7 +102,6 @@ Return structured JSON exactly matching the provided schema for each of these pa
       ? JSON.parse(JSON.stringify(mappedFields.extractionDetails))
       : undefined;
 
-    // Transactional save + usage increment
     await db.$transaction(async (tx) => {
       await tx.parse.update({
         where: { id: parseId },
@@ -193,11 +116,10 @@ Return structured JSON exactly matching the provided schema for each of these pa
           extractionDetails: extractionDetailsJson,
           timelineEvents: mappedFields.timelineEvents ?? undefined,
           finalizedAt: new Date(),
-          personalPropertyIncluded: mappedFields.personalPropertyIncluded ?? undefined,  // Ensure undefined, not null
+          personalPropertyIncluded: mappedFields.personalPropertyIncluded ?? undefined,
         },
       });
 
-      // Increment usage counter
       const parseRecord = await tx.parse.findUnique({
         where: { id: parseId },
         select: { userId: true },
@@ -212,8 +134,8 @@ Return structured JSON exactly matching the provided schema for each of these pa
       }
     });
 
-    logSuccess("EXTRACT:5", `Saved – status: ${finalStatus}`);
-    logSuccess("EXTRACT:DONE", "Direct-PDF extraction complete");
+    logSuccess("EXTRACT:3", `Saved – status: ${finalStatus}`);
+    logSuccess("EXTRACT:DONE", "Parallel batched extraction pipeline complete");
 
     return Response.json({
       success: true,
