@@ -65,24 +65,55 @@ export async function GET(
         // Derive pageCount from PDF buffer if missing (upload route doesn't set it)
         let pageCount = parse.pageCount;
         if (!pageCount && parse.pdfBuffer) {
+          // Attempt 1: pdf-lib (robust for most PDFs)
           try {
             const { PDFDocument } = await import("pdf-lib");
             const pdfDoc = await PDFDocument.load(parse.pdfBuffer);
             pageCount = pdfDoc.getPageCount();
             await db.parse.update({ where: { id: parseId }, data: { pageCount } });
-            logSuccess("CLASSIFY:1", `Derived pageCount=${pageCount} from PDF buffer`);
+            logSuccess("CLASSIFY:1", `Derived pageCount=${pageCount} from PDF via pdf-lib`);
           } catch (err) {
-            // Fallback: naive scan for "/Type /Page"
+            logStep("CLASSIFY:1", "pdf-lib failed to derive pageCount, trying text-scans and pdfjs fallbacks...");
+            // Attempt 2: Text-based scans (latin1) - multiple heuristics
             try {
               const bufferStr = parse.pdfBuffer.toString("latin1");
-              const matches = (bufferStr.match(/\/Type\s*\/Page\b/g) || []).length;
-              if (matches > 0) {
-                pageCount = matches;
+              const typePageMatches = (bufferStr.match(/\/Type\s*\/Page\b/g) || []).length;
+              const plainPageMatches = (bufferStr.match(/\/Page\b/g) || []).length;
+              const countMatch = bufferStr.match(/\/Count\s+(\d+)/);
+              if (typePageMatches > 0) {
+                pageCount = typePageMatches;
                 await db.parse.update({ where: { id: parseId }, data: { pageCount } });
-                logSuccess("CLASSIFY:1", `Fallback derived pageCount=${pageCount} by scanning PDF`);
+                logSuccess("CLASSIFY:1", `Fallback derived pageCount=${pageCount} by scanning "/Type /Page" (${typePageMatches} matches)`);
+              } else if (countMatch) {
+                pageCount = Number.parseInt(countMatch[1], 10);
+                await db.parse.update({ where: { id: parseId }, data: { pageCount } });
+                logSuccess("CLASSIFY:1", `Fallback derived pageCount=${pageCount} from "/Count"`);
+              } else if (plainPageMatches > 0) {
+                pageCount = plainPageMatches;
+                await db.parse.update({ where: { id: parseId }, data: { pageCount } });
+                logSuccess("CLASSIFY:1", `Fallback derived pageCount=${pageCount} by scanning "/Page" (${plainPageMatches} matches)`);
               }
             } catch (scanErr) {
-              // ignore; we'll error below if pageCount still missing
+              // ignore here; we'll try pdfjs next
+            }
+
+            // Attempt 3: pdfjs (pdfjs-dist) - robust for tricky PDFs
+            if (!pageCount) {
+              try {
+                const pdfjs = await import("pdfjs-dist/legacy/build/pdf.js");
+                const loadingTask = pdfjs.getDocument({ data: parse.pdfBuffer });
+                const pdfDoc = await loadingTask.promise;
+                pageCount = pdfDoc.numPages;
+                await db.parse.update({ where: { id: parseId }, data: { pageCount } });
+                logSuccess("CLASSIFY:1", `Derived pageCount=${pageCount} using pdfjs-dist fallback`);
+              } catch (pdfjsErr) {
+                // Last-resort debug: log some counts and a small buffer sample
+                try {
+                  const sample = parse.pdfBuffer.slice(0, 512).toString("latin1").replace(/\n/g, "\\n");
+                  console.warn(`[CLASSIFY:1] Fallbacks failed. sample[0..512]: "${sample}"`);
+                } catch (_) {}
+                logError("CLASSIFY:1", `All pageCount derivation attempts failed: ${String(pdfjsErr)}`);
+              }
             }
           }
         }
