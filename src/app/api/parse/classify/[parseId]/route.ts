@@ -62,11 +62,32 @@ export async function GET(
           throw new Error("Unauthorized");
         }
 
-        if (parse.status !== "PENDING") {
-          throw new Error(`Invalid status: ${parse.status} (expected PENDING)`);
+        // Derive pageCount from PDF buffer if missing (upload route doesn't set it)
+        let pageCount = parse.pageCount;
+        if (!pageCount && parse.pdfBuffer) {
+          try {
+            const { PDFDocument } = await import("pdf-lib");
+            const pdfDoc = await PDFDocument.load(parse.pdfBuffer);
+            pageCount = pdfDoc.getPageCount();
+            await db.parse.update({ where: { id: parseId }, data: { pageCount } });
+            logSuccess("CLASSIFY:1", `Derived pageCount=${pageCount} from PDF buffer`);
+          } catch (err) {
+            // Fallback: naive scan for "/Type /Page"
+            try {
+              const bufferStr = parse.pdfBuffer.toString("latin1");
+              const matches = (bufferStr.match(/\/Type\s*\/Page\b/g) || []).length;
+              if (matches > 0) {
+                pageCount = matches;
+                await db.parse.update({ where: { id: parseId }, data: { pageCount } });
+                logSuccess("CLASSIFY:1", `Fallback derived pageCount=${pageCount} by scanning PDF`);
+              }
+            } catch (scanErr) {
+              // ignore; we'll error below if pageCount still missing
+            }
+          }
         }
 
-        if (!parse.pdfBuffer || !parse.pageCount) {
+        if (!parse.pdfBuffer || !pageCount) {
           throw new Error("Missing PDF buffer or page count");
         }
 
@@ -80,7 +101,7 @@ export async function GET(
           data: { credits: { decrement: 1 } },
         });
 
-        logSuccess("CLASSIFY:1", `Credit deducted – processing ${parse.fileName} (${parse.pageCount} pages)`);
+        logSuccess("CLASSIFY:1", `Credit deducted – processing ${parse.fileName} (${pageCount} pages)`);
 
         // STEP 2: Upload original PDF to temporary public Blob (short-lived, used for both classify & extract)
         logStep("CLASSIFY:2", "Uploading original PDF to temporary public Vercel Blob...");
@@ -111,7 +132,7 @@ export async function GET(
 
         const { pages: detectedPages, state: documentState } = await callMistralClassify(
           pdfPublicUrl,
-          parse.pageCount
+          pageCount
         );
 
         logSuccess("CLASSIFY:3", `Received classification for ${detectedPages.length} pages`);
@@ -141,7 +162,7 @@ export async function GET(
           data: {
             classificationCache: classificationMetadata,
             criticalPageNumbers,
-            status: "CLASSIFIED", // new intermediate status – ready for extraction
+            status: "CLASSIFIED",
           },
         });
 
