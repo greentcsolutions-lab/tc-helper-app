@@ -6,7 +6,7 @@ import Ajv from "ajv";
 import addFormats from "ajv-formats";
 import classifierSchema from "@/forms/classifier.schema.json";
 
-const GROK_API_URL = process.env.GROK_API_URL || "https://api.grok.ai/v1/generate";
+const GROK_API_URL = process.env.GROK_API_URL || "https://api.x.ai/v1/chat/completions";
 const GROK_API_KEY = process.env.GROK_API_KEY;
 
 if (!GROK_API_KEY) {
