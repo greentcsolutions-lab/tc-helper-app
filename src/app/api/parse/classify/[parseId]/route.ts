@@ -1,13 +1,23 @@
 // src/app/api/parse/classify/[parseId]/route.ts
-// Version: 2.0.0 - 2025-12-30
-// BREAKING CHANGE: Uses single 200 DPI ZIP (renderZipUrl) instead of lowResZipUrl
-// UPDATED: Reads from renderZipUrl field in database
+// Version: 3.0.0 - 2026-01-07
+// CONSOLIDATED CLASSIFY ROUTE
+// - Eliminates separate render route entirely
+// - Direct original PDF → temporary public Vercel Blob → Mistral /v1/ocr with classifier schema
+// - Credit deduction moved here (classify now owns the cost)
+// - Runs universal post-processor (unchanged v3.7.0)
+// - Saves classificationCache, criticalPageNumbers, pdfPublicUrl (for extraction phase)
+// - Output identical to previous classify route (SSE events + complete payload)
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
-import { downloadAndExtractZip } from "@/lib/pdf/renderer";
-import { classifyCriticalPages } from "@/lib/extraction/classify/classifier";
+import { put } from "@vercel/blob"; 
+import { callMistralClassify } from "@/lib/extraction/mistral/classifyPdf";
+import {
+  getCriticalPageNumbers,
+  buildUniversalPageLabels,
+  extractPackageMetadata,
+} from "@/lib/extraction/classify/post-processor";
 import { logSuccess, logError, logStep } from "@/lib/debug/parse-logger";
 
 export const runtime = "nodejs";
@@ -29,8 +39,7 @@ export async function GET(
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        // STEP 1: VALIDATE PARSE
-        logStep("CLASSIFY:1", "Validating parse and render completion...");
+        logStep("CLASSIFY:1", "Validating parse record and deducting credit...");
 
         const parse = await db.parse.findUnique({
           where: { id: parseId },
@@ -38,114 +47,116 @@ export async function GET(
             id: true,
             userId: true,
             status: true,
-            renderZipUrl: true,  // CHANGED: Now using universal renderZipUrl
+            pdfBuffer: true,
             pageCount: true,
-            user: { select: { clerkId: true } },
+            fileName: true,
+            user: { select: { clerkId: true, credits: true } },
           },
         });
 
         if (!parse) {
-          logError("CLASSIFY:1", "Parse not found");
-          emit(controller, { type: "error", message: "Parse not found" });
-          controller.close();
-          return;
+          throw new Error("Parse not found");
         }
 
         if (parse.user.clerkId !== clerkUserId) {
-          logError("CLASSIFY:1", "Unauthorized");
-          emit(controller, { type: "error", message: "Unauthorized" });
-          controller.close();
-          return;
+          throw new Error("Unauthorized");
         }
 
-        if (parse.status !== "PROCESSING") {
-          logError("CLASSIFY:1", `Invalid status: ${parse.status}`);
-          emit(controller, { type: "error", message: `Invalid status: ${parse.status}` });
-          controller.close();
-          return;
+        if (parse.status !== "PENDING") {
+          throw new Error(`Invalid status: ${parse.status} (expected PENDING)`);
         }
 
-        if (!parse.renderZipUrl) {  // CHANGED: Check renderZipUrl instead of lowResZipUrl
-          logError("CLASSIFY:1", "Rendering not complete");
-          emit(controller, { type: "error", message: "Rendering not complete" });
-          controller.close();
-          return;
+        if (!parse.pdfBuffer || !parse.pageCount) {
+          throw new Error("Missing PDF buffer or page count");
         }
 
-        logSuccess("CLASSIFY:1", `Validated — ${parse.pageCount} pages`);
+        // Deduct credit here – classification is now the paid step
+        if (parse.user.credits < 1) {
+          throw new Error("Insufficient credits");
+        }
+
+        await db.user.update({
+          where: { clerkId: clerkUserId },
+          data: { credits: { decrement: 1 } },
+        });
+
+        logSuccess("CLASSIFY:1", `Credit deducted – processing ${parse.fileName} (${parse.pageCount} pages)`);
+
+        // STEP 2: Upload original PDF to temporary public Blob (short-lived, used for both classify & extract)
+        logStep("CLASSIFY:2", "Uploading original PDF to temporary public Vercel Blob...");
+
+        const { url: pdfPublicUrl } = await put(
+          `temp-pdf/${parseId}-${Date.now()}.pdf`,
+          parse.pdfBuffer,
+          {
+            access: "public",
+            addRandomSuffix: true,
+          }
+        );
+
+        // Persist the public URL for the upcoming extraction phase
+        await db.parse.update({
+          where: { id: parseId },
+          data: { pdfPublicUrl },
+        });
 
         emit(controller, {
           type: "progress",
-          message: "Downloading rendered images...",
-          phase: "classify"
+          message: "Analyzing full PDF with Mistral Document AI...",
+          phase: "classify",
         });
 
-        // STEP 2: DOWNLOAD AND EXTRACT ZIP
-        logStep("CLASSIFY:2", "📥 Downloading and extracting 200 DPI ZIP...");
+        // STEP 3: Direct Mistral classification on full PDF
+        logStep("CLASSIFY:3", "Calling Mistral /v1/ocr with classifier schema...");
 
-        const pages = await downloadAndExtractZip(parse.renderZipUrl);  // CHANGED: Use universal ZIP
+        const { pages: detectedPages, state: documentState } = await callMistralClassify(
+          pdfPublicUrl,
+          parse.pageCount
+        );
 
-        logSuccess("CLASSIFY:2", `Extracted ${pages.length} pages`);
+        logSuccess("CLASSIFY:3", `Received classification for ${detectedPages.length} pages`);
 
-        emit(controller, {
-          type: "progress",
-          message: `Extracted ${pages.length} pages, starting classification...`,
-          phase: "classify"
-        });
+        // STEP 4: Run universal post-processor (exact same logic as before)
+        logStep("CLASSIFY:4", "Running post-processor to determine critical pages...");
 
-        // STEP 3: CLASSIFY CRITICAL PAGES
-        logStep("CLASSIFY:3", "Finding the important pages...");
+        const criticalPageNumbers = getCriticalPageNumbers(detectedPages as any);
+        const pageLabelsMap = buildUniversalPageLabels(detectedPages as any, criticalPageNumbers);
+        const packageMetadata = extractPackageMetadata(detectedPages as any, criticalPageNumbers);
 
-        const {
-          criticalImages,
-          state,
-          criticalPageNumbers,
-          packageMetadata,
-        } = await classifyCriticalPages(pages, parse.pageCount!);
-
-        logSuccess("CLASSIFY:3", `Identified ${criticalPageNumbers.length} critical pages`);
-
-        // STEP 4: SAVE METADATA ONLY (NO BASE64!)
-        logStep("CLASSIFY:4", "💾 Saving classification metadata to database...");
-
-        // Build page labels map (no base64)
         const pageLabels: Record<number, string> = {};
-        criticalImages.forEach(img => {
-          pageLabels[img.pageNumber] = img.label;
+        pageLabelsMap.forEach((label, page) => {
+          pageLabels[page] = label;
         });
 
         const classificationMetadata = {
           criticalPageNumbers,
           pageLabels,
           packageMetadata,
-          state,
+          state: documentState,
         };
 
+        // Save everything needed for extraction phase
         await db.parse.update({
           where: { id: parseId },
           data: {
             classificationCache: classificationMetadata,
             criticalPageNumbers,
+            status: "CLASSIFIED", // new intermediate status – ready for extraction
           },
         });
 
-        console.log(`[classify] 🔍 DEBUG: Saved to DB:`);
-        console.log(`[classify] 🔍 criticalPageNumbers: [${criticalPageNumbers.join(', ')}]`);
-        console.log(`[classify] 🔍 criticalImages.length: ${criticalImages.length}`);
-        console.log(`[classify] 🔍 criticalImages page numbers: [${criticalImages.map(i => i.pageNumber).join(', ')}]`);
+        const metadataSizeKB = JSON.stringify(classificationMetadata).length / 1024;
+        logSuccess("CLASSIFY:4", `Post-processor complete – ${criticalPageNumbers.length} critical pages (${metadataSizeKB.toFixed(1)} KB saved)`);
 
-        const metadataSize = JSON.stringify(classificationMetadata).length;
-        logSuccess("CLASSIFY:4", `Metadata saved (${(metadataSize / 1024).toFixed(1)} KB - no base64!)`);
-
-        // STEP 5: COMPLETE
+        // Final success event – identical shape to previous classify route
         emit(controller, {
           type: "complete",
           criticalPageCount: criticalPageNumbers.length,
           detectedForms: packageMetadata.detectedFormCodes,
-          state,
+          state: documentState ?? null,
         });
 
-        logSuccess("CLASSIFY:DONE", `Classification complete — ${criticalPageNumbers.length} critical pages`);
+        logSuccess("CLASSIFY:DONE", "Classification pipeline complete");
 
         controller.close();
       } catch (error: any) {
@@ -154,7 +165,7 @@ export async function GET(
 
         emit(controller, {
           type: "error",
-          message: error.message || "Classification failed"
+          message: error.message || "Classification failed",
         });
 
         controller.close();

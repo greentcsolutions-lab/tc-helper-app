@@ -77,6 +77,7 @@ model Parse {
   // ============================================================================
   // Original PDF buffer - deleted after render completes
   pdfBuffer            Bytes?
+  pdfPublicUrl         String?   // NEW: Public Vercel Blob URL for direct Mistral PDF calls
   
   // PRIMARY: Single 200 DPI ZIP - Used for BOTH classification AND extraction
   // Deleted after cleanup route runs

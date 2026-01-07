@@ -1,1 +1,0 @@
-//src/lib/extraction/extract/confidence-gate.ts

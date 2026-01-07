@@ -60,7 +60,10 @@ export function ResultsView({
           <p className="text-sm text-center text-muted-foreground">
             These are the pages the AI analyzed to extract your transaction data.
           </p>
-          <PreviewGallery parseId={parseId} />
+          <PreviewGallery 
+          parseId={parseId}
+          criticalPages={extractedData?.criticalPages ?? []}
+          />
         </div>
       )}
 

@@ -1,14 +1,21 @@
 // src/app/api/parse/extract/[parseId]/route.ts
-// Version: 4.2.0 - 2025-12-31
-// UPDATED: Now passes classification metadata to router for lean extraction
+// Version: 5.0.1 - 2026-01-07
+// FIXED: Wrap details properly for mapExtractionToParseResult (add provenance + pageExtractions)
+// FIXED: Ensure personalPropertyIncluded is array or undefined (not null) for Prisma update
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
-import { route } from "@/lib/extraction/router";
+import { mistralExtractorSchema } from "@/lib/extraction/mistral/schema";
 import { mapExtractionToParseResult } from "@/lib/parse/map-to-parse-result";
-import { extractSpecificPagesFromZip } from "@/lib/pdf/renderer";
 import { logStep, logSuccess, logError } from "@/lib/debug/parse-logger";
+
+const MISTRAL_API_URL = "https://api.mistral.ai/v1/ocr";
+const API_KEY = process.env.MISTRAL_API_KEY;
+
+if (!API_KEY) {
+  throw new Error("MISTRAL_API_KEY required");
+}
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -21,10 +28,11 @@ export async function POST(
   if (!clerkUserId) return new Response("Unauthorized", { status: 401 });
 
   const { parseId } = await params;
+
   console.log(`[extract] START parseId=${parseId}`);
 
   try {
-    logStep("EXTRACT:1", "Validating & loading classification...");
+    logStep("EXTRACT:1", "Loading parse + classification metadata...");
 
     const parse = await db.parse.findUnique({
       where: { id: parseId },
@@ -32,104 +40,143 @@ export async function POST(
         id: true,
         userId: true,
         status: true,
-        renderZipUrl: true,
+        pdfPublicUrl: true,
         classificationCache: true,
         user: { select: { clerkId: true } },
       },
     });
 
     if (!parse) {
-      logError("EXTRACT:1", "Parse not found");
       return Response.json({ error: "Parse not found" }, { status: 404 });
     }
 
     if (parse.user.clerkId !== clerkUserId) {
-      logError("EXTRACT:1", "Unauthorized");
       return Response.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    if (parse.status !== "PROCESSING") {
-      logError("EXTRACT:1", `Invalid status: ${parse.status}`);
+    if (parse.status !== "CLASSIFIED") {
       return Response.json({ error: `Invalid status: ${parse.status}` }, { status: 400 });
     }
 
-    if (!parse.renderZipUrl) {
-      logError("EXTRACT:1", "Missing render ZIP");
-      return Response.json({ error: "Rendering not complete" }, { status: 400 });
+    if (!parse.pdfPublicUrl) {
+      return Response.json({ error: "Missing PDF URL – re-run classification" }, { status: 400 });
     }
 
     if (!parse.classificationCache) {
-      logError("EXTRACT:1", "Classification not found");
-      return Response.json({ error: "Classification not found. Please re-run classification." }, { status: 404 });
+      return Response.json({ error: "Classification cache missing" }, { status: 400 });
     }
 
     const classificationMetadata = parse.classificationCache as {
       criticalPageNumbers: number[];
       pageLabels: Record<number, string>;
       packageMetadata: any;
-      state: string;
+      state: string | null;
     };
 
-    console.log(`[extract] LOADED: ${classificationMetadata.criticalPageNumbers.length} pages [${classificationMetadata.criticalPageNumbers.join(',')}] forms=[${classificationMetadata.packageMetadata.detectedFormCodes.join(',')}]`);
-    logSuccess("EXTRACT:1", `Loaded ${classificationMetadata.criticalPageNumbers.length} critical pages`);
+    const criticalPages = classificationMetadata.criticalPageNumbers;
+    const pageLabels = classificationMetadata.pageLabels;
 
-    logStep("EXTRACT:2", "Downloading 200 DPI pages...");
-    
-    const criticalPages = await extractSpecificPagesFromZip(
-      parse.renderZipUrl,
-      classificationMetadata.criticalPageNumbers
+    console.log(
+      `[extract] Critical pages: ${criticalPages.length} [${criticalPages.join(", ")}]`
     );
+    logSuccess("EXTRACT:1", `Loaded ${criticalPages.length} critical pages`);
 
-    const expectedPages = new Set(classificationMetadata.criticalPageNumbers);
-    const receivedPages = new Set(criticalPages.map(p => p.pageNumber));
-    const pagesMatch = expectedPages.size === receivedPages.size && 
-                       [...expectedPages].every(p => receivedPages.has(p));
+    logStep("EXTRACT:2", "Building focused prompt for Mistral...");
 
-    console.log(`[extract] VERIFY: ${pagesMatch ? '✅' : '❌'} Pages match (expected ${expectedPages.size}, got ${receivedPages.size})`);
-    
-    if (!pagesMatch) {
-      const missing = [...expectedPages].filter(p => !receivedPages.has(p));
-      const unexpected = [...receivedPages].filter(p => !expectedPages.has(p));
-      if (missing.length > 0) console.error(`[extract] Missing pages: [${missing.join(',')}]`);
-      if (unexpected.length > 0) console.warn(`[extract] Unexpected pages: [${unexpected.join(',')}]`);
-    }
+    // Build human-readable page list for the prompt
+    const pageList = criticalPages
+      .map((num) => {
+        const label = pageLabels[num] || `Page ${num}`;
+        return `Page ${num}: ${label}`;
+      })
+      .join("\n");
 
-    const criticalImages = criticalPages.map(page => ({
-      pageNumber: page.pageNumber,
-      base64: page.base64,
-      label: classificationMetadata.pageLabels[page.pageNumber] || `Page ${page.pageNumber}`,
-    }));
+    const systemPrompt = `You are an expert real estate transaction extractor. 
+Extract ALL transaction terms EXCLUSIVELY from the following critical pages only — ignore all other pages completely:
 
-    logSuccess("EXTRACT:2", `Downloaded ${criticalImages.length} pages at 200 DPI`);
+${pageList}
 
-    logStep("EXTRACT:3", "Running extractor...");
-    
-    const { universal, details, timelineEvents, needsReview, route: extractionRoute } = 
-      await route({
-        criticalImages,
-        packageMetadata: classificationMetadata.packageMetadata,
-        highDpiPages: criticalPages,
-        classificationMetadata,  // v4.2.0: Pass classification metadata for lean extraction
-      });
+Focus only on filled/substantive content on these pages. 
+Do not hallucinate data from boilerplate, disclosures, or non-critical pages.
+Return structured JSON exactly matching the provided schema for each of these pages individually.`;
 
-    logSuccess("EXTRACT:3", `Extraction via ${extractionRoute} — needsReview: ${needsReview}`);
+    logStep("EXTRACT:3", "Calling Mistral Document AI for targeted extraction...");
 
-    logStep("EXTRACT:4", "Mapping to DB fields...");
-    const mappedFields = mapExtractionToParseResult({
-      universal,
-      route: extractionRoute,
-      details: details || undefined,
-      timelineEvents,
+    const payload = {
+      model: "mistral-ocr-latest",
+      document: {
+        type: "document_url",
+        document_url: parse.pdfPublicUrl,
+      },
+      system_prompt: systemPrompt,
+      document_annotation_format: {
+        type: "json_schema",
+        json_schema: mistralExtractorSchema,
+      },
+    };
+
+    const response = await fetch(MISTRAL_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${API_KEY}`,
+      },
+      body: JSON.stringify(payload),
     });
 
-    logStep("EXTRACT:5", "Saving results...");
-    const finalStatus = needsReview ? "NEEDS_REVIEW" : "COMPLETED";
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Mistral extraction failed ${response.status}: ${errorText}`);
+    }
 
-    const extractionDetailsJson = mappedFields.extractionDetails 
+    const data = await response.json();
+
+    // Handle document_annotation same as before (string or object)
+    let annotationObj: any;
+    if (typeof data.document_annotation === "string") {
+      annotationObj = JSON.parse(data.document_annotation);
+    } else {
+      annotationObj = data.document_annotation;
+    }
+
+    if (!annotationObj?.extractions || !Array.isArray(annotationObj.extractions)) {
+      throw new Error("Invalid extraction response: missing extractions array");
+    }
+
+    const perPageExtractions = annotationObj.extractions;
+
+    logSuccess("EXTRACT:3", `Received ${perPageExtractions.length} page extractions`);
+
+    // Run our existing universal post-processor merge (unchanged)
+    logStep("EXTRACT:4", "Merging page extractions...");
+
+    // We import the merge function directly – it expects per-page format with confidence/sources
+    const { mergePageExtractions } = await import("@/lib/extraction/extract/universal/post-processor");
+
+    const mergeResult = await mergePageExtractions(perPageExtractions, classificationMetadata);
+
+    logSuccess("EXTRACT:4", `Merge complete – needsReview: ${mergeResult.needsReview}`);
+
+    // Map to DB fields exactly as before
+    logStep("EXTRACT:5", "Mapping to Parse fields...");
+
+    const mappedFields = mapExtractionToParseResult({
+      universal: mergeResult.finalTerms,
+      route: "mistral-direct-pdf",
+      details: {
+        provenance: mergeResult.provenance,
+        pageExtractions: mergeResult.pageExtractions,
+      },
+      timelineEvents: [], // can be added later if needed
+    });
+
+    const finalStatus = mergeResult.needsReview ? "NEEDS_REVIEW" : "COMPLETED";
+
+    const extractionDetailsJson = mappedFields.extractionDetails
       ? JSON.parse(JSON.stringify(mappedFields.extractionDetails))
       : undefined;
 
-    // Update parse and increment UserUsage counter in a transaction
+    // Transactional save + usage increment
     await db.$transaction(async (tx) => {
       await tx.parse.update({
         where: { id: parseId },
@@ -142,42 +189,35 @@ export async function POST(
           closingCosts: mappedFields.closingCosts ?? undefined,
           brokers: mappedFields.brokers ?? undefined,
           extractionDetails: extractionDetailsJson,
-          timelineEvents: timelineEvents ?? undefined,
+          timelineEvents: mappedFields.timelineEvents ?? undefined,
+          finalizedAt: new Date(),
+          personalPropertyIncluded: mappedFields.personalPropertyIncluded ?? undefined,  // Ensure undefined, not null
         },
       });
 
-      // Increment UserUsage counter (active parses only)
-      const parse = await tx.parse.findUnique({
+      // Increment usage counter
+      const parseRecord = await tx.parse.findUnique({
         where: { id: parseId },
         select: { userId: true },
       });
 
-      if (parse) {
+      if (parseRecord) {
         await tx.userUsage.upsert({
-          where: { userId: parse.userId },
-          create: {
-            userId: parse.userId,
-            parses: 1,
-            lastParse: new Date(),
-          },
-          update: {
-            parses: { increment: 1 },
-            lastParse: new Date(),
-          },
+          where: { userId: parseRecord.userId },
+          create: { userId: parseRecord.userId, parses: 1, lastParse: new Date() },
+          update: { parses: { increment: 1 }, lastParse: new Date() },
         });
-        console.log(`[extract:${parseId}] Incremented user usage counter`);
       }
     });
 
-    logSuccess("EXTRACT:5", `Saved — status: ${finalStatus}`);
-    logSuccess("EXTRACT:DONE", `Extraction complete — ${criticalImages.length} pages processed`);
+    logSuccess("EXTRACT:5", `Saved – status: ${finalStatus}`);
+    logSuccess("EXTRACT:DONE", "Direct-PDF extraction complete");
 
     return Response.json({
       success: true,
-      needsReview,
-      criticalPageCount: criticalImages.length,
+      needsReview: mergeResult.needsReview,
+      criticalPageCount: criticalPages.length,
     });
-
   } catch (error: any) {
     logError("EXTRACT:ERROR", error.message);
     console.error("[Extract Route] Full error:", error);

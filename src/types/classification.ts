@@ -3,7 +3,7 @@
 // Types related to document classification and page analysis
 // Updated to include broker_info in enum
 
-export interface GrokPageResult {
+export interface pageMetaData {
   pdfPage: number;
   formCode: string;
   formPage: number | null;
@@ -18,8 +18,9 @@ export interface GrokPageResult {
   hasFilledFields?: boolean;
 }
 
-export interface GrokClassifierOutput {
-  pages: (GrokPageResult | null)[];
+export interface ClassifierOutput {
+  pages: (pageMetaData
+ | null)[];
 }
 
 export interface LabeledCriticalImage {

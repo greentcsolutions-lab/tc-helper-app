@@ -9,35 +9,34 @@ export default function PrivacyPage() {
   return (
     <div className="mx-auto max-w-4xl px-6 py-16">
       <h1 className="text-4xl font-bold mb-8">Privacy Policy</h1>
-      <p className="text-sm text-muted-foreground mb-12">Last updated: December 5, 2025</p>
+      <p className="text-sm text-muted-foreground mb-12">Last updated: January 7, 2026</p>
 
       <div className="prose prose-lg dark:prose-invert space-y-8">
         <section>
           <h2>1. What We Do (In Plain English)</h2>
           <p>
-            You upload a real estate purchase contract (purchase agreement, counters, disclosures, etc.).
-            We turn it into images, run AI vision over the critical pages, and give you back a clean JSON
-            with price, buyer/seller names, dates, contingencies, etc. That’s it.
+            You upload a PDF (typically a real estate contract). We extract structured data (price, names,
+            dates, contingencies, etc.) using Mistral AI. After extraction, you can view and manage the
+            resulting structured data in the app.
           </p>
         </section>
 
         <section>
           <h2>2. Data Flow & Deletion Timeline</h2>
           <ul className="list-disc pl-6 space-y-2">
-            <li>PDF arrives → instantly flattened in memory with pdf-lib (no storage)</li>
-            <li>Static PDF sent to Nutriend API → converted to PNGs → auto-deleted within 10 minutes</li>
-            <li>PNGs sent to Mistral AI (U.S.) → vision extraction → deleted after extraction completes</li>
-            <li>Original PDF buffer deleted from our database the second extraction finishes</li>
-            <li>Final extracted JSON kept only while you need it (you can delete anytime)</li>
+            <li>PDF uploaded directly to our service (no public sharing).</li>
+            <li>PDF pages may be converted to temporary images and sent to Mistral AI (U.S.) for extraction.</li>
+            <li>Uploaded PDFs and any derived images are deleted immediately after extraction completes (typically within ~90 seconds).</li>
+            <li>The extracted JSON and any user-saved artifacts are retained only so you can interact with them in the app; you can delete them anytime.</li>
           </ul>
         </section>
 
         <section>
           <h2>3. We <strong>Never</strong></h2>
           <ul className="list-disc pl-6 space-y-2">
-            <li>Sell, rent, or share your documents or personal information</li>
-            <li>Use your PDFs or images to train any AI models</li>
-            <li>Keep your PDF files longer than the ~90 seconds needed to process them</li>
+            <li>Sell, rent, or share your documents or personal information to third parties for profit.</li>
+            <li>Use your uploaded PDFs or derived images to train our models or third-party models.</li>
+            <li>Keep your original PDFs after extraction completes.</li>
           </ul>
         </section>
 
@@ -45,25 +44,25 @@ export default function PrivacyPage() {
           <h2>4. California Consumer Privacy Act (CCPA/CPRA) Rights</h2>
           <p>You have the right to:</p>
           <ul className="list-disc pl-6 space-y-2">
-            <li>Know exactly what personal information we collected</li>
-            <li>Delete your data (including any past parses)</li>
-            <li>Opt-out of sale or sharing (we don’t sell or share — but the right is honored)</li>
-            <li>Limit use of Sensitive Personal Information (addresses, financial data, etc.)</li>
-            <li>Not be discriminated against for exercising these rights</li>
+            <li>Know what personal information we collected about you.</li>
+            <li>Request deletion of your personal information (including past parses).</li>
+            <li>Opt-out of any future sale or sharing (we do not sell or share customer data).</li>
+            <li>Limit use of Sensitive Personal Information.</li>
+            <li>Not be discriminated against for exercising these rights.</li>
           </ul>
           <p className="mt-4">
-            To exercise any right, email us at <strong>info@tchelper.app</strong>.
-            We will respond within 30 days.
+            To exercise any right, email <strong>info@tchelper.app</strong>. We will respond within 30 days.
           </p>
         </section>
 
         <section>
-          <h2>5. Contact & Data Protection Officer</h2>
+          <h2>5. Contact & Data Protection</h2>
           <p>
-            Questions? Reach us at{" "}
+            Questions about privacy or data handling? Contact us at{" "}
             <a href="mailto:info@tchelper.app" className="underline">
               info@tchelper.app
             </a>
+            . We take data protection seriously and limit access to only what is necessary for processing.
           </p>
         </section>
       </div>

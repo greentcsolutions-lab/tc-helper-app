@@ -2,7 +2,7 @@
 // Version: 1.0.2 - 2026-01-05
 // FIXED: Handle document_annotation returned as JSON string
 
-import { mistralJsonSchema } from './schema';
+import { mistralExtractorSchema as mistralJsonSchema } from './schema';
 
 const MISTRAL_API_URL = 'https://api.mistral.ai/v1/ocr';
 const API_KEY = process.env.MISTRAL_API_KEY;

@@ -1,7 +1,7 @@
 // src/app/api/parse/cleanup/[parseId]/route.ts
-// Version: 2.0.1 - 2025-12-30
-// FIXED: Prisma null handling for JSON fields (use Prisma.DbNull instead of null)
-// UPDATED: Cleanup for single 200 DPI architecture.
+// Version: 2.1.0 - 2026-01-07
+// UPDATED: Now also clears pdfPublicUrl (temporary public Blob URL for direct Mistral calls)
+// UPDATED: Removed legacy dual-DPI fields (no longer used after direct-PDF migration)
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
@@ -23,7 +23,7 @@ export async function POST(
   try {
     console.log(`[cleanup] START parseId=${parseId}`);
 
-    // Fetch parse with all temporary storage fields
+    // Fetch parse with temporary storage fields
     const parse = await db.parse.findUnique({
       where: { id: parseId },
       select: {
@@ -31,10 +31,11 @@ export async function POST(
         userId: true,
         user: { select: { clerkId: true } },
         
-        // NEW: Universal 200 DPI fields
-        renderZipKey: true,
+        // NEW: Temporary public PDF URL for direct Mistral calls
+        pdfPublicUrl: true,
         
-        // LEGACY: Dual-DPI fields (for backward compatibility)
+        // LEGACY: Render ZIP fields (kept only for older parses)
+        renderZipKey: true,
         lowResZipKey: true,
         highResZipKey: true,
         
@@ -58,29 +59,44 @@ export async function POST(
     const errors: string[] = [];
 
     // =========================================================================
-    // NEW ARCHITECTURE: Delete universal 200 DPI ZIP
+    // NEW: Delete temporary public PDF Blob (used for direct Mistral classify/extract)
+    // =========================================================================
+    if (parse.pdfPublicUrl) {
+      try {
+        // Extract the key/path from the public URL
+        // Vercel Blob URLs are in format: https://<random>.public.blob.vercel-storage.com/<pathname>
+        const url = new URL(parse.pdfPublicUrl);
+        const key = url.pathname.slice(1); // remove leading slash
+
+        console.log(`[cleanup] Deleting temporary public PDF Blob: ${key}`);
+        await del(key);
+        deletions.push("pdfPublicUrl");
+        console.log(`[cleanup] ✓ Deleted temporary public PDF`);
+      } catch (error: any) {
+        console.error(`[cleanup] Failed to delete pdfPublicUrl:`, error);
+        errors.push(`pdfPublicUrl: ${error.message}`);
+      }
+    }
+
+    // =========================================================================
+    // LEGACY: Delete any remaining render ZIPs (for backward compatibility)
     // =========================================================================
     if (parse.renderZipKey) {
       try {
-        console.log(`[cleanup] Deleting universal 200 DPI ZIP: ${parse.renderZipKey}`);
+        console.log(`[cleanup] Deleting render ZIP: ${parse.renderZipKey}`);
         await del(parse.renderZipKey);
         deletions.push("renderZip");
-        console.log(`[cleanup] ✓ Deleted universal 200 DPI ZIP`);
       } catch (error: any) {
         console.error(`[cleanup] Failed to delete renderZipKey:`, error);
         errors.push(`renderZip: ${error.message}`);
       }
     }
 
-    // =========================================================================
-    // LEGACY ARCHITECTURE: Delete dual-DPI ZIPs (for backward compatibility)
-    // =========================================================================
     if (parse.lowResZipKey) {
       try {
         console.log(`[cleanup] Deleting legacy low-res ZIP: ${parse.lowResZipKey}`);
         await del(parse.lowResZipKey);
         deletions.push("lowResZip");
-        console.log(`[cleanup] ✓ Deleted legacy low-res ZIP`);
       } catch (error: any) {
         console.error(`[cleanup] Failed to delete lowResZipKey:`, error);
         errors.push(`lowResZip: ${error.message}`);
@@ -92,7 +108,6 @@ export async function POST(
         console.log(`[cleanup] Deleting legacy high-res ZIP: ${parse.highResZipKey}`);
         await del(parse.highResZipKey);
         deletions.push("highResZip");
-        console.log(`[cleanup] ✓ Deleted legacy high-res ZIP`);
       } catch (error: any) {
         console.error(`[cleanup] Failed to delete highResZipKey:`, error);
         errors.push(`highResZip: ${error.message}`);
@@ -107,19 +122,20 @@ export async function POST(
     await db.parse.update({
       where: { id: parseId },
       data: {
-        // NEW: Clear universal 200 DPI fields
+        // NEW: Clear temporary public PDF URL
+        pdfPublicUrl: null,
+        
+        // Legacy render fields (for older parses)
         renderZipUrl: null,
         renderZipKey: null,
-        
-        // LEGACY: Clear dual-DPI fields
         lowResZipUrl: null,
         lowResZipKey: null,
         highResZipUrl: null,
         highResZipKey: null,
         
-        // Clear other temporary data
+        // Other temporary data
         pdfBuffer: null,
-        classificationCache: Prisma.DbNull, // FIXED: Use Prisma.DbNull for JSON fields
+        classificationCache: Prisma.DbNull, // JSON field → use DbNull
       },
     });
 
@@ -133,11 +149,12 @@ export async function POST(
       deletedFromBlob: deletions,
       errors: errors.length > 0 ? errors : undefined,
       clearedFromDB: [
+        "pdfPublicUrl",
         "renderZipUrl/Key",
-        "lowResZipUrl/Key", 
+        "lowResZipUrl/Key",
         "highResZipUrl/Key",
         "pdfBuffer",
-        "classificationCache"
+        "classificationCache",
       ],
     };
 
@@ -145,7 +162,6 @@ export async function POST(
     console.log(`[cleanup] Summary:`, JSON.stringify(summary, null, 2));
 
     return Response.json(summary);
-
   } catch (error: any) {
     console.error(`[cleanup] ERROR:`, error);
     return Response.json(

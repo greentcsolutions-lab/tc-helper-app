@@ -1,7 +1,12 @@
 // src/lib/extraction/mistral/schema.ts
-// Version: 1.0.1 - 2026-01-05
-// FIXED: Removed invalid 'as const' on JSON import
-// JSON imports are already immutable objects at runtime – no need for const assertion
-// Re-export directly for cleanest type inference
+// Version: 1.1.0 - 2026-01-07
+// UPDATED: Export both extractor and classifier schemas from one file
 
-export { default as mistralJsonSchema } from '@/forms/universal/extractor.schema.json';
+// Universal extractor schema (used for final extraction)
+export { default as mistralExtractorSchema } from '@/forms/universal/extractor.schema.json';
+
+// Classifier schema (used for page-by-page classification)
+export { default as mistralClassifierSchema } from '@/forms/classifier.schema.json'; // adjust exact path
+
+// Optional: re-export types if needed elsewhere
+// export type { ... } from ...
