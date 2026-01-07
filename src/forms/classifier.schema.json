@@ -1,20 +1,30 @@
 {
   "type": "object",
   "properties": {
+    "version": {
+      "type": "string",
+      "description": "Optional classifier version (for auditing), e.g. 'llm-v1' or 'heuristic-3.7.0'"
+    },
+    "classificationSource": {
+      "type": "string",
+      "enum": ["heuristic", "llm", "combined"],
+      "description": "Indicates whether the classification came from heuristics, an LLM, or a merged result"
+    },
     "state": {
       "type": ["string", "null"],
-      "description": "Two-letter state code if confidently detected (e.g., 'CA', 'TX', 'FL'). Null if unknown."
+      "pattern": "^[A-Z]{2}$",
+      "description": "Two-letter state code if confidently detected (e.g., 'CA', 'TX'). Null if unknown. Pattern enforces two uppercase letters when present."
     },
     "pageCount": {
       "type": "integer",
       "minimum": 1,
-      "description": "Total number of pages in the document. Must exactly match the length of the 'pages' array."
+      "description": "Total number of pages in the document. Should match the length of the 'pages' array; enforce equality in code-level validation."
     },
     "pages": {
       "type": "array",
       "minItems": 1,
       "maxItems": 200,
-      "description": "Exactly one entry per image/page, in the same order as in the PDF. Length must match pageCount.",
+      "description": "Exactly one entry per image/page, in the same order as in the PDF. Length should match pageCount.",
       "items": {
         "oneOf": [
           {
@@ -30,15 +40,16 @@
               },
               "state": {
                 "type": ["string", "null"],
-                "enum": ["CA","TX","FL","NY","IL","GA","CO","WA","AZ","NV", null]
+                "pattern": "^[A-Z]{2}$",
+                "description": "Two-letter state code for this page if detectable, or null."
               },
               "formCode": {
-                "type": "string",
-                "description": "Short code identifying the form. Examples: 'RPA' (CA), 'TREC 20-16' (TX), 'FAR/BAR-6' (FL), 'NVAR' (NV), 'APR' (contingency release), 'Amendment', 'Addendum'"
+                "type": ["string", "null"],
+                "description": "Short code identifying the form (e.g., 'RPA', 'TREC 20-16') or null if not determinable"
               },
               "formRevision": {
                 "type": ["string", "null"],
-                "description": "Form revision date as visible on document. Examples: '6/25', '11/2023', '12/15'"
+                "description": "Form revision date/text as visible on document. Examples: '6/25', '11/2023', '12/15'"
               },
               "formPage": {
                 "type": ["integer", "null"],
@@ -65,15 +76,15 @@
                 "description": "Document type classification: main_contract = primary purchase/sales agreement; counter_offer = any counter offer; addendum = general addendum/amendment; local_addendum = state/region-specific addendum; contingency_release = forms that release/modify contingencies (APR, RR, amendments); disclosure = disclosure forms; financing = lender documents; broker_info = standalone broker representation forms NOT part of main contract; title_page = cover pages; other = unknown/misc"
               },
               "titleSnippet": {
-                "type": "string",
+                "type": ["string", "null"],
                 "maxLength": 120,
-                "description": "Prominent header/title text from the page"
+                "description": "Prominent header/title text from the page (short snippet)"
               },
               "confidence": {
                 "type": "integer",
                 "minimum": 0,
                 "maximum": 100,
-                "description": "Classification confidence based on form clarity and recognizable elements"
+                "description": "Classification confidence (0-100)"
               },
               "contentCategory": {
                 "type": "string",
@@ -85,20 +96,20 @@
                   "boilerplate",
                   "other"
                 ],
-                "description": "Primary content type based on MAIN BODY content (ignore headers/footers): transaction_terms = ANY fillable transaction data (purchase price, earnest money/deposit, closing date, contingency dates, financing terms, items included/excluded); signatures = signature blocks and final acceptance dates; broker_info = agent/broker contact information; disclosures = standard disclosure text; boilerplate = dense legal text with no substantive fillable fields; other = unknown/blank. IMPORTANT: Use universal terminology - 'earnest money' and 'deposit' and 'initial deposit' are all the same thing."
+                "description": "Primary content type based on MAIN BODY content (ignore headers/footers)."
               },
               "hasFilledFields": {
                 "type": "boolean",
-                "description": "True if the MAIN BODY (not headers/footers) has 3+ substantive filled fields or checked boxes. Do NOT count: property address in header, page numbers, form codes, single initial fields on boilerplate pages. Examples of substantive fields: purchase/sales price, earnest money/deposit amount, closing date, contingency deadlines, loan type checkboxes, items included/excluded checkboxes, agent contact information."
+                "description": "True if the MAIN BODY (not headers/footers) has 3+ substantive filled fields or checked boxes."
               }
             },
-            "required": ["pdfPage", "formCode", "role", "confidence", "contentCategory", "hasFilledFields"],
+            "required": ["pdfPage", "role", "confidence", "contentCategory", "hasFilledFields"],
             "additionalProperties": false
           }
         ]
       }
     }
   },
-  "required": ["state", "pageCount", "pages"],
+  "required": ["pageCount", "pages"],
   "additionalProperties": false
 }

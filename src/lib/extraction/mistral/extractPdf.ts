@@ -1,8 +1,12 @@
 // src/lib/extraction/mistral/extractPdf.ts
-// Version: 1.0.2 - 2026-01-07
-// FIXED: TypeScript error – pageLabels now matches post-processor expectation
-// Parallel extraction with Promise.all
+// Version: 1.1.0 - 2026-01-07
+// FIXED: Now extracts subset PDFs per chunk using pdf-lib
+// Uploads to Vercel Blob for temp URL
+// Sends only chunk PDFs to Mistral (bypasses 8-page limit check)
+// Parallel execution with Promise.all
 
+import { PDFDocument } from 'pdf-lib';
+import { put } from '@vercel/blob';
 import { mistralExtractorSchema } from './schema';
 import { mergePageExtractions } from '@/lib/extraction/extract/universal/post-processor';
 
@@ -13,9 +17,7 @@ if (!API_KEY) {
   throw new Error('MISTRAL_API_KEY is required');
 }
 
-// Exact shape expected by mergePageExtractions (second argument)
-// pageLabels must be Record<string, string> and required (not optional)
-// We convert number keys to string and provide empty object fallback
+// Exact shape for mergePageExtractions
 interface ExpectedClassificationMetadata {
   criticalPageNumbers: number[];
   pageLabels: Record<string, string>;
@@ -26,6 +28,36 @@ interface ExpectedClassificationMetadata {
 interface ExtractionChunk {
   pageNumbers: number[];
   extractions: any[];
+}
+
+async function fetchPdfBuffer(url: string): Promise<Uint8Array> {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch PDF: ${response.status}`);
+  }
+  const arrayBuffer = await response.arrayBuffer();
+  return new Uint8Array(arrayBuffer);
+}
+
+async function extractPdfSubset(buffer: Uint8Array, pageNumbers: number[]): Promise<string> {
+  const fullPdf = await PDFDocument.load(buffer);
+  const subsetPdf = await PDFDocument.create();
+
+  // Copy specific pages (1-based → 0-based index)
+  const copiedPages = await subsetPdf.copyPages(fullPdf, pageNumbers.map(p => p - 1));
+  copiedPages.forEach(page => subsetPdf.addPage(page));
+
+  const subsetBuffer = await subsetPdf.save();
+  // Convert Uint8Array to Node Buffer for @vercel/blob put
+  const subsetBufferNode = Buffer.from(subsetBuffer);
+
+  // Upload to Vercel Blob (temp public URL)
+  const { url } = await put(`temp-chunk-${Date.now()}.pdf`, subsetBufferNode, {
+    access: 'public',
+    addRandomSuffix: true, // unique name
+  });
+
+  return url;
 }
 
 export async function extractFromCriticalPages(
@@ -53,7 +85,7 @@ export async function extractFromCriticalPages(
     };
   }
 
-  // Convert pageLabels number keys → string keys (post-processor expects string)
+  // Normalize pageLabels to string keys
   const normalizedPageLabels: Record<string, string> = {};
   Object.entries(pageLabels).forEach(([pageNum, label]) => {
     normalizedPageLabels[String(pageNum)] = label;
@@ -76,17 +108,25 @@ export async function extractFromCriticalPages(
     `[extractPdf] ${criticalPageNumbers.length} critical pages → ${chunks.length} chunk(s) of ≤8 pages (parallel)`
   );
 
-  // Parallel execution of all chunks
+  // Fetch full PDF buffer once (shared across chunks)
+  const fullPdfBuffer = await fetchPdfBuffer(pdfUrl);
+
+  // Parallel execution
   const chunkPromises = chunks.map(async (pageNumbers, chunkIndex) => {
     console.log(
       `[extractPdf] Starting chunk ${chunkIndex + 1}/${chunks.length} – pages ${pageNumbers.join(', ')}`
     );
 
+    // Extract subset PDF for this chunk
+    const subsetUrl = await extractPdfSubset(fullPdfBuffer, pageNumbers);
+
+    console.log(`[extractPdf] Chunk ${chunkIndex + 1} subset PDF uploaded: ${subsetUrl}`);
+
     const payload = {
       model: 'mistral-ocr-latest',
       document: {
         type: 'document_url',
-        document_url: pdfUrl,
+        document_url: subsetUrl,
       },
       document_annotation_format: {
         type: 'json_schema',
@@ -147,7 +187,6 @@ export async function extractFromCriticalPages(
 
   console.log(`[extractPdf] Merged ${allPageExtractions.length} page extractions`);
 
-  // Pass fully normalized metadata to post-processor
   const mergeResult = await mergePageExtractions(allPageExtractions, normalizedMetadata);
 
   return mergeResult;
