@@ -1,17 +1,14 @@
 // src/app/api/parse/classify/[parseId]/route.ts
-// Version: 3.0.0 - 2026-01-07
-// CONSOLIDATED CLASSIFY ROUTE
-// - Eliminates separate render route entirely
-// - Direct original PDF → temporary public Vercel Blob → Mistral /v1/ocr with classifier schema
-// - Credit deduction moved here (classify now owns the cost)
-// - Runs universal post-processor (unchanged v3.7.0)
-// - Saves classificationCache, criticalPageNumbers, pdfPublicUrl (for extraction phase)
-// - Output identical to previous classify route (SSE events + complete payload)
+// Version: 3.1.0 - 2026-01-07
+// DIRECT-TO-MISTRAL CLASSIFY (no flattening, no pdf-lib, no pageCount derivation)
+// - Mistral now returns pageCount in structured output (schema updated)
+// - Removed ALL server-side PDF parsing attempts (pdf-lib + pdfjs + text heuristics)
+// - pageCount comes directly from Mistral response
+// - Everything else unchanged: credit deduction, post-processor, DB writes, SSE events
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
-import { put } from "@vercel/blob"; 
 import { callMistralClassify } from "@/lib/extraction/mistral/classifyPdf";
 import {
   getCriticalPageNumbers,
@@ -47,10 +44,9 @@ export async function GET(
             id: true,
             userId: true,
             status: true,
-            pdfBuffer: true,
-            pageCount: true,
             fileName: true,
             user: { select: { clerkId: true, credits: true } },
+            pdfPublicUrl: true,
           },
         });
 
@@ -62,73 +58,7 @@ export async function GET(
           throw new Error("Unauthorized");
         }
 
-        // Derive pageCount from PDF buffer if missing (upload route doesn't set it)
-        let pageCount = parse.pageCount;
-        if (!pageCount && parse.pdfBuffer) {
-          // Attempt 1: pdf-lib (robust for most PDFs)
-          try {
-            const { PDFDocument } = await import("pdf-lib");
-            const pdfDoc = await PDFDocument.load(parse.pdfBuffer);
-            pageCount = pdfDoc.getPageCount();
-            await db.parse.update({ where: { id: parseId }, data: { pageCount } });
-            logSuccess("CLASSIFY:1", `Derived pageCount=${pageCount} from PDF via pdf-lib`);
-          } catch (err) {
-            logStep("CLASSIFY:1", "pdf-lib failed to derive pageCount, trying text-scans and pdfjs fallbacks...");
-            // Attempt 2: Text-based scans (latin1) - multiple heuristics
-            try {
-              const bufferStr = parse.pdfBuffer.toString("latin1");
-              const typePageMatches = (bufferStr.match(/\/Type\s*\/Page\b/g) || []).length;
-              const plainPageMatches = (bufferStr.match(/\/Page\b/g) || []).length;
-              const countMatch = bufferStr.match(/\/Count\s+(\d+)/);
-              if (typePageMatches > 0) {
-                pageCount = typePageMatches;
-                await db.parse.update({ where: { id: parseId }, data: { pageCount } });
-                logSuccess("CLASSIFY:1", `Fallback derived pageCount=${pageCount} by scanning "/Type /Page" (${typePageMatches} matches)`);
-              } else if (countMatch) {
-                pageCount = Number.parseInt(countMatch[1], 10);
-                await db.parse.update({ where: { id: parseId }, data: { pageCount } });
-                logSuccess("CLASSIFY:1", `Fallback derived pageCount=${pageCount} from "/Count"`);
-              } else if (plainPageMatches > 0) {
-                pageCount = plainPageMatches;
-                await db.parse.update({ where: { id: parseId }, data: { pageCount } });
-                logSuccess("CLASSIFY:1", `Fallback derived pageCount=${pageCount} by scanning "/Page" (${plainPageMatches} matches)`);
-              }
-            } catch (scanErr) {
-              // ignore here; we'll try pdfjs next
-            }
-
-           // Attempt 3: pdfjs (pdfjs-dist) - robust for tricky PDFs
-            if (!pageCount) {
-              try {
-                const pdfjs = await import("pdfjs-dist/legacy/build/pdf.js");
-                // Convert Node Buffer -> Uint8Array for pdfjs
-                const uint8 = new Uint8Array(
-                  parse.pdfBuffer.buffer,
-                  parse.pdfBuffer.byteOffset,
-                  parse.pdfBuffer.byteLength
-                );
-                const loadingTask = pdfjs.getDocument({ data: uint8 });
-                const pdfDoc = await loadingTask.promise;
-                pageCount = pdfDoc.numPages;
-                await db.parse.update({ where: { id: parseId }, data: { pageCount } });
-                logSuccess("CLASSIFY:1", `Derived pageCount=${pageCount} using pdfjs-dist fallback`);
-              } catch (pdfjsErr) {
-                // Last-resort debug: log some counts and a small buffer sample
-                try {
-                  const sample = parse.pdfBuffer.slice(0, 512).toString("latin1").replace(/\n/g, "\\n");
-                  console.warn(`[CLASSIFY:1] Fallbacks failed. sample[0..512]: "${sample}"`);
-                } catch (_) {}
-                logError("CLASSIFY:1", `All pageCount derivation attempts failed: ${String(pdfjsErr)}`);
-              }
-            }
-          }
-        }
-
-        if (!parse.pdfBuffer || !pageCount) {
-          throw new Error("Missing PDF buffer or page count");
-        }
-
-        // Deduct credit here – classification is now the paid step
+        // Deduct credit – classification is the paid step
         if (parse.user.credits < 1) {
           throw new Error("Insufficient credits");
         }
@@ -138,15 +68,14 @@ export async function GET(
           data: { credits: { decrement: 1 } },
         });
 
-        logSuccess("CLASSIFY:1", `Credit deducted – processing ${parse.fileName} (${pageCount} pages)`);
+        logSuccess("CLASSIFY:1", `Credit deducted – processing ${parse.fileName}`);
 
-        logStep("CLASSIFY:2", "Verifying uploaded PDF URL (upload route must provide pdfPublicUrl)...");
-        const dbParse = await db.parse.findUnique({ where: { id: parseId }, select: { pdfPublicUrl: true } });
-        const pdfPublicUrl = dbParse?.pdfPublicUrl;
+        // Verify we have the public URL from upload
+        const pdfPublicUrl = parse.pdfPublicUrl;
         if (!pdfPublicUrl) {
-          logError("CLASSIFY:2", "Missing pdfPublicUrl - upload route did not persist public URL");
-          throw new Error("Missing pdfPublicUrl: ensure upload completed and persisted the public URL before classification");
+          throw new Error("Missing pdfPublicUrl: upload must persist public URL");
         }
+
         logSuccess("CLASSIFY:2", `Using uploaded PDF at ${pdfPublicUrl}`);
         emit(controller, {
           type: "progress",
@@ -161,17 +90,25 @@ export async function GET(
           phase: "classify",
         });
 
-        // STEP 3: Direct Mistral classification on full PDF
-        logStep("CLASSIFY:3", "Calling Mistral /v1/ocr with classifier schema...");
+        // Direct Mistral classification – now returns pageCount
+        logStep("CLASSIFY:3", "Calling Mistral /v1/ocr with updated classifier schema...");
 
-        const { pages: detectedPages, state: documentState } = await callMistralClassify(
-          pdfPublicUrl,
-          pageCount
-        );
+        const mistralResponse = await callMistralClassify(pdfPublicUrl);
 
-        logSuccess("CLASSIFY:3", `Received classification for ${detectedPages.length} pages`);
+        const {
+          pages: detectedPages,
+          state: documentState,
+          pageCount: detectedPageCount,
+        } = mistralResponse;
 
-        // STEP 4: Run universal post-processor (exact same logic as before)
+        if (detectedPages.length !== detectedPageCount) {
+          logError("CLASSIFY:3", `Page count mismatch: Mistral reported ${detectedPageCount} pages but returned ${detectedPages.length} entries`);
+          throw new Error("Classification response invalid: pageCount mismatch");
+        }
+
+        logSuccess("CLASSIFY:3", `Received classification for ${detectedPageCount} pages`);
+
+        // Universal post-processor (unchanged)
         logStep("CLASSIFY:4", "Running post-processor to determine critical pages...");
 
         const criticalPageNumbers = getCriticalPageNumbers(detectedPages as any);
@@ -190,20 +127,21 @@ export async function GET(
           state: documentState,
         };
 
-        // Save everything needed for extraction phase
+        // Persist everything needed for extraction phase
         await db.parse.update({
           where: { id: parseId },
           data: {
             classificationCache: classificationMetadata,
             criticalPageNumbers,
             status: "CLASSIFIED",
+            pageCount: detectedPageCount,
           },
         });
 
         const metadataSizeKB = JSON.stringify(classificationMetadata).length / 1024;
         logSuccess("CLASSIFY:4", `Post-processor complete – ${criticalPageNumbers.length} critical pages (${metadataSizeKB.toFixed(1)} KB saved)`);
 
-        // Final success event – identical shape to previous classify route
+        // Final success event (identical to previous)
         emit(controller, {
           type: "complete",
           criticalPageCount: criticalPageNumbers.length,

@@ -1,7 +1,8 @@
 // src/lib/extraction/mistral/classifyPdf.ts
-// Version: 1.0.0 - 2026-01-07
-// Direct full-PDF classification using Mistral /v1/ocr + classifier schema
-// Reuses the exact same robust fetching/parsing logic as our extractor
+// Version: 1.1.0 - 2026-01-07
+// Updated for new classifier schema that includes root-level pageCount
+// Removed expectedPageCount parameter – pageCount now comes directly from Mistral
+// Reuses the same robust fetching/parsing logic
 
 import { mistralClassifierSchema } from './schema';
 
@@ -14,6 +15,7 @@ if (!API_KEY) {
 
 export interface MistralClassifyResponse {
   state: string | null;
+  pageCount: number;
   pages: Array<{
     pdfPage: number;
     state?: string | null;
@@ -27,12 +29,11 @@ export interface MistralClassifyResponse {
     contentCategory: string;
     hasFilledFields: boolean;
     footerText?: string;
-  }>;
+  } | null>;
 }
 
 export async function callMistralClassify(
-  pdfUrl: string,
-  expectedPageCount: number
+  pdfUrl: string
 ): Promise<MistralClassifyResponse> {
   const payload = {
     model: 'mistral-ocr-latest',
@@ -74,7 +75,7 @@ export async function callMistralClassify(
 
       const data = await response.json();
 
-      // Debug logging (same pattern as mistralClient.ts)
+      // Debug logging
       console.log('[mistralClassify] === RAW RESPONSE KEYS ===');
       console.log('[mistralClassify] Keys:', Object.keys(data));
       console.log('[mistralClassify] Has document_annotation:', 'document_annotation' in data);
@@ -95,20 +96,25 @@ export async function callMistralClassify(
         throw new Error('Invalid Mistral response: missing or invalid pages array in document_annotation');
       }
 
-      if (annotationObj.pages.length !== expectedPageCount) {
+      // Validate pageCount matches pages array length
+      if (typeof annotationObj.pageCount !== 'number' || annotationObj.pageCount !== annotationObj.pages.length) {
         console.warn(
-          `[mistralClassify] Page count mismatch: expected ${expectedPageCount}, got ${annotationObj.pages.length}`
+          `[mistralClassify] pageCount mismatch: declared ${annotationObj.pageCount}, actual pages ${annotationObj.pages.length}`
         );
       }
 
       // Normalise page numbers if missing (fallback to index + 1)
-      const pages = annotationObj.pages.map((p: any, idx: number) => ({
-        pdfPage: p.pdfPage ?? idx + 1,
-        ...p,
-      }));
+      const pages = annotationObj.pages.map((p: any, idx: number) => {
+        if (p === null) return null;
+        return {
+          pdfPage: p.pdfPage ?? idx + 1,
+          ...p,
+        };
+      });
 
       return {
         state: annotationObj.state ?? null,
+        pageCount: annotationObj.pageCount,
         pages,
       };
     } catch (err: unknown) {

@@ -1,14 +1,20 @@
 {
+  "type": "object",
   "properties": {
     "state": {
       "type": ["string", "null"],
       "description": "Two-letter state code if confidently detected (e.g., 'CA', 'TX', 'FL'). Null if unknown."
     },
+    "pageCount": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Total number of pages in the document. Must exactly match the length of the 'pages' array."
+    },
     "pages": {
       "type": "array",
       "minItems": 1,
-      "maxItems": 20,
-      "description": "Exactly one entry per image, in the same order as sent.",
+      "maxItems": 200,
+      "description": "Exactly one entry per image/page, in the same order as in the PDF. Length must match pageCount.",
       "items": {
         "oneOf": [
           {
@@ -93,6 +99,6 @@
       }
     }
   },
-  "required": ["state", "pages"],
+  "required": ["state", "pageCount", "pages"],
   "additionalProperties": false
 }
