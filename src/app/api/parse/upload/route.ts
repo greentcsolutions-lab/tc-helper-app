@@ -1,10 +1,10 @@
 // src/app/api/parse/upload/route.ts
 // REFACTORED: Just validates, stores PDF, returns parseId
-// Processing happens in /api/parse/process/[parseId] via SSE
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
+import { put } from "@vercel/blob"; 
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -42,26 +42,53 @@ export async function POST(req: NextRequest) {
 
   console.log(`[upload] Received ${file.name} (${(buffer.length / 1e6).toFixed(1)} MB)`);
 
-  // Create parse record
-  const parse = await db.parse.create({
-    data: {
-      userId: user.id,
-      fileName: file.name,
-      state: "Unknown",
-      status: "PENDING", // ← waiting for processing
-      pdfBuffer: buffer,
-      rawJson: {},
-      formatted: {},
-      criticalPageNumbers: [],
-    },
-  });
+  // Upload first: ensures we only create DB record when storage succeeded
+  let pdfPublicUrl: string | undefined;
+  try {
+    console.log("[upload] Uploading to Vercel Blob...");
+    const res = await put(`uploads/${Date.now()}-${file.name}`, buffer, {
+      access: "public",
+      addRandomSuffix: true,
+    });
 
-  console.log(`[upload] Created parse ${parse.id} - ready for processing`);
+    pdfPublicUrl = (res as any)?.url;
+    if (!pdfPublicUrl) {
+      console.error("[upload] Vercel put returned empty URL");
+      return Response.json({ success: false, error: "Blob upload returned empty URL" }, { status: 500 });
+    }
 
-  // Return immediately - client will connect to SSE endpoint
-  return Response.json({
-    success: true,
-    parseId: parse.id,
-    message: "Upload complete - starting AI analysis...",
-  });
+    console.log(`[upload] Uploaded PDF to Vercel Blob: ${pdfPublicUrl}`);
+  } catch (uploadErr: any) {
+    console.error("[upload] Vercel blob upload failed:", uploadErr);
+    return Response.json({ success: false, error: String(uploadErr) }, { status: 500 });
+  }
+
+  // Create parse record only after successful upload
+  try {
+    const parse = await db.parse.create({
+      data: {
+        userId: user.id,
+        fileName: file.name,
+        state: "Unknown",
+        status: "UPLOADED",
+        pdfBuffer: buffer,
+        pdfPublicUrl,
+        rawJson: {},
+        formatted: {},
+        criticalPageNumbers: [],
+      },
+    });
+
+    console.log(`[upload] Created parse ${parse.id} - ready for processing (pdfPublicUrl persisted)`);
+    return Response.json({
+      success: true,
+      parseId: parse.id,
+      pdfPublicUrl,
+      message: "Upload complete - PDF stored and ready for classification",
+    });
+  } catch (dbErr: any) {
+    // Optionally: attempt to delete the uploaded blob to avoid orphaned files (not implemented here)
+    console.error("[upload] DB create failed after successful upload:", dbErr);
+    return Response.json({ success: false, error: "Failed to create parse record after upload" }, { status: 500 });
+  }
 }

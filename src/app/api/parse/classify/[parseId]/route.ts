@@ -97,11 +97,17 @@ export async function GET(
               // ignore here; we'll try pdfjs next
             }
 
-            // Attempt 3: pdfjs (pdfjs-dist) - robust for tricky PDFs
+           // Attempt 3: pdfjs (pdfjs-dist) - robust for tricky PDFs
             if (!pageCount) {
               try {
                 const pdfjs = await import("pdfjs-dist/legacy/build/pdf.js");
-                const loadingTask = pdfjs.getDocument({ data: parse.pdfBuffer });
+                // Convert Node Buffer -> Uint8Array for pdfjs
+                const uint8 = new Uint8Array(
+                  parse.pdfBuffer.buffer,
+                  parse.pdfBuffer.byteOffset,
+                  parse.pdfBuffer.byteLength
+                );
+                const loadingTask = pdfjs.getDocument({ data: uint8 });
                 const pdfDoc = await loadingTask.promise;
                 pageCount = pdfDoc.numPages;
                 await db.parse.update({ where: { id: parseId }, data: { pageCount } });
@@ -134,22 +140,19 @@ export async function GET(
 
         logSuccess("CLASSIFY:1", `Credit deducted – processing ${parse.fileName} (${pageCount} pages)`);
 
-        // STEP 2: Upload original PDF to temporary public Blob (short-lived, used for both classify & extract)
-        logStep("CLASSIFY:2", "Uploading original PDF to temporary public Vercel Blob...");
-
-        const { url: pdfPublicUrl } = await put(
-          `temp-pdf/${parseId}-${Date.now()}.pdf`,
-          parse.pdfBuffer,
-          {
-            access: "public",
-            addRandomSuffix: true,
-          }
-        );
-
-        // Persist the public URL for the upcoming extraction phase
-        await db.parse.update({
-          where: { id: parseId },
-          data: { pdfPublicUrl },
+        logStep("CLASSIFY:2", "Verifying uploaded PDF URL (upload route must provide pdfPublicUrl)...");
+        const dbParse = await db.parse.findUnique({ where: { id: parseId }, select: { pdfPublicUrl: true } });
+        const pdfPublicUrl = dbParse?.pdfPublicUrl;
+        if (!pdfPublicUrl) {
+          logError("CLASSIFY:2", "Missing pdfPublicUrl - upload route did not persist public URL");
+          throw new Error("Missing pdfPublicUrl: ensure upload completed and persisted the public URL before classification");
+        }
+        logSuccess("CLASSIFY:2", `Using uploaded PDF at ${pdfPublicUrl}`);
+        emit(controller, {
+          type: "progress",
+          phase: "classify",
+          message: "Found uploaded PDF URL, starting classification",
+          pdfPublicUrl,
         });
 
         emit(controller, {
