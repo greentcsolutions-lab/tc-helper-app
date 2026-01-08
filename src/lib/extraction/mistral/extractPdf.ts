@@ -1,9 +1,10 @@
 // src/lib/extraction/mistral/extractPdf.ts
-// Version: 1.1.0 - 2026-01-07
+// Version: 1.2.0 - 2026-01-08
 // FIXED: Now extracts subset PDFs per chunk using pdf-lib
 // Uploads to Vercel Blob for temp URL
 // Sends only chunk PDFs to Mistral (bypasses 8-page limit check)
 // Parallel execution with Promise.all
+// FIX: Added ignoreEncryption: true to handle encrypted PDFs (common in form PDFs)
 
 import { PDFDocument } from 'pdf-lib';
 import { put } from '@vercel/blob';
@@ -40,7 +41,9 @@ async function fetchPdfBuffer(url: string): Promise<Uint8Array> {
 }
 
 async function extractPdfSubset(buffer: Uint8Array, pageNumbers: number[]): Promise<string> {
-  const fullPdf = await PDFDocument.load(buffer);
+  // Load with ignoreEncryption: true to handle PDFs with encryption flags (common in forms)
+  // This is safe - we only process PDFs accessible via public URL (no password protection)
+  const fullPdf = await PDFDocument.load(buffer, { ignoreEncryption: true });
   const subsetPdf = await PDFDocument.create();
 
   // Copy specific pages (1-based → 0-based index)

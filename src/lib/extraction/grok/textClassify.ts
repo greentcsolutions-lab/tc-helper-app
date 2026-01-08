@@ -1,10 +1,11 @@
 // src/lib/extraction/grok/textClassify.ts
-// Version: 1.4.0 - 2026-01-08
+// Version: 1.5.0 - 2026-01-08
 // Calls Grok text model (grok-4-1-fast-reasoning) to classify pages using OCR markdown
 // FIX: Use XAI_API_KEY (correct env var) + parse chat completion format correctly
 // FIX: Add debug logging (limited to avoid Vercel log size limits)
 // FIX: Include full schema in prompt with valid enum values + enforce exact array length
 // FIX: Dynamic max_tokens scaling (100 tokens/page + 2k buffer, cap 16k) - supports up to 140 pages
+// FIX: Tighten prompt - explicit rules for boilerplate vs transaction_terms + ignore header fields
 
 import Ajv from "ajv";
 import addFormats from "ajv-formats";
@@ -74,13 +75,37 @@ KEY ENUM VALUES TO USE:
 - role: main_contract, counter_offer, addendum, local_addendum, contingency_release, disclosure, financing, broker_info, title_page, other
 - contentCategory: transaction_terms, signatures, broker_info, disclosures, boilerplate, other
 
-IMPORTANT MAPPINGS:
-- Pages with transaction terms/contingencies/property details → contentCategory: "transaction_terms"
-- Pages with signature blocks → contentCategory: "signatures"
-- Pages with agent/broker info → contentCategory: "broker_info" OR role: "broker_info"
-- Disclosure forms (AD, BIA, etc.) → contentCategory: "disclosures" OR role: "disclosure"
-- Dense legal text → contentCategory: "boilerplate"
-- Blank/unknown pages → null OR {role: "other", contentCategory: "other"}
+CRITICAL: contentCategory Classification Rules
+----------------------------------------------
+"transaction_terms" = Pages with SUBSTANTIVE fillable transaction data in the MAIN BODY:
+  ✓ Purchase price, earnest money, deposit amounts
+  ✓ Closing dates, contingency dates, possession dates
+  ✓ Property condition terms, repairs, inspections
+  ✓ Financing terms, loan conditions
+  ✓ Contingency details (appraisal, loan, inspection)
+  ✓ Addenda/amendments lists, special terms
+
+"boilerplate" = Dense legal text with minimal/no fillable fields in MAIN BODY:
+  ✓ Pages that are 80%+ pre-printed legal paragraphs
+  ✓ Standard contract terms, definitions, legal disclaimers
+  ✓ General provisions, default clauses, arbitration text
+  ✗ IGNORE property address and date in headers when evaluating this
+
+"signatures" = Pages primarily containing signature blocks and dates (even if unsigned)
+
+CRITICAL: hasFilledFields Evaluation Rules
+-------------------------------------------
+Set to TRUE only if the MAIN BODY (not headers/footers) has 3+ substantive filled fields:
+  ✓ Count: dollar amounts, dates, checkboxes, property details, names IN THE BODY
+  ✗ IGNORE: property address in header, form date in header, page numbers
+  ✗ If only header fields are filled → hasFilledFields = FALSE
+  ✗ If page is mostly dense legal text with <3 body fields → hasFilledFields = FALSE
+
+Examples:
+- RPA page with purchase price, closing date, earnest money → transaction_terms, hasFilledFields=true
+- RPA page with only dense legal paragraphs (general provisions) → boilerplate, hasFilledFields=false
+- Counter offer with modified terms → transaction_terms, hasFilledFields=true
+- Disclosure form (AD, BIA) → disclosures, hasFilledFields=false
 
 Return ONLY the JSON object. No markdown formatting, no explanations.`;
 
