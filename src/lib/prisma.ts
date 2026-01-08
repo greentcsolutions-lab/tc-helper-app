@@ -1,28 +1,27 @@
 // src/lib/prisma.ts
-import { PrismaClient } from "@prisma/client";
+// Updated 2026-01-08 – Optimized for Vercel Pro serverless + Prisma Accelerate
+// Singleton pattern: Reuses PrismaClient across hot invocations → prevents connection leaks
+// Extends with Accelerate for global pooling + caching (your dashboard shows it's already enabled)
+// No multiple clients per function → stable on cold starts, fits <90s p95
 
-declare global {
-  // eslint-disable-next-line no-var
-  var prisma: PrismaClient | undefined;
+import { PrismaClient } from '@prisma/client';
+import { withAccelerate } from '@prisma/extension-accelerate';
+
+const globalForPrisma = global as unknown as {
+  prisma: PrismaClient;
+};
+
+// Reuse existing client if hot, otherwise create new and extend with Accelerate
+export const db =
+  globalForPrisma.prisma ||
+  new PrismaClient({
+    log:
+      process.env.NODE_ENV === 'development'
+        ? ['query', 'error', 'warn'] // Helpful locally on your Chromebook
+        : ['error'], // Production: only errors to keep logs lean
+  }).$extends(withAccelerate());
+
+// Store in globalThis for dev hot-reload (Next.js/Turbopack clears module cache)
+if (process.env.NODE_ENV !== 'production') {
+  globalForPrisma.prisma = db;
 }
-
-// Singleton – prevents connection explosion in dev/Turbopack
-export const db = globalThis.prisma || new PrismaClient();
-
-if (process.env.NODE_ENV !== "production") {
-  globalThis.prisma = db;
-
-  db.$connect().catch(() => {}); // reconnnects if schema changed
-}
-
-/**
- * Strongly-typed, correctly-cased helpers
- * Use these everywhere – they match what Prisma actually generates
- */
-export const prisma = {
-  user: db.user,        // ← correct (generated name)
-  userUsage: db.userUsage, // ← correct
-  parse: db.parse,      // ← correct
-  task: db.task,        // ← correct
-  userTaskTemplate: db.userTaskTemplate, // ← correct
-} as const;
