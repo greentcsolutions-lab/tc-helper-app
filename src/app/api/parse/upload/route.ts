@@ -1,11 +1,12 @@
 // src/app/api/parse/upload/route.ts
-// REFACTORED: Validates, stores PDF, detects page count, returns parseId
+// REFACTORED: Uses pdfjs-dist for robust page count on messy PDFs
+// Validates, stores PDF, detects page count, returns parseId
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
 import { put } from "@vercel/blob";
-import { PDFDocument } from "pdf-lib"; 
+import * as pdfjs from "pdfjs-dist/build/pdf.mjs"; // ESM import
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -32,8 +33,9 @@ export async function POST(req: NextRequest) {
   if (!file) return Response.json({ error: "No file" }, { status: 400 });
 
   const buffer = Buffer.from(await file.arrayBuffer());
+  const uint8Array = new Uint8Array(buffer); // pdfjs prefers Uint8Array
 
-  // Validate PDF
+  // Quick header validation
   if (!buffer.subarray(0, 8).toString().includes("%PDF")) {
     return Response.json({ error: "invalid_pdf" }, { status: 400 });
   }
@@ -43,15 +45,19 @@ export async function POST(req: NextRequest) {
 
   console.log(`[upload] Received ${file.name} (${(buffer.length / 1e6).toFixed(1)} MB)`);
 
-  // Detect page count
+  // Detect page count with pdfjs-dist (more robust for messy PDFs)
   let pageCount = 0;
   try {
-    const pdfDoc = await PDFDocument.load(buffer, { ignoreEncryption: true });
-    pageCount = pdfDoc.getPageCount();
-    console.log(`[upload] Detected ${pageCount} pages`);
+    // Set up pdfjs worker (required for Node.js)
+    pdfjs.GlobalWorkerOptions.workerSrc = "pdfjs-dist/build/pdf.worker.mjs";
+
+    const loadingTask = pdfjs.getDocument(uint8Array);
+    const pdfDoc = await loadingTask.promise;
+    pageCount = pdfDoc.numPages;
+    console.log(`[upload] Detected ${pageCount} pages with pdfjs-dist`);
   } catch (err) {
-    console.error("[upload] Failed to detect page count:", err);
-    return Response.json({ error: "Failed to read PDF structure" }, { status: 400 });
+    console.error("[upload] Failed to detect page count with pdfjs:", err);
+    return Response.json({ error: "Failed to read PDF structure – possibly corrupted or non-standard PDF" }, { status: 400 });
   }
 
   // Upload first: ensures we only create DB record when storage succeeded
