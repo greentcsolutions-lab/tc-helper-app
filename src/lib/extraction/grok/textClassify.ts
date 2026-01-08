@@ -1,9 +1,10 @@
 // src/lib/extraction/grok/textClassify.ts
-// Version: 1.3.0 - 2026-01-08
+// Version: 1.4.0 - 2026-01-08
 // Calls Grok text model (grok-4-1-fast-reasoning) to classify pages using OCR markdown
 // FIX: Use XAI_API_KEY (correct env var) + parse chat completion format correctly
 // FIX: Add debug logging (limited to avoid Vercel log size limits)
 // FIX: Include full schema in prompt with valid enum values + enforce exact array length
+// FIX: Dynamic max_tokens scaling (100 tokens/page + 2k buffer, cap 16k) - supports up to 140 pages
 
 import Ajv from "ajv";
 import addFormats from "ajv-formats";
@@ -110,6 +111,10 @@ Your response must validate against the schema. Respond with JSON only.`;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
+      // Dynamic token scaling: ~100 tokens/page + 2000 buffer, capped at 16k
+      // For 47 pages: 6,700 tokens | For 100 pages: 12,000 tokens | Max: 16,000 tokens
+      const maxTokens = Math.min(pageCount * 100 + 2000, 16000);
+
       const body = {
         model: "grok-4-1-fast-reasoning",
         messages: [
@@ -117,7 +122,7 @@ Your response must validate against the schema. Respond with JSON only.`;
           { role: "user", content: userPrompt },
         ],
         temperature: 0,
-        max_tokens: 3000,
+        max_tokens: maxTokens,
       };
 
       const res = await fetch(GROK_API_URL, {
