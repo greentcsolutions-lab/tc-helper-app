@@ -1,15 +1,14 @@
 // src/app/api/parse/upload/route.ts
-// Updated 2026-01-08 – Robust page count using pdfjs-dist v3 (your ^3.0.279 constraint)
-// Uses PDFJS.disableWorker = true (legacy global flag from v3 era) to fully disable worker
-// Eliminates fake worker setup errors ("endsWith is not a function") on Vercel cold starts
-// No workerSrc needed → no resolution issues
-// Metadata-only numPages – fast, reliable on signed/annotated California packets
+// Updated 2026-01-08 – Lightweight page count with pdf-page-counter (pure JS, no workers/heavy deps)
+// Enforces ≤25 MB + ≤100 pages early
+// No pdfjs-dist issues, no build errors, no runtime worker failures
+// Perfect for Vercel Pro cold starts
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
 import { put } from "@vercel/blob";
-import PDFJS from "pdfjs-dist"; // Use default import for legacy v3 global access (PDFJS)
+import pdfPageCounter from "pdf-page-counter"; // Tiny pure-JS parser – just for page count
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -36,7 +35,6 @@ export async function POST(req: NextRequest) {
   if (!file) return Response.json({ error: "No file" }, { status: 400 });
 
   const buffer = Buffer.from(await file.arrayBuffer());
-  const uint8Array = new Uint8Array(buffer);
 
   // Quick validation
   if (!buffer.subarray(0, 8).toString().includes("%PDF")) {
@@ -48,25 +46,19 @@ export async function POST(req: NextRequest) {
 
   console.log(`[upload] Received ${file.name} (${(buffer.length / 1e6).toFixed(1)} MB)`);
 
-  // Page count – fully disable worker (legacy v3 method)
+  // Lightweight page count – no workers, no heavy libs
   let pageCount = 0;
   try {
-    // Key line: disables worker globally (safe & supported in v3.x)
-    //@ts-ignore 2339
-    PDFJS.disableWorker = true;
+    const data = await pdfPageCounter(buffer);
+    pageCount = data.numpages;
 
-    const loadingTask = PDFJS.getDocument(uint8Array);
-    const pdfDocument = await loadingTask.promise;
-    pageCount = pdfDocument.numPages;
-
-    // Enforce ≤100 pages limit early
     if (pageCount > 100) {
       return Response.json({ error: "PDF exceeds 100 pages – too large for processing" }, { status: 400 });
     }
 
-    console.log(`[upload] Detected ${pageCount} pages (worker fully disabled)`);
+    console.log(`[upload] Detected ${pageCount} pages with pdf-page-counter`);
   } catch (err) {
-    console.error("[upload] pdfjs failed to read PDF structure:", err);
+    console.error("[upload] Failed to count pages:", err);
     return Response.json(
       { error: "Failed to read PDF – possibly corrupted or non-standard" },
       { status: 400 }
