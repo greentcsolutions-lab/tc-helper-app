@@ -1,12 +1,13 @@
 // src/app/api/parse/upload/route.ts
-// REFACTORED: Uses pdfjs-dist for robust page count on messy PDFs
-// Validates, stores PDF, detects page count, returns parseId
+// Updated 2026-01-08 – Works with pure ESM pdfjs-dist (no legacy builds)
+// Robust page count on annotated/signed PDFs
+// Build fix: pdfjs-dist marked as external in next.config.js
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
 import { put } from "@vercel/blob";
-import * as pdfjs from "pdfjs-dist/build/pdf.mjs"; // ESM import
+import * as pdfjsLib from "pdfjs-dist/build/pdf.mjs"; // Pure ESM – correct for 2026+
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -33,9 +34,9 @@ export async function POST(req: NextRequest) {
   if (!file) return Response.json({ error: "No file" }, { status: 400 });
 
   const buffer = Buffer.from(await file.arrayBuffer());
-  const uint8Array = new Uint8Array(buffer); // pdfjs prefers Uint8Array
+  const uint8Array = new Uint8Array(buffer);
 
-  // Quick header validation
+  // Basic validation
   if (!buffer.subarray(0, 8).toString().includes("%PDF")) {
     return Response.json({ error: "invalid_pdf" }, { status: 400 });
   }
@@ -45,43 +46,42 @@ export async function POST(req: NextRequest) {
 
   console.log(`[upload] Received ${file.name} (${(buffer.length / 1e6).toFixed(1)} MB)`);
 
-  // Detect page count with pdfjs-dist (more robust for messy PDFs)
+  // Robust page count using pdfjs-dist (ESM)
   let pageCount = 0;
   try {
-    // Set up pdfjs worker (required for Node.js)
-    pdfjs.GlobalWorkerOptions.workerSrc = "pdfjs-dist/build/pdf.worker.mjs";
+    // Critical: Set worker to the ESM worker file
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "pdfjs-dist/build/pdf.worker.mjs";
 
-    const loadingTask = pdfjs.getDocument(uint8Array);
-    const pdfDoc = await loadingTask.promise;
-    pageCount = pdfDoc.numPages;
+    const loadingTask = pdfjsLib.getDocument(uint8Array);
+    const pdfDocument = await loadingTask.promise;
+    pageCount = pdfDocument.numPages;
+
     console.log(`[upload] Detected ${pageCount} pages with pdfjs-dist`);
   } catch (err) {
-    console.error("[upload] Failed to detect page count with pdfjs:", err);
-    return Response.json({ error: "Failed to read PDF structure – possibly corrupted or non-standard PDF" }, { status: 400 });
+    console.error("[upload] pdfjs failed to read PDF structure:", err);
+    return Response.json(
+      { error: "Failed to read PDF – possibly corrupted or non-standard" },
+      { status: 400 }
+    );
   }
 
-  // Upload first: ensures we only create DB record when storage succeeded
+  // Upload to Vercel Blob first
   let pdfPublicUrl: string | undefined;
   try {
     console.log("[upload] Uploading to Vercel Blob...");
-    const res = await put(`uploads/${Date.now()}-${file.name}`, buffer, {
+    const { url } = await put(`uploads/${Date.now()}-${file.name}`, buffer, {
       access: "public",
       addRandomSuffix: true,
     });
 
-    pdfPublicUrl = (res as any)?.url;
-    if (!pdfPublicUrl) {
-      console.error("[upload] Vercel put returned empty URL");
-      return Response.json({ success: false, error: "Blob upload returned empty URL" }, { status: 500 });
-    }
-
-    console.log(`[upload] Uploaded PDF to Vercel Blob: ${pdfPublicUrl}`);
+    pdfPublicUrl = url;
+    console.log(`[upload] Uploaded: ${pdfPublicUrl}`);
   } catch (uploadErr: any) {
-    console.error("[upload] Vercel blob upload failed:", uploadErr);
-    return Response.json({ success: false, error: String(uploadErr) }, { status: 500 });
+    console.error("[upload] Blob upload failed:", uploadErr);
+    return Response.json({ error: "Upload failed" }, { status: 500 });
   }
 
-  // Create parse record only after successful upload
+  // Create DB record only after successful upload
   try {
     const parse = await db.parse.create({
       data: {
@@ -98,17 +98,17 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    console.log(`[upload] Created parse ${parse.id} - ${pageCount} pages, ready for extraction`);
+    console.log(`[upload] Created parse ${parse.id} – ${pageCount} pages`);
+
     return Response.json({
       success: true,
       parseId: parse.id,
       pdfPublicUrl,
       pageCount,
-      message: `Upload complete - ${pageCount}-page PDF ready for extraction`,
+      message: `Upload complete – ${pageCount}-page PDF ready for extraction`,
     });
   } catch (dbErr: any) {
-    // Optionally: attempt to delete the uploaded blob to avoid orphaned files (not implemented here)
-    console.error("[upload] DB create failed after successful upload:", dbErr);
-    return Response.json({ success: false, error: "Failed to create parse record after upload" }, { status: 500 });
+    console.error("[upload] DB create failed:", dbErr);
+    return Response.json({ error: "Failed to save record" }, { status: 500 });
   }
 }

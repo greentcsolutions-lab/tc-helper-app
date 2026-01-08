@@ -6,18 +6,15 @@ const nextConfig = {
   typescript: { ignoreBuildErrors: true },
   eslint: { ignoreDuringBuilds: true },
 
-  // THIS IS THE ONLY NEW BLOCK — kills the 413 error forever
-  experimental: {
-    serverActions: {
-      // Your nuclear-flattened California RPAs are ~2–2.5 MB → 30 MB gives plenty of headroom
-      bodySizeLimit: "30mb",
-    },
+experimental: {
+    serverComponentsExternalPackages: ["pdfjs-dist"],
   },
 
-  // No more Webpack rules, aliases, or warnings for pdfjs-dist
-  webpack: (config) => {
-    // Optional: keep only if you still have any json imports from old deps
-    // Otherwise this can be completely empty
+  // Optional fallback (some teams use both)
+  webpack: (config, { isServer }) => {
+    if (isServer) {
+      config.externals = [...(config.externals || []), "pdfjs-dist"];
+    }
     return config;
   },
 
