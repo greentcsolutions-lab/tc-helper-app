@@ -1,78 +1,36 @@
 // src/app/api/parse/upload/route.ts
-// Updated 2026-01-08 – Lightweight page count with pdf-page-counter (pure JS, no workers/heavy deps)
+// Updated 2026-01-08 – Robust page count with unpdf (Mozilla PDF.js for serverless)
 // Enforces ≤25 MB + ≤100 pages early
-// No pdfjs-dist issues, no build errors, no runtime worker failures
-// Perfect for Vercel Pro cold starts
+// Handles encrypted, compressed, flattened PDFs reliably
+// Zero dependencies, perfect for Vercel Pro cold starts
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
 import { put } from "@vercel/blob";
+import { getDocumentProxy } from "unpdf";
 
 /**
- * Count pages in a PDF without external libraries
- * Works by counting /Type /Page objects in the PDF structure
+ * Count pages in a PDF using unpdf (Mozilla PDF.js for serverless)
+ * Handles encrypted, compressed, flattened, and any PDF structure
  */
-function countPdfPages(buffer: Buffer): number {
-  const pdfString = buffer.toString("latin1");
-  console.log(`[countPdfPages] PDF size: ${buffer.length} bytes, string length: ${pdfString.length}`);
+async function countPdfPages(buffer: Buffer): Promise<number> {
+  console.log(`[countPdfPages] PDF size: ${buffer.length} bytes`);
 
-  // Show first 500 chars of PDF structure for debugging
-  const preview = pdfString.substring(0, 500).replace(/\r/g, "\\r").replace(/\n/g, "\\n");
-  console.log(`[countPdfPages] PDF preview: ${preview}`);
+  try {
+    // Convert Buffer to Uint8Array for unpdf
+    const uint8Array = new Uint8Array(buffer);
 
-  // Method 1: Look for /Type /Page or /Type/Page (excluding /Pages)
-  // This counts individual page objects
-  console.log("[countPdfPages] Trying Method 1: /Type /Page pattern");
-  const pageMatches = pdfString.match(/\/Type\s*\/Page[^s]/g);
-  console.log(`[countPdfPages] Method 1 matches: ${pageMatches?.length || 0}`);
-  if (pageMatches && pageMatches.length > 0) {
-    console.log(`[countPdfPages] SUCCESS with Method 1: ${pageMatches.length} pages`);
-    return pageMatches.length;
+    // Load PDF with unpdf (uses Mozilla PDF.js internally)
+    const pdf = await getDocumentProxy(uint8Array);
+    const pageCount = pdf.numPages;
+
+    console.log(`[countPdfPages] SUCCESS: ${pageCount} pages detected`);
+    return pageCount;
+  } catch (error) {
+    console.error("[countPdfPages] ERROR:", error);
+    throw new Error("Failed to parse PDF structure");
   }
-
-  // Method 2: Look for /Count in the Pages object
-  // This finds the page count declaration
-  console.log("[countPdfPages] Trying Method 2: /Count in /Pages pattern");
-  const countMatch = pdfString.match(/\/Type\s*\/Pages[\s\S]*?\/Count\s+(\d+)/);
-  console.log(`[countPdfPages] Method 2 match: ${countMatch ? countMatch[1] : "none"}`);
-  if (countMatch && countMatch[1]) {
-    const count = parseInt(countMatch[1], 10);
-    console.log(`[countPdfPages] SUCCESS with Method 2: ${count} pages`);
-    return count;
-  }
-
-  // Method 3: Alternative /Count pattern (sometimes /Count comes before /Type)
-  console.log("[countPdfPages] Trying Method 3: Alternative /Count pattern");
-  const altCountMatch = pdfString.match(/\/Count\s+(\d+)[\s\S]*?\/Type\s*\/Pages/);
-  console.log(`[countPdfPages] Method 3 match: ${altCountMatch ? altCountMatch[1] : "none"}`);
-  if (altCountMatch && altCountMatch[1]) {
-    const count = parseInt(altCountMatch[1], 10);
-    console.log(`[countPdfPages] SUCCESS with Method 3: ${count} pages`);
-    return count;
-  }
-
-  // Method 4: Just look for /Count followed by a number
-  console.log("[countPdfPages] Trying Method 4: Any /Count pattern");
-  const anyCountMatch = pdfString.match(/\/Count\s+(\d+)/);
-  console.log(`[countPdfPages] Method 4 match: ${anyCountMatch ? anyCountMatch[1] : "none"}`);
-  if (anyCountMatch && anyCountMatch[1]) {
-    const count = parseInt(anyCountMatch[1], 10);
-    console.log(`[countPdfPages] SUCCESS with Method 4: ${count} pages`);
-    return count;
-  }
-
-  // Method 5: Count endobj markers (rough estimate)
-  console.log("[countPdfPages] Trying Method 5: Count page dictionaries");
-  const pageDicts = pdfString.match(/<<[^>]*\/Type\s*\/Page[^s][^>]*>>/g);
-  console.log(`[countPdfPages] Method 5 matches: ${pageDicts?.length || 0}`);
-  if (pageDicts && pageDicts.length > 0) {
-    console.log(`[countPdfPages] SUCCESS with Method 5: ${pageDicts.length} pages`);
-    return pageDicts.length;
-  }
-
-  console.log("[countPdfPages] FAILED: All methods returned 0");
-  return 0;
 }
 
 export const runtime = "nodejs";
@@ -133,11 +91,11 @@ export async function POST(req: NextRequest) {
 
   console.log(`[upload] Received ${file.name} (${(buffer.length / 1e6).toFixed(1)} MB)`);
 
-  // Lightweight page count – pure regex parsing, no external PDF libs
+  // Robust page count using unpdf (Mozilla PDF.js for serverless)
   let pageCount = 0;
   try {
     console.log("[upload] Starting page count...");
-    pageCount = countPdfPages(buffer);
+    pageCount = await countPdfPages(buffer);
     console.log(`[upload] Page count result: ${pageCount}`);
 
     if (pageCount === 0) {
