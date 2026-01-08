@@ -150,10 +150,27 @@ export async function callGrokTextClassify(
       if (!valid) {
         const errors = (validate.errors || []).map((e: any) => `${e.instancePath} ${e.message}`);
         console.error("[grokClassify] Schema validation failed:", errors);
-        console.error("[grokClassify] Failed validation sample (first 2 pages):", {
+
+        // Extract failing page indices from error messages
+        const failingIndices = new Set<number>();
+        errors.forEach((err: string) => {
+          const match = err.match(/^\/pages\/(\d+)/);
+          if (match) failingIndices.add(parseInt(match[1]));
+        });
+
+        // Log sample of failing pages to see invalid enum values
+        const failingPagesSample = Array.from(failingIndices).slice(0, 5).map(idx => ({
+          index: idx,
+          page: (parsed as any).pages?.[idx]
+        }));
+
+        console.error("[grokClassify] Sample of failing pages:", JSON.stringify(failingPagesSample, null, 2));
+        console.error("[grokClassify] Summary:", {
           state: (parsed as any).state,
           pageCount: (parsed as any).pageCount,
-          firstTwoPages: (parsed as any).pages?.slice(0, 2),
+          pagesArrayLength: (parsed as any).pages?.length,
+          expectedLength: pageCount,
+          missingPages: pageCount - ((parsed as any).pages?.length || 0),
         });
         return { valid: false, errors, raw };
       }
