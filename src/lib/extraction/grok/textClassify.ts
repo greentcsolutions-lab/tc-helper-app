@@ -1,16 +1,17 @@
 // src/lib/extraction/grok/textClassify.ts
-// Version: 1.0.0 - 2026-01-07
+// Version: 1.1.0 - 2026-01-08
 // Calls Grok text model (grok-4-1-fast-reasoning) to classify pages using OCR markdown
+// FIX: Use XAI_API_KEY (correct env var) + parse chat completion format correctly
 
 import Ajv from "ajv";
 import addFormats from "ajv-formats";
 import classifierSchema from "@/forms/classifier.schema.json";
 
 const GROK_API_URL = process.env.GROK_API_URL || "https://api.x.ai/v1/chat/completions";
-const GROK_API_KEY = process.env.GROK_API_KEY;
+const XAI_API_KEY = process.env.XAI_API_KEY;
 
-if (!GROK_API_KEY) {
-  throw new Error("GROK_API_KEY environment variable is required");
+if (!XAI_API_KEY) {
+  throw new Error("XAI_API_KEY environment variable is required");
 }
 
 const ajv = new Ajv({ allErrors: true, strict: false });
@@ -76,7 +77,7 @@ export async function callGrokTextClassify(
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${GROK_API_KEY}`,
+          Authorization: `Bearer ${XAI_API_KEY}`,
         },
         body: JSON.stringify(body),
       });
@@ -93,19 +94,22 @@ export async function callGrokTextClassify(
         throw lastError;
       }
 
-      const raw = await res.text();
+      // Parse the chat completion response
+      const responseJson = await res.json();
 
-      // Try to extract JSON from response text. We asked for JSON-only, but be defensive.
-      const jsonMatch = raw.match(/\{[\s\S]*\}$/m) || raw.match(/\[[\s\S]*\]$/m);
-      if (!jsonMatch) throw new Error("No JSON found in Grok response");
+      // Extract content from OpenAI-compatible chat completion format
+      if (!responseJson.choices?.[0]?.message?.content) {
+        throw new Error("Invalid Grok response structure: missing choices[0].message.content");
+      }
 
-      const jsonText = jsonMatch[0];
+      const jsonText = responseJson.choices[0].message.content.trim();
+      const raw = JSON.stringify(responseJson); // For debugging
 
       let parsed: unknown;
       try {
         parsed = JSON.parse(jsonText);
       } catch (e) {
-        throw new Error("Invalid JSON in Grok response");
+        throw new Error("Invalid JSON in Grok response content");
       }
 
       // Basic structural checks with proper narrowing
