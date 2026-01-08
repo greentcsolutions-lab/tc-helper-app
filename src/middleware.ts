@@ -1,4 +1,8 @@
 // src/middleware.ts
+// Updated 2026-01-08 – Safe Clerk auth handling + Prisma Postgres/Accelerate compatibility
+// Protects routes, redirects unauth to sign-in, forces onboarding if no DB user
+// Uses auth().userId (always reliable) – avoids accessing .user object (can be undefined on cold starts)
+
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/prisma";
@@ -12,11 +16,11 @@ const isPublicRoute = createRouteMatcher([
   "/sign-up(.*)",
   "/api(.*)",
   "/privacy",
-  "/onboarding(.*)",   // ← onboarding is public
+  "/onboarding(.*)",   // onboarding is public
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
-  const { userId } = auth();
+  const { userId } = auth(); // Only use userId – reliable even on cold starts
 
   // 1. Logged-in users visiting home → go to dashboard
   if (userId && req.nextUrl.pathname === "/") {
@@ -25,14 +29,18 @@ export default clerkMiddleware(async (auth, req) => {
 
   // 2. Protect all non-public routes
   if (!isPublicRoute(req)) {
-    auth().protect(); // throws if not signed in
+    if (!userId) {
+      // Not signed in – redirect to sign-in
+      return NextResponse.redirect(new URL("/sign-in", req.url));
+    }
 
-    // 3. If signed in BUT no record in your DB → force onboarding
+    // Signed in – check if DB record exists
     const user = await db.user.findUnique({
-      where: { clerkId: userId! },
+      where: { clerkId: userId },
       select: { id: true },
     });
 
+    // No DB record → force onboarding (except when already on onboarding)
     if (!user && req.nextUrl.pathname !== "/onboarding") {
       return NextResponse.redirect(new URL("/onboarding", req.url));
     }

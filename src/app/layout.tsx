@@ -1,5 +1,9 @@
 // src/app/layout.tsx
-// Version: 2.0.0 - Added TopLoader for route transitions
+// Updated 2026-01-08 – Safe Clerk user handling in RootLayout
+// Avoids accessing auth().user (can be undefined on cold starts)
+// Uses currentUser() only for credits fetch (safe in server component)
+// Public vs authenticated layout logic unchanged
+
 import "./globals.css";
 import { Inter } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
@@ -25,7 +29,7 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const user = await currentUser();
+  const user = await currentUser(); // Safe – returns null if not signed in
   let credits = 0;
 
   if (user) {
@@ -41,28 +45,21 @@ export default async function RootLayout({
       <html lang="en" suppressHydrationWarning>
         <body className={`${inter.className} antialiased`}>
           <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
-            {/* Top loading bar for all route transitions */}
             <TopLoader />
 
             {user ? (
-              // Authenticated layout with sidebar
+              // Authenticated layout
               <div className="relative min-h-screen">
-                {/* Collapsible Sidebar */}
                 <ModernSidebar />
-
-                {/* Main Content Area - shifts based on sidebar */}
                 <div className="lg:pl-64 transition-all duration-300">
-                  {/* Top Header */}
                   <ModernHeader credits={credits} />
-
-                  {/* Page Content */}
                   <main className="min-h-[calc(100vh-4rem)]">
                     {children}
                   </main>
                 </div>
               </div>
             ) : (
-              // Public layout - no sidebar
+              // Public layout
               <div className="min-h-screen">
                 <ModernHeader />
                 <main>{children}</main>
