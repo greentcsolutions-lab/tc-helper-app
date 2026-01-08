@@ -3,7 +3,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { currentUser } from '@clerk/nextjs/server';
-import { prisma } from '@/lib/prisma';
+import { db } from '@/lib/prisma';
 import { TASK_TYPES, TASK_STATUS } from '@/types/task';
 
 /**
@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get user from database
-    const dbUser = await prisma.user.findUnique({
+    const dbUser = await db.user.findUnique({
       where: { clerkId: user.id },
       select: { id: true },
     });
@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch tasks
-    const tasks = await prisma.task.findMany({
+    const tasks = await db.task.findMany({
       where,
       include: {
         parse: {
@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get user from database
-    const dbUser = await prisma.user.findUnique({
+    const dbUser = await db.user.findUnique({
       where: { clerkId: user.id },
       select: {
         id: true,
@@ -147,7 +147,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create the task and increment custom task count in a transaction
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await db.$transaction(async (tx) => {
       const task = await tx.task.create({
         data: {
           userId: dbUser.id,

@@ -3,7 +3,7 @@
 
 import { redirect } from 'next/navigation';
 import { currentUser } from '@clerk/nextjs/server';
-import { prisma } from '@/lib/prisma';
+import { db } from '@/lib/prisma';
 import ManualTransactionWizard from '@/components/wizard/ManualTransactionWizard';
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
@@ -14,7 +14,7 @@ export default async function ManualUploadPage() {
   const user = await currentUser();
   if (!user) redirect('/sign-in');
 
-  const dbUser = await prisma.user.findUnique({
+  const dbUser = await db.user.findUnique({
     where: { clerkId: user.id },
     select: { id: true, state: true },
   });

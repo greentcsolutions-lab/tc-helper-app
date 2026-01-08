@@ -2,7 +2,7 @@
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/prisma";
 
 // ←←← WE DO NOT IMPORT "next/dynamic" AT ALL
 // Instead we use React.lazy + Suspense (the only way to avoid the clash)
@@ -17,7 +17,7 @@ export default async function BillingPage() {
   const { userId } = await auth();
   if (!userId) redirect("/sign-in");
 
-  const user = await prisma.user.findUnique({
+  const user = await db.user.findUnique({
     where: { clerkId: userId },
     select: { credits: true },
   });

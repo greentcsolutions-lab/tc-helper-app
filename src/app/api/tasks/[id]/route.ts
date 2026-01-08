@@ -3,7 +3,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { currentUser } from '@clerk/nextjs/server';
-import { prisma } from '@/lib/prisma';
+import { db } from '@/lib/prisma';
 import { TASK_STATUS } from '@/types/task';
 
 /**
@@ -21,7 +21,7 @@ export async function PATCH(
     }
 
     // Get user from database
-    const dbUser = await prisma.user.findUnique({
+    const dbUser = await db.user.findUnique({
       where: { clerkId: user.id },
       select: { id: true },
     });
@@ -34,7 +34,7 @@ export async function PATCH(
     const body = await request.json();
 
     // Verify task belongs to user
-    const task = await prisma.task.findUnique({
+    const task = await db.task.findUnique({
       where: { id },
       select: { userId: true, status: true },
     });
@@ -93,7 +93,7 @@ export async function PATCH(
     }
 
     // Update the task
-    const updatedTask = await prisma.task.update({
+    const updatedTask = await db.task.update({
       where: { id },
       data: updateData,
       include: {
@@ -133,7 +133,7 @@ export async function DELETE(
     }
 
     // Get user from database
-    const dbUser = await prisma.user.findUnique({
+    const dbUser = await db.user.findUnique({
       where: { clerkId: user.id },
       select: { id: true },
     });
@@ -145,7 +145,7 @@ export async function DELETE(
     const { id } = params;
 
     // Verify task belongs to user and is custom
-    const task = await prisma.task.findUnique({
+    const task = await db.task.findUnique({
       where: { id },
       select: { userId: true, isCustom: true },
     });
@@ -166,7 +166,7 @@ export async function DELETE(
     }
 
     // Delete the task and decrement custom task count in a transaction
-    await prisma.$transaction(async (tx) => {
+    await db.$transaction(async (tx) => {
       await tx.task.delete({
         where: { id },
       });

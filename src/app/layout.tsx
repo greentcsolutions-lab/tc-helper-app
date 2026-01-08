@@ -1,12 +1,10 @@
 // src/app/layout.tsx
-// Updated 2026-01-08 – RootLayout now safely handles Clerk user object race condition
-// Fetches currentUser() once at root level (server component)
-// Passes safe data down via context – all child pages/layouts can use it without crashing
-// Eliminates need to call auth() or currentUser() in individual pages
+// Keep your current version – remove the AuthContextProvider part entirely
+// (delete the import and the <AuthContextProvider> wrapper)
 
 import "./globals.css";
 import { Inter } from "next/font/google";
-import { ClerkProvider } from "@clerk/nextjs";
+import { ClerkProvider, SignedIn, SignedOut } from "@clerk/nextjs"; // Add SignedIn/SignedOut if you want
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "next-themes";
 import TopLoader from "@/components/ui/TopLoader";
@@ -16,7 +14,6 @@ import ModernHeader from "@/components/layout/ModernHeader";
 
 import { currentUser } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
-import { AuthContextProvider } from "@/contexts/AuthContext"; // We'll create this next
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -30,28 +27,16 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const clerkUser = await currentUser(); // Safe – returns null if not signed in
-
+  const user = await currentUser();
   let credits = 0;
-  let dbUserId: string | null = null;
 
-  if (clerkUser) {
+  if (user) {
     const dbUser = await db.user.findUnique({
-      where: { clerkId: clerkUser.id },
-      select: { id: true, credits: true },
+      where: { clerkId: user.id },
+      select: { credits: true },
     });
-
     credits = dbUser?.credits ?? 0;
-    dbUserId = dbUser?.id ?? null;
   }
-
-  // Safe data to pass down – no full user object that can be undefined
-  const authContextValue = {
-    userId: clerkUser?.id ?? null,
-    clerkUser: clerkUser, // Full user object available if loaded (null otherwise)
-    credits,
-    dbUserId,
-  };
 
   return (
     <ClerkProvider>
@@ -60,37 +45,22 @@ export default async function RootLayout({
           <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
             <TopLoader />
 
-            <AuthContextProvider value={authContextValue}>
-              {clerkUser ? (
-                // Authenticated layout
-                <div className="relative min-h-screen">
-                  <ModernSidebar />
-                  <div className="lg:pl-64 transition-all duration-300">
-                    <ModernHeader credits={credits} />
-                    <main className="min-h-[calc(100vh-4rem)]">
-                      {children}
-                    </main>
-                  </div>
+            {user ? (
+              <div className="relative min-h-screen">
+                <ModernSidebar />
+                <div className="lg:pl-64 transition-all duration-300">
+                  <ModernHeader credits={credits} />
+                  <main className="min-h-[calc(100vh-4rem)]">{children}</main>
                 </div>
-              ) : (
-                // Public layout
-                <div className="min-h-screen">
-                  <ModernHeader />
-                  <main>{children}</main>
-                </div>
-              )}
-            </AuthContextProvider>
+              </div>
+            ) : (
+              <div className="min-h-screen">
+                <ModernHeader />
+                <main>{children}</main>
+              </div>
+            )}
 
-            <Toaster
-              position="top-right"
-              richColors
-              toastOptions={{
-                style: {
-                  background: "hsl(var(--background))",
-                  border: "1px solid hsl(var(--border))",
-                },
-              }}
-            />
+            <Toaster position="top-right" richColors toastOptions={{ style: { background: "hsl(var(--background))", border: "1px solid hsl(var(--border))" } }} />
           </ThemeProvider>
         </body>
       </html>

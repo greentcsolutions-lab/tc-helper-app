@@ -1,7 +1,7 @@
 // src/lib/tasks/sync-timeline-tasks.ts
 // Syncs timeline events to Task records
 
-import { prisma } from '@/lib/prisma';
+import { db } from '@/lib/prisma';
 import { extractTimelineEvents, TimelineEvent } from '@/lib/dates/extract-timeline-events';
 import { TASK_TYPES, TASK_STATUS, mapTimelineStatusToTaskStatus } from '@/types/task';
 
@@ -14,7 +14,7 @@ import { TASK_TYPES, TASK_STATUS, mapTimelineStatusToTaskStatus } from '@/types/
  */
 export async function syncTimelineTasks(parseId: string, userId: string): Promise<void> {
   // Fetch the parse with necessary fields
-  const parse = await prisma.parse.findUnique({
+  const parse = await db.parse.findUnique({
     where: { id: parseId },
     select: {
       id: true,
@@ -43,7 +43,7 @@ export async function syncTimelineTasks(parseId: string, userId: string): Promis
   const timelineEvents = extractTimelineEvents(parse);
 
   // Get existing timeline tasks for this parse
-  const existingTasks = await prisma.task.findMany({
+  const existingTasks = await db.task.findMany({
     where: {
       parseId,
       taskType: TASK_TYPES.TIMELINE,
@@ -93,13 +93,13 @@ export async function syncTimelineTasks(parseId: string, userId: string): Promis
 
     if (existingTask) {
       // Update existing task
-      await prisma.task.update({
+      await db.task.update({
         where: { id: existingTask.id },
         data: taskData,
       });
     } else {
       // Create new task
-      await prisma.task.create({
+      await db.task.create({
         data: taskData,
       });
     }
@@ -111,7 +111,7 @@ export async function syncTimelineTasks(parseId: string, userId: string): Promis
     .map(task => task.id);
 
   if (taskIdsToDelete.length > 0) {
-    await prisma.task.deleteMany({
+    await db.task.deleteMany({
       where: {
         id: { in: taskIdsToDelete },
       },
@@ -123,7 +123,7 @@ export async function syncTimelineTasks(parseId: string, userId: string): Promis
  * Syncs timeline tasks for all parses owned by a user
  */
 export async function syncAllTimelineTasks(userId: string): Promise<void> {
-  const parses = await prisma.parse.findMany({
+  const parses = await db.parse.findMany({
     where: {
       userId,
       status: { in: ['COMPLETED', 'NEEDS_REVIEW'] },
@@ -177,7 +177,7 @@ function getEventAmount(event: TimelineEvent, parse: any): number | null {
  * Deletes all timeline tasks for a parse (used when parse is deleted/archived)
  */
 export async function deleteTimelineTasks(parseId: string): Promise<void> {
-  await prisma.task.deleteMany({
+  await db.task.deleteMany({
     where: {
       parseId,
       taskType: TASK_TYPES.TIMELINE,

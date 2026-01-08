@@ -3,7 +3,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { currentUser } from '@clerk/nextjs/server';
-import { prisma } from '@/lib/prisma';
+import { db } from '@/lib/prisma';
 import { syncAllTimelineTasks, syncTimelineTasks } from '@/lib/tasks/sync-timeline-tasks';
 
 /**
@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get user from database
-    const dbUser = await prisma.user.findUnique({
+    const dbUser = await db.user.findUnique({
       where: { clerkId: user.id },
       select: { id: true },
     });

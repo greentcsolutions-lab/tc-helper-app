@@ -3,7 +3,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/prisma";
 import { currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { FileUp, FileText, Sparkles, TrendingUp, Clock, CheckCircle } from "lucide-react";
@@ -17,18 +17,18 @@ export default async function Dashboard() {
   const user = await currentUser();
   if (!user) redirect("/sign-in");
 
-  const dbUser = await prisma.user.findUnique({
+  const dbUser = await db.user.findUnique({
     where: { clerkId: user.id },
     select: { credits: true, id: true },
   });
 
   if (!dbUser) redirect("/onboarding");
 
-  const parseCount = await prisma.parse.count({
+  const parseCount = await db.parse.count({
     where: { userId: dbUser.id },
   });
 
-  const recentParses = await prisma.parse.findMany({
+  const recentParses = await db.parse.findMany({
     where: { userId: dbUser.id },
     orderBy: { createdAt: "desc" },
     take: 5,
@@ -41,7 +41,7 @@ export default async function Dashboard() {
   });
 
   // Fetch completed parses for timeline
-  const completedParses = await prisma.parse.findMany({
+  const completedParses = await db.parse.findMany({
     where: {
       userId: dbUser.id,
       status: { in: ["COMPLETED", "NEEDS_REVIEW"] },
@@ -59,7 +59,7 @@ export default async function Dashboard() {
   });
 
   // Fetch tasks for NextTaskCard
-  const tasks = await prisma.task.findMany({
+  const tasks = await db.task.findMany({
     where: {
       userId: dbUser.id,
     },

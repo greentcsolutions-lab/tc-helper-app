@@ -3,7 +3,7 @@
 
 import { currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/prisma";
 import TasksClient from "@/components/tasks/TasksClient";
 import { syncAllTimelineTasks } from "@/lib/tasks/sync-timeline-tasks";
 
@@ -13,7 +13,7 @@ export default async function TasksPage() {
   const user = await currentUser();
   if (!user) redirect("/sign-in");
 
-  const dbUser = await prisma.user.findUnique({
+  const dbUser = await db.user.findUnique({
     where: { clerkId: user.id },
     select: { id: true },
   });
@@ -24,7 +24,7 @@ export default async function TasksPage() {
   await syncAllTimelineTasks(dbUser.id);
 
   // Fetch all tasks for the user
-  const tasks = await prisma.task.findMany({
+  const tasks = await db.task.findMany({
     where: {
       userId: dbUser.id,
     },

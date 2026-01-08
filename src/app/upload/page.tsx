@@ -3,7 +3,7 @@ import UploadZone from "@/components/ui/upload/upload-zone";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/prisma";
 import { currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { Sparkles, Shield, Zap, CheckCircle } from "lucide-react";
@@ -14,7 +14,7 @@ export default async function UploadPage() {
   const user = await currentUser();
   if (!user) redirect("/sign-in");
 
-  const dbUser = await prisma.user.findUnique({
+  const dbUser = await db.user.findUnique({
     where: { clerkId: user.id },
     select: { id: true, state: true, credits: true },
   });
