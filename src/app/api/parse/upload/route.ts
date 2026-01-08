@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
   // Lightweight page count – no workers, no heavy libs
   let pageCount = 0;
   try {
-    const data = await pdfPageCounter(buffer);
+    const data = await pdfPageCounter(new Uint8Array(buffer));
     pageCount = data.numpages;
 
     if (pageCount > 100) {
