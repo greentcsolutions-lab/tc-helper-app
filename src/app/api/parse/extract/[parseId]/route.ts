@@ -1,14 +1,14 @@
 // src/app/api/parse/extract/[parseId]/route.ts
-// Version: 6.0.0 - 2026-01-08
-// SIMPLIFIED: Extracts ALL pages in batches (no classification needed)
-// Filters by data quality instead of classification labels
-// Cheaper, faster, more reliable than classification-based approach
+// Version: 7.0.0 - 2026-01-08
+// GEMINI 3 FLASH PREVIEW: Full-document extraction in ONE call
+// Built-in reasoning negates post-processing, batching, and role detection
+// Handles up to 100 pages with counter/addenda override logic built-in
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
 import { mapExtractionToParseResult } from "@/lib/parse/map-to-parse-result";
-import { extractAllPages } from "@/lib/extraction/mistral/extractPdf";
+import { extractWithGemini } from "@/lib/extraction/gemini/extractPdf";
 import { logStep, logSuccess, logError } from "@/lib/debug/parse-logger";
 
 export const runtime = "nodejs";
@@ -59,25 +59,25 @@ export async function POST(
     console.log(`[extract] Document: ${parse.pageCount} pages`);
     logSuccess("EXTRACT:1", `Loaded ${parse.pageCount}-page document`);
 
-    logStep("EXTRACT:2", "Extracting all pages in batches (≤8 pages per call, parallel)...");
+    logStep("EXTRACT:2", "Extracting with Gemini 3 Flash Preview (full document in ONE call)...");
 
-    // Extract all pages - filtering happens based on data quality
-    const extractionResult = await extractAllPages(
+    // Extract entire document with Gemini - built-in reasoning handles merging
+    const extractionResult = await extractWithGemini(
       parse.pdfPublicUrl,
       parse.pageCount
     );
 
     console.log(
-      `[extract] Found ${extractionResult.criticalPages.length} pages with substantive data: [${extractionResult.criticalPages.join(", ")}]`
+      `[extract] Gemini extraction complete - confidence: ${extractionResult.finalTerms.confidence?.overall_confidence || 'N/A'}%`
     );
 
-    logSuccess("EXTRACT:2", `Extraction complete – ${extractionResult.criticalPages.length} substantive pages found`);
+    logSuccess("EXTRACT:2", `Extraction complete – processed ${parse.pageCount} pages`);
 
     logStep("EXTRACT:3", "Mapping to Parse fields...");
 
     const mappedFields = mapExtractionToParseResult({
       universal: extractionResult.finalTerms,
-      route: "mistral-simplified-all-pages",
+      route: "gemini-3-flash-preview",
       details: {
         criticalPages: extractionResult.criticalPages,
         allExtractions: extractionResult.allExtractions,
@@ -124,12 +124,12 @@ export async function POST(
     });
 
     logSuccess("EXTRACT:3", `Saved – status: ${finalStatus}`);
-    logSuccess("EXTRACT:DONE", "Simplified extraction pipeline complete");
+    logSuccess("EXTRACT:DONE", "Gemini 3 Flash Preview extraction complete");
 
     return Response.json({
       success: true,
       needsReview: extractionResult.needsReview,
-      substantivePageCount: extractionResult.criticalPages.length,
+      confidence: extractionResult.finalTerms.confidence?.overall_confidence || null,
       totalPages: parse.pageCount,
     });
   } catch (error: any) {
