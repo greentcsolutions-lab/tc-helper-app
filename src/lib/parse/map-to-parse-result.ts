@@ -19,7 +19,7 @@ type MapToParseResultParams = {
     }>;
     confidenceBreakdown?: Record<string, number>;
     missingConfidenceFields?: string[];
-    criticalPages?: number[];
+    criticalPages?: string[]; // Page ranges for chunks with substantive data
     allExtractions?: any[];
   };
   timelineEvents?: any[];

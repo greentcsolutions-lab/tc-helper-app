@@ -1,11 +1,11 @@
 // src/lib/extraction/mistral/extractPdf.ts
-// Version: 2.1.0 - 2026-01-08
-// UPDATED: Adds explicit page batching via Mistral OCR API 'pages' parameter (≤8 pages per call)
-// Avoids pdf-lib entirely – no splitting/corruption issues with messy annotated/signed PDFs
-// Uses document_url + pages array (Mistral supports ranges/lists, 0-indexed)
+// Version: 2.2.0 - 2026-01-08
+// UPDATED: Fixed response parsing - Mistral returns document_annotation as single aggregated object per chunk
+// Uses document_url + pages array (≤8 pages per call, 0-indexed)
+// Each chunk returns ONE aggregated extraction covering all pages in that chunk
 // Parallel execution with Promise.all
-// Filters by data quality (non-empty/substantive extractions)
-// Matches annotated OCR guidelines (8-page limit for structured annotations)
+// Filters by data quality (chunk-level aggregated extractions)
+// Last-write-wins merge across chunks
 
 import { mistralExtractorSchema } from './schema';
 
@@ -44,7 +44,7 @@ export async function extractAllPages(
 ): Promise<{
   finalTerms: any;
   needsReview: boolean;
-  criticalPages: number[];
+  criticalPages: string[]; // Page ranges for chunks with substantive data (e.g., "1-8", "9-16")
   allExtractions: any[];
 }> {
   console.log(`[extractPdf] Extracting all ${totalPages} pages in batches of ≤8 (parallel, via pages param)`);
@@ -111,14 +111,17 @@ export async function extractAllPages(
       annotationObj = data.document_annotation;
     }
 
-    if (!annotationObj?.extractions || !Array.isArray(annotationObj.extractions)) {
-      throw new Error('Invalid extraction response: missing extractions array');
+    // NEW: Single aggregated extraction per chunk
+    // Mistral returns document_annotation as one object for the entire batch,
+    // not as an array per page
+    if (!annotationObj || typeof annotationObj !== 'object') {
+      throw new Error('Invalid extraction response: missing or invalid document_annotation');
     }
 
-    // Mistral returns extractions in order of requested pages
+    // Wrap as single-item array for compatibility with downstream code
     return {
       pageNumbers,
-      extractions: annotationObj.extractions,
+      extractions: [annotationObj],
     };
   });
 
@@ -126,21 +129,22 @@ export async function extractAllPages(
 
   console.log(`[extractPdf] All ${chunks.length} chunks completed in parallel`);
 
-  // Flatten and restore original 1-based sourcePage
+  // Flatten aggregated chunk extractions
+  // Each chunk now returns ONE aggregated extraction covering multiple pages
   const allPageExtractions = chunkResults.flatMap((chunk) =>
-    chunk.extractions.map((ext: any, idx: number) => ({
+    chunk.extractions.map((ext: any) => ({
       ...ext,
-      sourcePage: chunk.pageNumbers[idx],
+      sourcePage: chunk.pageNumbers.join('-'), // Page range for this chunk
     }))
   );
 
-  console.log(`[extractPdf] Total ${allPageExtractions.length} page extractions received`);
+  console.log(`[extractPdf] Total ${allPageExtractions.length} chunk extraction(s) received`);
 
-  // Filter by data quality
+  // Filter by data quality (chunk-level aggregated extractions)
   const substantiveExtractions = allPageExtractions.filter((ext) => {
     const isSubstantive = hasSubstantiveData(ext);
     if (!isSubstantive) {
-      console.log(`[extractPdf] Filtering out page ${ext.sourcePage} - no substantive data`);
+      console.log(`[extractPdf] Filtering out chunk pages ${ext.sourcePage} - no substantive data`);
     }
     return isSubstantive;
   });
@@ -148,7 +152,7 @@ export async function extractAllPages(
   const criticalPages = substantiveExtractions.map(ext => ext.sourcePage);
 
   console.log(
-    `[extractPdf] Filtered ${allPageExtractions.length} → ${substantiveExtractions.length} substantive pages: [${criticalPages.join(', ')}]`
+    `[extractPdf] Filtered ${allPageExtractions.length} → ${substantiveExtractions.length} substantive chunk(s): [${criticalPages.join(', ')}]`
   );
 
   // Simple merge (last-write-wins)
