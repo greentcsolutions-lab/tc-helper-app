@@ -1,14 +1,15 @@
 // src/components/CategoryTimelineContingencies.tsx
-// Version: 4.4.0 - 2026-01-08
+// Version: 4.5.0 - 2026-01-08
 // FIXED: Matches current ParseResult (no closeOfEscrowDate or calculated deadlines)
-//         Displays raw contingency days and legacy closingDate
+//         Displays calculated/actual dates with origin information (e.g., "01/26/26 (17 days after acceptance OR specified)")
 //         Full editing support
-// FIXED: Date formatting - displays dates as MM/DD/YYYY to users
+// FIXED: Date formatting - displays dates as MM/DD/YY with source information
 
 import CategorySection, { FieldConfig } from "./CategorySection";
 import { Calendar } from "lucide-react";
 import { ParseResult } from "@/types";
 import { formatDisplayDate } from "@/lib/date-utils";
+import { formatTimelineField } from "@/lib/timeline/timeline-formatter";
 
 interface CategoryTimelineContingenciesProps {
   data: ParseResult;
@@ -33,6 +34,40 @@ export default function CategoryTimelineContingencies({
     }
   };
 
+  // Helper: Convert MM/DD/YYYY to MM/DD/YY (2-digit year)
+  const toShortYear = (dateStr: string): string => {
+    const parts = dateStr.split('/');
+    if (parts.length === 3 && parts[2].length === 4) {
+      return `${parts[0]}/${parts[1]}/${parts[2].slice(-2)}`;
+    }
+    return dateStr;
+  };
+
+  // Helper: Format contingency field with calculated date and origin
+  const formatContingencyDisplay = (
+    days: string | number | null | undefined,
+    label: string
+  ): string | null => {
+    if (days == null) return null;
+
+    // Convert to number if it's a string
+    const daysNum = typeof days === 'string' ? parseInt(days, 10) : days;
+    if (isNaN(daysNum)) return String(days);
+
+    const formatted = formatTimelineField(daysNum, data.effectiveDate, false);
+
+    if (!formatted.displayDate) {
+      // No acceptance date available, show just the days
+      return `${daysNum} days after acceptance`;
+    }
+
+    // Convert to 2-digit year format
+    const shortDate = toShortYear(formatted.displayDate);
+
+    // Format: "01/26/26 (17 days after acceptance OR specified)"
+    return `${shortDate} (${daysNum} days after acceptance OR specified)`;
+  };
+
   const createField = (
     label: string,
     value: any,
@@ -49,10 +84,34 @@ export default function CategoryTimelineContingencies({
 
   // === Close of Escrow (legacy closingDate) ===
   if (data.closingDate || isEditing) {
+    let display: string | null = null;
+
+    if (!isEditing) {
+      if (typeof data.closingDate === 'number') {
+        // It's days after acceptance
+        const formatted = formatTimelineField(data.closingDate, data.effectiveDate, false);
+        if (formatted.displayDate) {
+          const shortDate = toShortYear(formatted.displayDate);
+          display = `${shortDate} (${data.closingDate} days after acceptance OR specified)`;
+        } else {
+          display = `${data.closingDate} days after acceptance`;
+        }
+      } else if (typeof data.closingDate === 'string') {
+        // It's a specific date
+        const formatted = formatTimelineField(data.closingDate, data.effectiveDate, false);
+        if (formatted.displayDate) {
+          const shortDate = toShortYear(formatted.displayDate);
+          display = `${shortDate} (specified)`;
+        } else {
+          display = formatDate(data.closingDate);
+        }
+      }
+    }
+
     fields.push(
       createField(
         "Close of Escrow",
-        isEditing ? data.closingDate ?? '' : formatDate(data.closingDate),
+        isEditing ? data.closingDate ?? '' : display,
         'date',
         (val) => onDataChange?.({ ...data, closingDate: val })
       )
@@ -61,9 +120,7 @@ export default function CategoryTimelineContingencies({
 
   // === Inspection Contingency ===
   if (cont?.inspectionDays != null || isEditing) {
-    const display = cont?.inspectionDays != null 
-      ? `${cont.inspectionDays} days` 
-      : null;
+    const display = formatContingencyDisplay(cont?.inspectionDays, "Inspection Contingency");
 
     fields.push(
       createField(
@@ -74,15 +131,14 @@ export default function CategoryTimelineContingencies({
           ...data,
           contingencies: { ...cont!, inspectionDays: val },
         })
+  
       )
     );
   }
 
   // === Appraisal Contingency ===
   if (cont?.appraisalDays != null || isEditing) {
-    const display = cont?.appraisalDays != null 
-      ? `${cont.appraisalDays} days` 
-      : null;
+    const display = formatContingencyDisplay(cont?.appraisalDays, "Appraisal Contingency");
 
     fields.push(
       createField(
@@ -99,9 +155,7 @@ export default function CategoryTimelineContingencies({
 
   // === Loan Contingency ===
   if (cont?.loanDays != null || isEditing) {
-    const display = cont?.loanDays != null 
-      ? `${cont.loanDays} days` 
-      : null;
+    const display = formatContingencyDisplay(cont?.loanDays, "Loan Contingency");
 
     fields.push(
       createField(
