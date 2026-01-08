@@ -1,7 +1,8 @@
 // src/app/api/parse/classify/[parseId]/route.ts
-// Version: 3.2.0 - 2026-01-07
-// FULLY WORKING: Basic OCR + heuristic markdown classifier
+// Version: 3.3.0 - 2026-01-08
+// Basic OCR + Grok text classifier (REQUIRED - no fallback to heuristics)
 // Handles 48–52 page packets in 1 Mistral call + 1 Grok call
+// FIX: Throw error on Grok failure instead of falling back to heuristics
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
@@ -100,74 +101,65 @@ export async function GET(
         logStep("CLASSIFY:4.5", "Running Grok text classifier for page-level labels...");
         emit(controller, { type: "progress", phase: "classify", message: "Running page classifier (grok text model)..." });
 
-        // Default to heuristics; attempt to get LLM labels and merge when possible
-        let classificationSource: "heuristic" | "llm" | "combined" = "heuristic";
-        let finalDetectedPages = detectedPages;
+        // Grok classification is REQUIRED - do not fall back to heuristics
+        const grokResult = await callGrokTextClassify(
+          ocrPages.map((p) => p.markdown),
+          detectedPageCount
+        );
 
-        try {
-          const grokResult = await callGrokTextClassify(
-            ocrPages.map((p) => p.markdown),
-            detectedPageCount
-          );
-
-          if (
-            grokResult.valid &&
-            grokResult.classification !== undefined &&
-            Array.isArray(grokResult.classification.pages) &&
-            grokResult.classification.pageCount === detectedPageCount
-          ) {
-            const llmClassification = grokResult.classification; // Fully narrowed to Classification
-
-            logSuccess("CLASSIFY:4.5", `Grok classifier returned valid labels for ${detectedPageCount} pages`);
-            emit(controller, {
-              type: "progress",
-              phase: "classify",
-              message: "Grok classifier returned valid labels, merging with heuristics",
-            });
-
-            // Merge: prefer LLM labels when present, otherwise fall back to heuristic
-            finalDetectedPages = detectedPages.map((heur, idx) => {
-              const llmPage = llmClassification.pages[idx];
-              if (!llmPage) return heur;
-
-              return {
-                ...heur,
-                pdfPage: llmPage.pdfPage ?? idx + 1,
-                formCode: llmPage.formCode ?? heur.formCode,
-                formPage: llmPage.formPage ?? heur.formPage,
-                totalPagesInForm: llmPage.totalPagesInForm ?? heur.totalPagesInForm,
-                role: llmPage.role ?? heur.role,
-                contentCategory: llmPage.contentCategory ?? heur.contentCategory,
-                hasFilledFields:
-                  typeof llmPage.hasFilledFields === "boolean"
-                    ? llmPage.hasFilledFields
-                    : heur.hasFilledFields,
-                confidence:
-                  typeof llmPage.confidence === "number"
-                    ? llmPage.confidence
-                    : heur.confidence,
-                titleSnippet: llmPage.titleSnippet ?? heur.titleSnippet,
-                footerText: heur?.footerText,
-              };
-            });
-
-            classificationSource = "llm";
-          } else {
-            logError("CLASSIFY:4.5", "Grok classifier returned invalid or mismatched response; falling back to heuristics");
-            emit(controller, {
-              type: "warning",
-              phase: "classify",
-              message: "Grok classifier invalid response; falling back to heuristics",
-            });
-          }
-        } catch (err: any) {
-          logError("CLASSIFY:4.5", `Grok classifier error: ${err.message || String(err)}`);
-          emit(controller, {
-            type: "warning",
-            phase: "classify",
-            message: "Grok classifier failed; using heuristics",
-          });
+        if (!grokResult.valid) {
+          const errorMsg = `Grok classifier failed: ${grokResult.errors?.join(", ") || "Unknown error"}`;
+          logError("CLASSIFY:4.5", errorMsg);
+          throw new Error(errorMsg);
         }
+
+        if (!grokResult.classification || !Array.isArray(grokResult.classification.pages)) {
+          logError("CLASSIFY:4.5", "Grok classifier returned invalid structure");
+          throw new Error("Grok classifier returned invalid structure");
+        }
+
+        if (grokResult.classification.pageCount !== detectedPageCount) {
+          const errorMsg = `Grok page count mismatch: expected ${detectedPageCount}, got ${grokResult.classification.pageCount}`;
+          logError("CLASSIFY:4.5", errorMsg);
+          throw new Error(errorMsg);
+        }
+
+        const llmClassification = grokResult.classification;
+
+        logSuccess("CLASSIFY:4.5", `Grok classifier returned valid labels for ${detectedPageCount} pages`);
+        emit(controller, {
+          type: "progress",
+          phase: "classify",
+          message: "Grok classifier returned valid labels, merging with heuristics",
+        });
+
+        // Merge: prefer LLM labels when present, otherwise fall back to heuristic
+        const finalDetectedPages = detectedPages.map((heur, idx) => {
+          const llmPage = llmClassification.pages[idx];
+          if (!llmPage) return heur;
+
+          return {
+            ...heur,
+            pdfPage: llmPage.pdfPage ?? idx + 1,
+            formCode: llmPage.formCode ?? heur.formCode,
+            formPage: llmPage.formPage ?? heur.formPage,
+            totalPagesInForm: llmPage.totalPagesInForm ?? heur.totalPagesInForm,
+            role: llmPage.role ?? heur.role,
+            contentCategory: llmPage.contentCategory ?? heur.contentCategory,
+            hasFilledFields:
+              typeof llmPage.hasFilledFields === "boolean"
+                ? llmPage.hasFilledFields
+                : heur.hasFilledFields,
+            confidence:
+              typeof llmPage.confidence === "number"
+                ? llmPage.confidence
+                : heur.confidence,
+            titleSnippet: llmPage.titleSnippet ?? heur.titleSnippet,
+            footerText: heur?.footerText,
+          };
+        });
+
+        const classificationSource: "heuristic" | "llm" | "combined" = "llm";
 
         logStep("CLASSIFY:5", "Running post-processor to determine critical pages...");
 

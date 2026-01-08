@@ -1,7 +1,8 @@
 // src/lib/extraction/grok/textClassify.ts
-// Version: 1.1.0 - 2026-01-08
+// Version: 1.2.0 - 2026-01-08
 // Calls Grok text model (grok-4-1-fast-reasoning) to classify pages using OCR markdown
 // FIX: Use XAI_API_KEY (correct env var) + parse chat completion format correctly
+// FIX: Add debug logging (limited to avoid Vercel log size limits)
 
 import Ajv from "ajv";
 import addFormats from "ajv-formats";
@@ -97,8 +98,18 @@ export async function callGrokTextClassify(
       // Parse the chat completion response
       const responseJson = await res.json();
 
+      // Log response structure (not full content to avoid Vercel limits)
+      console.log("[grokClassify] Response structure:", {
+        hasChoices: !!responseJson.choices,
+        choicesLength: responseJson.choices?.length,
+        hasMessage: !!responseJson.choices?.[0]?.message,
+        hasContent: !!responseJson.choices?.[0]?.message?.content,
+        contentLength: responseJson.choices?.[0]?.message?.content?.length,
+      });
+
       // Extract content from OpenAI-compatible chat completion format
       if (!responseJson.choices?.[0]?.message?.content) {
+        console.error("[grokClassify] Invalid response structure. Top-level keys:", Object.keys(responseJson));
         throw new Error("Invalid Grok response structure: missing choices[0].message.content");
       }
 
@@ -108,16 +119,29 @@ export async function callGrokTextClassify(
       let parsed: unknown;
       try {
         parsed = JSON.parse(jsonText);
+        const parsedObj = parsed as any;
+
+        // Log structure with sample of first 2 pages
+        console.log("[grokClassify] Parsed JSON structure:", {
+          keys: Object.keys(parsedObj),
+          state: parsedObj.state,
+          pageCount: parsedObj.pageCount,
+          pagesArrayLength: parsedObj.pages?.length,
+          firstTwoPages: parsedObj.pages?.slice(0, 2),
+        });
       } catch (e) {
+        console.error("[grokClassify] Failed to parse JSON. First 1000 chars:", jsonText.substring(0, 1000));
         throw new Error("Invalid JSON in Grok response content");
       }
 
       // Basic structural checks with proper narrowing
       if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+        console.error("[grokClassify] Validation failed: not a non-null object. Type:", typeof parsed);
         throw new Error("Parsed response is not a non-null object");
       }
 
       if (!("pages" in parsed) || !Array.isArray((parsed as any).pages)) {
+        console.error("[grokClassify] Validation failed: missing pages array. Keys:", Object.keys(parsed as object));
         throw new Error("Parsed response missing or invalid pages array");
       }
 
@@ -125,12 +149,20 @@ export async function callGrokTextClassify(
       const valid = validate(parsed);
       if (!valid) {
         const errors = (validate.errors || []).map((e: any) => `${e.instancePath} ${e.message}`);
+        console.error("[grokClassify] Schema validation failed:", errors);
+        console.error("[grokClassify] Failed validation sample (first 2 pages):", {
+          state: (parsed as any).state,
+          pageCount: (parsed as any).pageCount,
+          firstTwoPages: (parsed as any).pages?.slice(0, 2),
+        });
         return { valid: false, errors, raw };
       }
 
       // Ensure pageCount matches pages length
       const pagesArray = (parsed as any).pages as unknown[];
+      console.log(`[grokClassify] Checking pageCount: expected ${pageCount}, got ${pagesArray.length} pages`);
       if (pagesArray.length !== pageCount) {
+        console.error(`[grokClassify] Page count mismatch: expected ${pageCount}, got ${pagesArray.length}`);
         return {
           valid: false,
           errors: [`pageCount mismatch: expected ${pageCount}, got ${pagesArray.length}`],
@@ -140,6 +172,8 @@ export async function callGrokTextClassify(
 
       // At this point, schema validation passed → safe to cast
       const classification = parsed as Classification;
+
+      console.log(`[grokClassify] ✅ Schema validation passed! Normalizing ${classification.pages.length} pages...`);
 
       // Normalize pages: ensure pdfPage set and confidences clamped
       classification.pages = classification.pages.map((p, idx) => {
@@ -160,6 +194,7 @@ export async function callGrokTextClassify(
         };
       });
 
+      console.log(`[grokClassify] ✅ Successfully classified ${pageCount} pages`);
       return { valid: true, classification, raw };
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
