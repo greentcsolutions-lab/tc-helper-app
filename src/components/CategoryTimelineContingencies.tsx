@@ -65,7 +65,7 @@ export default function CategoryTimelineContingencies({
     const shortDate = toShortYear(formatted.displayDate);
 
     // Format: "01/26/26 (17 days after acceptance OR specified)"
-    return `${shortDate} (${daysNum} days after acceptance OR specified)`;
+    return `${shortDate} (${daysNum} days after acceptance)`;
   };
 
   const createField = (
@@ -92,7 +92,7 @@ export default function CategoryTimelineContingencies({
         const formatted = formatTimelineField(data.closingDate, data.effectiveDate, false);
         if (formatted.displayDate) {
           const shortDate = toShortYear(formatted.displayDate);
-          display = `${shortDate} (${data.closingDate} days after acceptance OR specified)`;
+          display = `${shortDate} (${data.closingDate} days after acceptance)`;
         } else {
           display = `${data.closingDate} days after acceptance`;
         }
