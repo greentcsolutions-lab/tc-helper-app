@@ -38,6 +38,24 @@ function hasSubstantiveData(extraction: any): boolean {
   const substantiveCount = [hasPrice, hasDates, hasParties, hasProperty, hasTerms, hasSignatures]
     .filter(Boolean).length;
 
+  // DEBUG: Log what we found
+  console.log(`[hasSubstantiveData] Checking extraction:`, {
+    hasPrice,
+    hasDates,
+    hasParties,
+    hasProperty,
+    hasTerms,
+    hasSignatures,
+    substantiveCount,
+    fields: {
+      purchasePrice: extraction.purchasePrice,
+      buyerNames: extraction.buyerNames,
+      sellerNames: extraction.sellerNames,
+      propertyAddress: extraction.propertyAddress,
+      keys: Object.keys(extraction),
+    }
+  });
+
   return substantiveCount >= 2;
 }
 
@@ -154,16 +172,20 @@ export async function extractAllPages(
     }
 
     // NEW: Single aggregated extraction per chunk
-    // Mistral returns document_annotation as one object for the entire batch,
-    // not as an array per page
+    // Mistral returns document_annotation as an object with an "extractions" array
+    // based on our schema structure
     if (!annotationObj || typeof annotationObj !== 'object') {
       throw new Error('Invalid extraction response: missing or invalid document_annotation');
     }
 
-    // Wrap as single-item array for compatibility with downstream code
+    // Unwrap the extractions array from the schema response
+    const extractions = annotationObj.extractions || [];
+
+    console.log(`[extractPdf] Chunk ${chunkIndex + 1}: Received ${extractions.length} extraction(s)`);
+
     return {
       pageNumbers,
-      extractions: [annotationObj],
+      extractions,
     };
   });
 
