@@ -1,12 +1,14 @@
 // src/components/CategoryTimelineContingencies.tsx
-// Version: 4.3.0 - 2026-01-05
+// Version: 4.4.0 - 2026-01-08
 // FIXED: Matches current ParseResult (no closeOfEscrowDate or calculated deadlines)
 //         Displays raw contingency days and legacy closingDate
 //         Full editing support
+// FIXED: Date formatting - displays dates as MM/DD/YYYY to users
 
 import CategorySection, { FieldConfig } from "./CategorySection";
 import { Calendar } from "lucide-react";
 import { ParseResult } from "@/types";
+import { formatDisplayDate } from "@/lib/date-utils";
 
 interface CategoryTimelineContingenciesProps {
   data: ParseResult;
@@ -20,6 +22,16 @@ export default function CategoryTimelineContingencies({
   onDataChange,
 }: CategoryTimelineContingenciesProps) {
   const cont = data.contingencies;
+
+  // Helper: Format date for display (YYYY-MM-DD → MM/DD/YYYY)
+  const formatDate = (value: string | null | undefined): string | null => {
+    if (typeof value !== 'string' || value.trim() === '') return null;
+    try {
+      return formatDisplayDate(value);
+    } catch (e) {
+      return value; // Return original if parsing fails
+    }
+  };
 
   const createField = (
     label: string,
@@ -40,7 +52,7 @@ export default function CategoryTimelineContingencies({
     fields.push(
       createField(
         "Close of Escrow",
-        isEditing ? data.closingDate ?? '' : data.closingDate,
+        isEditing ? data.closingDate ?? '' : formatDate(data.closingDate),
         'date',
         (val) => onDataChange?.({ ...data, closingDate: val })
       )

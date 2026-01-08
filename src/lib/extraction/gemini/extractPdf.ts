@@ -1,10 +1,13 @@
 // src/lib/extraction/gemini/extractPdf.ts
-// Version: 1.0.0 - 2026-01-08
+// Version: 1.1.0 - 2026-01-08
 // NEW: Gemini 3 Flash Preview for full-document extraction
 // Handles up to 100 pages in ONE call with built-in reasoning
 // Negates need for post-processing, batching, and role detection
+// FIXED: Apply type coercion to convert money strings to numbers
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { coerceNumber, coerceString } from '@/lib/grok/type-coercion';
+import { normalizeDateString } from '@/lib/extraction/extract/universal/helpers/date-utils';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY!;
 
@@ -258,37 +261,83 @@ export async function extractWithGemini(
   }
 }
 
+// Helper to calculate date from "X days after acceptance" pattern
+function calculateDateFromRelative(dateStr: string | null, effectiveDate: string | null): string | null {
+  if (!dateStr || !effectiveDate) return dateStr;
+
+  // Check for "X days after acceptance" pattern
+  const daysMatch = dateStr.match(/(\d+)\s*days?\s*after/i);
+  if (!daysMatch) return dateStr;
+
+  const daysToAdd = parseInt(daysMatch[1], 10);
+  if (isNaN(daysToAdd)) return dateStr;
+
+  try {
+    const baseDate = new Date(effectiveDate);
+    if (isNaN(baseDate.getTime())) return dateStr;
+
+    baseDate.setDate(baseDate.getDate() + daysToAdd);
+    const year = baseDate.getFullYear();
+    const month = String(baseDate.getMonth() + 1).padStart(2, '0');
+    const day = String(baseDate.getDate()).padStart(2, '0');
+
+    return `${year}-${month}-${day}`;
+  } catch (e) {
+    console.error(`[gemini-transform] Failed to calculate date from "${dateStr}":`, e);
+    return dateStr;
+  }
+}
+
 // Transform Gemini's schema format to the UniversalExtractionResult format
 function transformGeminiToUniversal(geminiData: any): any {
   const e = geminiData.extracted;
+
+  // First normalize the effective date
+  const effectiveDate = normalizeDateString(e.final_acceptance_date) || e.final_acceptance_date;
+
+  // Apply type coercion and date normalization
+  const purchasePrice = coerceNumber(e.purchase_price);
+  const earnestMoneyAmount = e.initial_deposit?.amount ? coerceNumber(e.initial_deposit.amount) : null;
+  const sellerCreditAmount = coerceNumber(e.seller_credit_to_buyer);
+
+  // Calculate close of escrow date (handle relative dates)
+  let closeOfEscrowDate = e.close_of_escrow;
+  closeOfEscrowDate = calculateDateFromRelative(closeOfEscrowDate, effectiveDate);
+  closeOfEscrowDate = normalizeDateString(closeOfEscrowDate) || closeOfEscrowDate;
+
+  console.log(`[gemini-transform] Coerced purchasePrice: "${e.purchase_price}" → ${purchasePrice}`);
+  console.log(`[gemini-transform] Coerced earnestMoney: "${e.initial_deposit?.amount}" → ${earnestMoneyAmount}`);
+  console.log(`[gemini-transform] Coerced sellerCredit: "${e.seller_credit_to_buyer}" → ${sellerCreditAmount}`);
+  console.log(`[gemini-transform] Calculated closeOfEscrow: "${e.close_of_escrow}" → ${closeOfEscrowDate}`);
+  console.log(`[gemini-transform] Normalized effectiveDate: "${e.final_acceptance_date}" → ${effectiveDate}`);
 
   return {
     // Core fields
     buyerNames: e.buyer_names || [],
     sellerNames: [], // Not in schema but needed for universal format
-    propertyAddress: e.property_address?.full || null,
-    purchasePrice: e.purchase_price || null,
-    closeOfEscrowDate: e.close_of_escrow || null,
-    effectiveDate: e.final_acceptance_date || null,
+    propertyAddress: coerceString(e.property_address?.full),
+    purchasePrice,
+    closeOfEscrowDate,
+    effectiveDate,
 
     // Earnest money
     earnestMoneyDeposit: e.initial_deposit ? {
-      amount: e.initial_deposit.amount,
+      amount: earnestMoneyAmount,
       holder: null, // Not in schema
     } : null,
 
     // Financing
     financing: {
       isAllCash: e.all_cash,
-      loanType: e.loan_type,
+      loanType: coerceString(e.loan_type),
       loanAmount: null, // Not in schema
     },
 
     // Contingencies
     contingencies: e.contingencies ? {
-      inspectionDays: e.contingencies.investigation_days,
-      appraisalDays: e.contingencies.appraisal_days,
-      loanDays: e.contingencies.loan_days,
+      inspectionDays: coerceNumber(e.contingencies.investigation_days, 0),
+      appraisalDays: coerceNumber(e.contingencies.appraisal_days, 0),
+      loanDays: coerceNumber(e.contingencies.loan_days, 0),
       saleOfBuyerProperty: e.cop_contingency || false,
     } : null,
 
@@ -296,19 +345,19 @@ function transformGeminiToUniversal(geminiData: any): any {
     closingCosts: {
       buyerPays: [],
       sellerPays: [],
-      sellerCreditAmount: e.seller_credit_to_buyer,
+      sellerCreditAmount,
     },
 
     // Brokers
     brokers: {
-      listingBrokerage: e.sellers_broker?.brokerage_name,
-      listingAgent: e.sellers_broker?.agent_name,
-      listingAgentEmail: e.sellers_broker?.email,
-      listingAgentPhone: e.sellers_broker?.phone,
-      sellingBrokerage: e.buyers_broker?.brokerage_name,
-      sellingAgent: e.buyers_broker?.agent_name,
-      sellingAgentEmail: e.buyers_broker?.email,
-      sellingAgentPhone: e.buyers_broker?.phone,
+      listingBrokerage: coerceString(e.sellers_broker?.brokerage_name),
+      listingAgent: coerceString(e.sellers_broker?.agent_name),
+      listingAgentEmail: coerceString(e.sellers_broker?.email),
+      listingAgentPhone: coerceString(e.sellers_broker?.phone),
+      sellingBrokerage: coerceString(e.buyers_broker?.brokerage_name),
+      sellingAgent: coerceString(e.buyers_broker?.agent_name),
+      sellingAgentEmail: coerceString(e.buyers_broker?.email),
+      sellingAgentPhone: coerceString(e.buyers_broker?.phone),
     },
 
     // Additional fields

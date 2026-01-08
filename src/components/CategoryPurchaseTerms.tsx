@@ -1,11 +1,13 @@
 // src/components/CategoryPurchaseTerms.tsx
-// Version: 3.0.0 - 2026-01-03
+// Version: 3.1.0 - 2026-01-08
 // ENHANCED: Added edit mode support and missing fields (loan amount, personal property, escrow holder, closing costs)
 // FIXED: Proper null handling + zero-value detection (purchasePrice: 0 = error)
+// FIXED: Date formatting - displays dates as MM/DD/YYYY to users
 
 import CategorySection, { FieldConfig } from "./CategorySection";
 import { DollarSign, AlertCircle } from "lucide-react";
 import { ParseResult } from "@/types";
+import { formatDisplayDate } from "@/lib/date-utils";
 
 interface CategoryPurchaseTermsProps {
   data: ParseResult;
@@ -60,6 +62,19 @@ export default function CategoryPurchaseTerms({
   const formatString = (value: string | null | undefined): string | null => {
     if (typeof value !== 'string' || value.trim() === '') return null;
     return value;
+  };
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // HELPER: Format date for display (YYYY-MM-DD → MM/DD/YYYY)
+  // ═══════════════════════════════════════════════════════════════════════
+  const formatDate = (value: string | null | undefined): string | null => {
+    if (typeof value !== 'string' || value.trim() === '') return null;
+    try {
+      return formatDisplayDate(value);
+    } catch (e) {
+      // If parsing fails, return the original value
+      return value;
+    }
   };
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -151,13 +166,13 @@ export default function CategoryPurchaseTerms({
     ),
     createField(
       "Close of Escrow",
-      isEditing ? data.closingDate : formatString(data.closingDate),
+      isEditing ? data.closingDate : formatDate(data.closingDate),
       'date',
       (val) => onDataChange?.({ ...data, closingDate: val })
     ),
     createField(
       "Effective Date",
-      isEditing ? data.effectiveDate : formatString(data.effectiveDate),
+      isEditing ? data.effectiveDate : formatDate(data.effectiveDate),
       'date',
       (val) => onDataChange?.({ ...data, effectiveDate: val })
     ),
