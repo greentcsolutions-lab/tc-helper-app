@@ -1,24 +1,32 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // No more native packages — we're pure serverless now
-  serverExternalPackages: ["pdfjs-dist"],  // Root-level: Fixes bundling issues with pure-ESM pdfjs-dist
+  // Externalize pdfjs-dist at runtime (Vercel Node.js loads it fine)
+  serverExternalPackages: ["pdfjs-dist"],
 
-  // Keep these if you want fast local dev (safe to remove later)
-  typescript: { ignoreBuildErrors: true },
-  eslint: { ignoreDuringBuilds: true },
-
-  // Optional webpack fallback for extra compatibility (many teams keep this)
+  // Critical fix: Transpile + external for server bundles (bypasses Webpack resolve errors)
   webpack: (config, { isServer }) => {
     if (isServer) {
+      // Mark as external
       config.externals = [...(config.externals || []), "pdfjs-dist"];
+
+      // Transpile the package (forces Node resolution)
+      config.module.rules.push({
+        test: /\.m?js$/,
+        include: /node_modules\/pdfjs-dist/,
+        use: {
+          loader: "next-loader-shim",
+          options: { name: "pdfjs-dist" },
+        },
+      });
     }
     return config;
   },
 
-  // Turbopack alias no longer needed
-  turbopack: {
-    // resolveAlias: {} — removed
-  },
+  // Your existing ignores (safe for fast local builds)
+  typescript: { ignoreBuildErrors: true },
+  eslint: { ignoreDuringBuilds: true },
+
+  // Remove turbopack object if present (it can interfere with server bundling)
 };
 
 module.exports = nextConfig;
