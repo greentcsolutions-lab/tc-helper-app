@@ -8,7 +8,32 @@ import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
 import { put } from "@vercel/blob";
-import pdfPageCounter from "pdf-page-counter"; // Tiny pure-JS parser – just for page count
+
+/**
+ * Count pages in a PDF without external libraries
+ * Works by counting /Type /Page objects in the PDF structure
+ */
+function countPdfPages(buffer: Buffer): number {
+  const pdfString = buffer.toString("latin1");
+
+  // Method 1: Look for /Type /Page or /Type/Page
+  // This counts individual page objects
+  const pageMatches = pdfString.match(/\/Type\s*\/Page[^s]/g);
+  if (pageMatches && pageMatches.length > 0) {
+    return pageMatches.length;
+  }
+
+  // Method 2: Look for /Count in the Pages object
+  // This finds the page count declaration
+  const countMatch = pdfString.match(/\/Type\s*\/Pages[\s\S]*?\/Count\s+(\d+)/);
+  if (countMatch && countMatch[1]) {
+    return parseInt(countMatch[1], 10);
+  }
+
+  // Fallback: count page break markers
+  const pageBreaks = pdfString.match(/\/Page\W/g);
+  return pageBreaks ? pageBreaks.length : 0;
+}
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -46,17 +71,23 @@ export async function POST(req: NextRequest) {
 
   console.log(`[upload] Received ${file.name} (${(buffer.length / 1e6).toFixed(1)} MB)`);
 
-  // Lightweight page count – no workers, no heavy libs
+  // Lightweight page count – pure regex parsing, no external PDF libs
   let pageCount = 0;
   try {
-    const data = await pdfPageCounter(new Uint8Array(buffer));
-    pageCount = data.numpages;
+    pageCount = countPdfPages(buffer);
+
+    if (pageCount === 0) {
+      return Response.json(
+        { error: "Could not detect pages – possibly corrupted or non-standard PDF" },
+        { status: 400 }
+      );
+    }
 
     if (pageCount > 100) {
       return Response.json({ error: "PDF exceeds 100 pages – too large for processing" }, { status: 400 });
     }
 
-    console.log(`[upload] Detected ${pageCount} pages with pdf-page-counter`);
+    console.log(`[upload] Detected ${pageCount} pages`);
   } catch (err) {
     console.error("[upload] Failed to count pages:", err);
     return Response.json(

@@ -115,6 +115,9 @@ export async function POST(request: NextRequest) {
       dueDate,
       dueDateType,
       dueDateValue,
+      status,
+      columnId,
+      isCustom,
     } = body;
 
     // Validation
