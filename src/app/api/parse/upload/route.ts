@@ -1,13 +1,15 @@
 // src/app/api/parse/upload/route.ts
-// Updated 2026-01-08 – Works with pure ESM pdfjs-dist (no legacy builds)
-// Robust page count on annotated/signed PDFs
-// Build fix: pdfjs-dist marked as external in next.config.js
+// Updated 2026-01-08 – Uses compatible import for pdfjs-dist ^3.0.279 (avoids ESM build issues)
+// Worker path resolved at runtime with require.resolve – bypasses Webpack resolution errors
+// Adds <=100 page limit enforcement
+// No flattening needed for page count; pdfjs handles layered/messy PDFs robustly
+// For splitting in extract: See notes below – use pdf-lib in extract route for batch creation
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
 import { put } from "@vercel/blob";
-import * as pdfjsLib from "pdfjs-dist/build/pdf.mjs"; // Pure ESM – correct for 2026+
+import * as pdfjsLib from "pdfjs-dist"; // Compatible import for v3.x – bundles fine in Next.js 15+
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -36,7 +38,7 @@ export async function POST(req: NextRequest) {
   const buffer = Buffer.from(await file.arrayBuffer());
   const uint8Array = new Uint8Array(buffer);
 
-  // Basic validation
+  // Basic validation (≤25MB already enforced)
   if (!buffer.subarray(0, 8).toString().includes("%PDF")) {
     return Response.json({ error: "invalid_pdf" }, { status: 400 });
   }
@@ -46,15 +48,20 @@ export async function POST(req: NextRequest) {
 
   console.log(`[upload] Received ${file.name} (${(buffer.length / 1e6).toFixed(1)} MB)`);
 
-  // Robust page count using pdfjs-dist (ESM)
+  // Robust page count with runtime worker resolution (fixes build errors)
   let pageCount = 0;
   try {
-    // Critical: Set worker to the ESM worker file
-    pdfjsLib.GlobalWorkerOptions.workerSrc = "pdfjs-dist/build/pdf.worker.mjs";
+    // Resolve worker path at runtime – Vercel Node.js handles this fine
+    pdfjsLib.GlobalWorkerOptions.workerSrc = require.resolve("pdfjs-dist/build/pdf.worker.js");
 
     const loadingTask = pdfjsLib.getDocument(uint8Array);
     const pdfDocument = await loadingTask.promise;
     pageCount = pdfDocument.numPages;
+
+    // Enforce ≤100 pages limit (reject early to save costs)
+    if (pageCount > 100) {
+      return Response.json({ error: "PDF exceeds 100 pages – too large for processing" }, { status: 400 });
+    }
 
     console.log(`[upload] Detected ${pageCount} pages with pdfjs-dist`);
   } catch (err) {
@@ -65,7 +72,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Upload to Vercel Blob first
+  // Upload to Vercel Blob
   let pdfPublicUrl: string | undefined;
   try {
     console.log("[upload] Uploading to Vercel Blob...");
@@ -81,7 +88,7 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "Upload failed" }, { status: 500 });
   }
 
-  // Create DB record only after successful upload
+  // Create DB record
   try {
     const parse = await db.parse.create({
       data: {
@@ -89,7 +96,7 @@ export async function POST(req: NextRequest) {
         fileName: file.name,
         state: "Unknown",
         status: "UPLOADED",
-        pdfBuffer: buffer,
+        pdfBuffer: buffer, // Optional: Remove if not needed to save DB space
         pdfPublicUrl,
         pageCount,
         rawJson: {},

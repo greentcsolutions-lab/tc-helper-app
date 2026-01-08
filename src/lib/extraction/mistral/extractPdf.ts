@@ -1,10 +1,11 @@
 // src/lib/extraction/mistral/extractPdf.ts
-// Version: 2.0.0 - 2026-01-08
-// SIMPLIFIED: Extracts ALL pages in 8-page batches (no classification needed)
-// Sends full PDF URL with page ranges to Mistral (avoids pdf-lib corruption issues)
-// Filters results by data quality (non-empty extractions)
+// Version: 2.1.0 - 2026-01-08
+// UPDATED: Adds explicit page batching via Mistral OCR API 'pages' parameter (≤8 pages per call)
+// Avoids pdf-lib entirely – no splitting/corruption issues with messy annotated/signed PDFs
+// Uses document_url + pages array (Mistral supports ranges/lists, 0-indexed)
 // Parallel execution with Promise.all
-// Replaces classification-based filtering with data-presence filtering
+// Filters by data quality (non-empty/substantive extractions)
+// Matches annotated OCR guidelines (8-page limit for structured annotations)
 
 import { mistralExtractorSchema } from './schema';
 
@@ -16,15 +17,14 @@ if (!API_KEY) {
 }
 
 interface ExtractionChunk {
-  pageNumbers: number[];
+  pageNumbers: number[]; // 1-based for your logic
   extractions: any[];
 }
 
-// Helper: Check if an extraction has substantive data
+// Helper: Check if an extraction has substantive data (same as before)
 function hasSubstantiveData(extraction: any): boolean {
   if (!extraction) return false;
 
-  // Check for key transaction fields
   const hasPrice = extraction.purchasePrice || extraction.listPrice;
   const hasDates = extraction.closingDate || extraction.acceptanceDate || extraction.effectiveDate;
   const hasParties = extraction.buyerNames?.length > 0 || extraction.sellerNames?.length > 0;
@@ -32,7 +32,6 @@ function hasSubstantiveData(extraction: any): boolean {
   const hasTerms = extraction.earnestMoneyDeposit || extraction.contingencies?.length > 0;
   const hasSignatures = extraction.signatures?.length > 0;
 
-  // Page is substantive if it has at least 2 key fields
   const substantiveCount = [hasPrice, hasDates, hasParties, hasProperty, hasTerms, hasSignatures]
     .filter(Boolean).length;
 
@@ -48,9 +47,9 @@ export async function extractAllPages(
   criticalPages: number[];
   allExtractions: any[];
 }> {
-  console.log(`[extractPdf] Extracting all ${totalPages} pages in batches of 8 (parallel)`);
+  console.log(`[extractPdf] Extracting all ${totalPages} pages in batches of ≤8 (parallel, via pages param)`);
 
-  // Generate all page numbers
+  // Generate 1-based page numbers
   const allPageNumbers = Array.from({ length: totalPages }, (_, i) => i + 1);
 
   // Split into chunks of 8 pages max
@@ -61,11 +60,14 @@ export async function extractAllPages(
 
   console.log(`[extractPdf] ${totalPages} pages → ${chunks.length} chunk(s) of ≤8 pages`);
 
-  // Parallel execution - each chunk gets the full PDF URL
+  // Parallel execution – each chunk sends document_url + specific pages array (0-indexed for Mistral)
   const chunkPromises = chunks.map(async (pageNumbers, chunkIndex) => {
     console.log(
       `[extractPdf] Starting chunk ${chunkIndex + 1}/${chunks.length} – pages ${pageNumbers.join(', ')}`
     );
+
+    // Convert to 0-indexed for Mistral API
+    const zeroBasedPages = pageNumbers.map(p => p - 1);
 
     const payload = {
       model: 'mistral-ocr-latest',
@@ -73,6 +75,7 @@ export async function extractAllPages(
         type: 'document_url',
         document_url: pdfUrl,
       },
+      pages: zeroBasedPages, // Explicit page selection – respects 8-page annotation limit
       document_annotation_format: {
         type: 'json_schema',
         json_schema: {
@@ -112,6 +115,7 @@ export async function extractAllPages(
       throw new Error('Invalid extraction response: missing extractions array');
     }
 
+    // Mistral returns extractions in order of requested pages
     return {
       pageNumbers,
       extractions: annotationObj.extractions,
@@ -122,7 +126,7 @@ export async function extractAllPages(
 
   console.log(`[extractPdf] All ${chunks.length} chunks completed in parallel`);
 
-  // Flatten and restore original sourcePage
+  // Flatten and restore original 1-based sourcePage
   const allPageExtractions = chunkResults.flatMap((chunk) =>
     chunk.extractions.map((ext: any, idx: number) => ({
       ...ext,
@@ -132,8 +136,8 @@ export async function extractAllPages(
 
   console.log(`[extractPdf] Total ${allPageExtractions.length} page extractions received`);
 
-  // Filter by data quality - keep only pages with substantive data
-  const substantiveExtractions = allPageExtractions.filter((ext, idx) => {
+  // Filter by data quality
+  const substantiveExtractions = allPageExtractions.filter((ext) => {
     const isSubstantive = hasSubstantiveData(ext);
     if (!isSubstantive) {
       console.log(`[extractPdf] Filtering out page ${ext.sourcePage} - no substantive data`);
@@ -147,27 +151,14 @@ export async function extractAllPages(
     `[extractPdf] Filtered ${allPageExtractions.length} → ${substantiveExtractions.length} substantive pages: [${criticalPages.join(', ')}]`
   );
 
-  // Build minimal metadata for post-processor
-  const classificationMetadata = {
-    criticalPageNumbers: criticalPages,
-    pageLabels: {},
-    packageMetadata: {},
-  };
-
-  // Simple merge - no complex classification logic needed
+  // Simple merge (last-write-wins)
   const finalTerms: any = {};
-  const provenance: Record<string, number> = {};
-
-  // Merge all substantive extractions
   for (const extraction of substantiveExtractions) {
     for (const [key, value] of Object.entries(extraction)) {
       if (key === 'sourcePage') continue;
       if (value && value !== null && value !== undefined) {
         if (Array.isArray(value) && value.length === 0) continue;
-
-        // Simple last-write-wins for now
         finalTerms[key] = value;
-        provenance[key] = extraction.sourcePage;
       }
     }
   }
