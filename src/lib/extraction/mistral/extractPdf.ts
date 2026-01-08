@@ -164,12 +164,23 @@ export async function extractAllPages(
 
     const data = await response.json();
 
+    // LOG MISTRAL RESPONSE (truncated to 1000 chars for Vercel limits)
+    const responseStr = JSON.stringify(data, null, 2);
+    const truncated = responseStr.length > 1000 ? responseStr.substring(0, 1000) + '...[TRUNCATED]' : responseStr;
+    console.log(`[extractPdf] Chunk ${chunkIndex + 1}: RAW Mistral response (${responseStr.length} chars):`, truncated);
+
     let annotationObj: any;
     if (typeof data.document_annotation === 'string') {
+      console.log(`[extractPdf] Chunk ${chunkIndex + 1}: document_annotation is STRING, parsing...`);
       annotationObj = JSON.parse(data.document_annotation);
     } else {
+      console.log(`[extractPdf] Chunk ${chunkIndex + 1}: document_annotation is OBJECT`);
       annotationObj = data.document_annotation;
     }
+
+    const annotationStr = JSON.stringify(annotationObj, null, 2);
+    const annotationTruncated = annotationStr.length > 1000 ? annotationStr.substring(0, 1000) + '...[TRUNCATED]' : annotationStr;
+    console.log(`[extractPdf] Chunk ${chunkIndex + 1}: Parsed annotationObj (${annotationStr.length} chars):`, annotationTruncated);
 
     // NEW: Single aggregated extraction per chunk
     // Mistral returns document_annotation as an object with an "extractions" array
@@ -182,6 +193,14 @@ export async function extractAllPages(
     const extractions = annotationObj.extractions || [];
 
     console.log(`[extractPdf] Chunk ${chunkIndex + 1}: Received ${extractions.length} extraction(s)`);
+    if (extractions.length > 0) {
+      const firstExtStr = JSON.stringify(extractions[0], null, 2);
+      const firstExtTruncated = firstExtStr.length > 1000 ? firstExtStr.substring(0, 1000) + '...[TRUNCATED]' : firstExtStr;
+      console.log(`[extractPdf] Chunk ${chunkIndex + 1}: First extraction (${firstExtStr.length} chars):`, firstExtTruncated);
+    } else {
+      console.log(`[extractPdf] Chunk ${chunkIndex + 1}: WARNING - No extractions in annotationObj.extractions!`);
+      console.log(`[extractPdf] Chunk ${chunkIndex + 1}: Available keys in annotationObj:`, Object.keys(annotationObj));
+    }
 
     return {
       pageNumbers,
