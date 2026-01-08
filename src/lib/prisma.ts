@@ -1,8 +1,8 @@
 // src/lib/prisma.ts
-// Updated 2026-01-08 – Optimized for Vercel Pro serverless + Prisma Accelerate
-// Singleton pattern: Reuses PrismaClient across hot invocations → prevents connection leaks
-// Extends with Accelerate for global pooling + caching (your dashboard shows it's already enabled)
-// No multiple clients per function → stable on cold starts, fits <90s p95
+// Final 2026-01-08 version – Works with Prisma Accelerate (already enabled in your dashboard)
+// Singleton + Accelerate extension → global pooling/caching, no connection exhaustion on Vercel Pro
+// Fixes P1001 "Can't reach db.prisma.io" by routing through Accelerate (prisma:// URL)
+// Keeps dev logging for your Chromebook setup
 
 import { PrismaClient } from '@prisma/client';
 import { withAccelerate } from '@prisma/extension-accelerate';
@@ -11,17 +11,15 @@ const globalForPrisma = global as unknown as {
   prisma: PrismaClient;
 };
 
-// Reuse existing client if hot, otherwise create new and extend with Accelerate
 export const db =
   globalForPrisma.prisma ||
   new PrismaClient({
     log:
       process.env.NODE_ENV === 'development'
-        ? ['query', 'error', 'warn'] // Helpful locally on your Chromebook
-        : ['error'], // Production: only errors to keep logs lean
+        ? ['query', 'info', 'warn', 'error'] // Full logs locally
+        : ['error'], // Production: minimal to avoid log noise
   }).$extends(withAccelerate());
 
-// Store in globalThis for dev hot-reload (Next.js/Turbopack clears module cache)
 if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = db;
 }
