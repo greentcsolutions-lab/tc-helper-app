@@ -1,7 +1,4 @@
 {
-  "name": "RealEstateFormPerPageExtractions",
-  "strict": true,
-  "schema": {
     "type": "object",
     "properties": {
       "extractions": {
@@ -148,4 +145,3 @@
     "required": ["extractions"],
     "additionalProperties": false
   }
-}
