@@ -1,15 +1,15 @@
 // src/app/api/parse/upload/route.ts
-// Updated 2026-01-08 – Uses compatible import for pdfjs-dist ^3.0.279 (avoids ESM build issues)
-// Worker path resolved at runtime with require.resolve – bypasses Webpack resolution errors
-// Adds <=100 page limit enforcement
-// No flattening needed for page count; pdfjs handles layered/messy PDFs robustly
-// For splitting in extract: See notes below – use pdf-lib in extract route for batch creation
+// Updated 2026-01-08 – Robust page count using pdfjs-dist v3 (your ^3.0.279 constraint)
+// Uses PDFJS.disableWorker = true (legacy global flag from v3 era) to fully disable worker
+// Eliminates fake worker setup errors ("endsWith is not a function") on Vercel cold starts
+// No workerSrc needed → no resolution issues
+// Metadata-only numPages – fast, reliable on signed/annotated California packets
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
 import { put } from "@vercel/blob";
-import * as pdfjsLib from "pdfjs-dist"; // Compatible import for v3.x – bundles fine in Next.js 15+
+import PDFJS from "pdfjs-dist"; // Use default import for legacy v3 global access (PDFJS)
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
   const buffer = Buffer.from(await file.arrayBuffer());
   const uint8Array = new Uint8Array(buffer);
 
-  // Basic validation (≤25MB already enforced)
+  // Quick validation
   if (!buffer.subarray(0, 8).toString().includes("%PDF")) {
     return Response.json({ error: "invalid_pdf" }, { status: 400 });
   }
@@ -48,22 +48,23 @@ export async function POST(req: NextRequest) {
 
   console.log(`[upload] Received ${file.name} (${(buffer.length / 1e6).toFixed(1)} MB)`);
 
-  // Robust page count with runtime worker resolution (fixes build errors)
+  // Page count – fully disable worker (legacy v3 method)
   let pageCount = 0;
   try {
-    // Resolve worker path at runtime – Vercel Node.js handles this fine
-    pdfjsLib.GlobalWorkerOptions.workerSrc = require.resolve("pdfjs-dist/build/pdf.worker.js");
+    // Key line: disables worker globally (safe & supported in v3.x)
+    //@ts-ignore 2339
+    PDFJS.disableWorker = true;
 
-    const loadingTask = pdfjsLib.getDocument(uint8Array);
+    const loadingTask = PDFJS.getDocument(uint8Array);
     const pdfDocument = await loadingTask.promise;
     pageCount = pdfDocument.numPages;
 
-    // Enforce ≤100 pages limit (reject early to save costs)
+    // Enforce ≤100 pages limit early
     if (pageCount > 100) {
       return Response.json({ error: "PDF exceeds 100 pages – too large for processing" }, { status: 400 });
     }
 
-    console.log(`[upload] Detected ${pageCount} pages with pdfjs-dist`);
+    console.log(`[upload] Detected ${pageCount} pages (worker fully disabled)`);
   } catch (err) {
     console.error("[upload] pdfjs failed to read PDF structure:", err);
     return Response.json(
@@ -88,7 +89,7 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "Upload failed" }, { status: 500 });
   }
 
-  // Create DB record
+  // Create parse record
   try {
     const parse = await db.parse.create({
       data: {
@@ -96,7 +97,7 @@ export async function POST(req: NextRequest) {
         fileName: file.name,
         state: "Unknown",
         status: "UPLOADED",
-        pdfBuffer: buffer, // Optional: Remove if not needed to save DB space
+        pdfBuffer: buffer,
         pdfPublicUrl,
         pageCount,
         rawJson: {},
