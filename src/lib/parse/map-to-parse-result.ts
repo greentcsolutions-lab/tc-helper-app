@@ -19,6 +19,8 @@ type MapToParseResultParams = {
     }>;
     confidenceBreakdown?: Record<string, number>;
     missingConfidenceFields?: string[];
+    criticalPages?: number[];
+    allExtractions?: any[];
   };
   timelineEvents?: any[];
 };

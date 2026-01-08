@@ -1,10 +1,11 @@
 // src/app/api/parse/upload/route.ts
-// REFACTORED: Just validates, stores PDF, returns parseId
+// REFACTORED: Validates, stores PDF, detects page count, returns parseId
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
-import { put } from "@vercel/blob"; 
+import { put } from "@vercel/blob";
+import { PDFDocument } from "pdf-lib"; 
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -42,6 +43,17 @@ export async function POST(req: NextRequest) {
 
   console.log(`[upload] Received ${file.name} (${(buffer.length / 1e6).toFixed(1)} MB)`);
 
+  // Detect page count
+  let pageCount = 0;
+  try {
+    const pdfDoc = await PDFDocument.load(buffer, { ignoreEncryption: true });
+    pageCount = pdfDoc.getPageCount();
+    console.log(`[upload] Detected ${pageCount} pages`);
+  } catch (err) {
+    console.error("[upload] Failed to detect page count:", err);
+    return Response.json({ error: "Failed to read PDF structure" }, { status: 400 });
+  }
+
   // Upload first: ensures we only create DB record when storage succeeded
   let pdfPublicUrl: string | undefined;
   try {
@@ -73,18 +85,20 @@ export async function POST(req: NextRequest) {
         status: "UPLOADED",
         pdfBuffer: buffer,
         pdfPublicUrl,
+        pageCount,
         rawJson: {},
         formatted: {},
         criticalPageNumbers: [],
       },
     });
 
-    console.log(`[upload] Created parse ${parse.id} - ready for processing (pdfPublicUrl persisted)`);
+    console.log(`[upload] Created parse ${parse.id} - ${pageCount} pages, ready for extraction`);
     return Response.json({
       success: true,
       parseId: parse.id,
       pdfPublicUrl,
-      message: "Upload complete - PDF stored and ready for classification",
+      pageCount,
+      message: `Upload complete - ${pageCount}-page PDF ready for extraction`,
     });
   } catch (dbErr: any) {
     // Optionally: attempt to delete the uploaded blob to avoid orphaned files (not implemented here)

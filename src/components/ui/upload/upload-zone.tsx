@@ -62,7 +62,7 @@ export default function UploadZone() {
       return;
     }
 
-    if (['classify', 'extract', 'cleanup'].includes(orchestratorState.phase)) {
+    if (['extract', 'cleanup'].includes(orchestratorState.phase)) {
       setView("processing");
       lastActivity.current = Date.now();
     }
@@ -90,9 +90,9 @@ export default function UploadZone() {
       return;
     }
 
-    console.log("[upload-zone] Upload complete, starting pipeline:", newParseId);
+    console.log("[upload-zone] Upload complete, starting extraction:", newParseId);
 
-    // Run pipeline (classify → extract)
+    // Run pipeline (extract all pages)
     const result = await runPipeline(newParseId);
 
     if (result.success) {

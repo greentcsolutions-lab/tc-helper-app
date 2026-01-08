@@ -1,26 +1,25 @@
 // src/hooks/useParseOrchestrator.ts
-// Version: 4.0.0 - 2025-12-30
-// BREAKING: Cleanup NO LONGER runs automatically after extraction
-// Now cleanup only runs when user clicks "Complete" button or exits
+// Version: 5.0.0 - 2026-01-08
+// SIMPLIFIED: Removed classification step - extract directly from upload
+// Extraction now processes all pages and filters by data quality
+// Cleanup still manual (triggered by user)
 
 "use client";
 
 import { useState, useCallback } from "react";
 
-export type ParsePhase = 
-  | "idle" 
-  | "classify" 
-  | "extract" 
+export type ParsePhase =
+  | "idle"
+  | "extract"
   | "cleanup"
-  | "complete" 
+  | "complete"
   | "error";
 
 export type ParseState = {
   phase: ParsePhase;
   message: string;
   pageCount?: number;
-  criticalPageCount?: number;
-  detectedForms?: string[];
+  substantivePageCount?: number;
   needsReview?: boolean;
   error?: string;
 }
@@ -33,28 +32,10 @@ export function useParseOrchestrator() {
 
   const runPipeline = useCallback(async (parseId: string) => {
     try {
-      // PHASE 1: CLASSIFY
-      setState({ 
-        phase: 'classify', 
-        message: 'Analyzing document structure...',
-      });
-
-      const classifyResult = await runClassify(parseId, (msg) => {
-        setState((prev) => ({ ...prev, phase: 'classify', message: msg }));
-      });
-
-      if (!classifyResult.success) {
-        throw new Error(classifyResult.error || 'Classification failed');
-      }
-
-      console.log('[orchestrator] Classification complete:', classifyResult.criticalPageCount, 'critical pages');
-
-      // PHASE 2: EXTRACT (server reads from cache, no data passed)
+      // PHASE 1: EXTRACT (processes all pages, filters by data quality)
       setState({
         phase: 'extract',
-        message: 'Extracting transaction data...',
-        criticalPageCount: classifyResult.criticalPageCount,
-        detectedForms: classifyResult.detectedForms,
+        message: 'Extracting transaction data from all pages...',
       });
 
       const extractResult = await runExtract(parseId);
@@ -63,7 +44,7 @@ export function useParseOrchestrator() {
         throw new Error(extractResult.error || 'Extraction failed');
       }
 
-      console.log('[orchestrator] Extraction complete, needsReview:', extractResult.needsReview);
+      console.log('[orchestrator] Extraction complete:', extractResult.substantivePageCount, 'substantive pages, needsReview:', extractResult.needsReview);
 
       // ═══════════════════════════════════════════════════════════════════════
       // CRITICAL CHANGE: DO NOT RUN CLEANUP HERE
@@ -80,11 +61,11 @@ export function useParseOrchestrator() {
       // COMPLETE (without cleanup)
       setState({
         phase: 'complete',
-        message: extractResult.needsReview 
+        message: extractResult.needsReview
           ? 'Extraction complete — review recommended'
           : 'Transaction extracted successfully',
-        criticalPageCount: classifyResult.criticalPageCount,
-        detectedForms: classifyResult.detectedForms,
+        substantivePageCount: extractResult.substantivePageCount,
+        pageCount: extractResult.totalPages,
         needsReview: extractResult.needsReview,
       });
 
@@ -135,54 +116,14 @@ export function useParseOrchestrator() {
 }
 
 // ============================================================================
-// HELPER FUNCTIONS (SSE + REST)
+// HELPER FUNCTIONS (REST)
 // ============================================================================
 
-
-async function runClassify(
-  parseId: string,
-  onProgress: (message: string) => void
-): Promise<{ 
-  success: boolean; 
-  criticalPageCount?: number; 
-  detectedForms?: string[];
-  error?: string;
-}> {
-  return new Promise((resolve) => {
-    const eventSource = new EventSource(`/api/parse/classify/${parseId}`);
-
-    eventSource.addEventListener('message', (event) => {
-      try {
-        const data = JSON.parse(event.data);
-
-        if (data.type === 'progress') {
-          onProgress(data.message);
-        } else if (data.type === 'complete') {
-          eventSource.close();
-          resolve({
-            success: true,
-            criticalPageCount: data.criticalPageCount,
-            detectedForms: data.detectedForms || [],
-          });
-        } else if (data.type === 'error') {
-          eventSource.close();
-          resolve({ success: false, error: data.message });
-        }
-      } catch (e) {
-        console.error('[classify] Failed to parse SSE event:', e);
-      }
-    });
-
-    eventSource.onerror = () => {
-      eventSource.close();
-      resolve({ success: false, error: 'Connection lost' });
-    };
-  });
-}
-
-async function runExtract(parseId: string): Promise<{ 
-  success: boolean; 
-  needsReview?: boolean; 
+async function runExtract(parseId: string): Promise<{
+  success: boolean;
+  needsReview?: boolean;
+  substantivePageCount?: number;
+  totalPages?: number;
   error?: string;
 }> {
   try {
@@ -197,7 +138,12 @@ async function runExtract(parseId: string): Promise<{
     }
 
     const data = await res.json();
-    return { success: true, needsReview: data.needsReview };
+    return {
+      success: true,
+      needsReview: data.needsReview,
+      substantivePageCount: data.substantivePageCount,
+      totalPages: data.totalPages,
+    };
   } catch (error: any) {
     return { success: false, error: error.message || 'Extraction failed' };
   }

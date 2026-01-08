@@ -33,8 +33,8 @@ export function PreviewGallery({ parseId, criticalPages }: PreviewGalleryProps) 
   if (criticalPages.length === 0) {
     return (
       <div className="col-span-full py-12 text-center text-muted-foreground">
-        <p className="mb-2">No critical pages identified yet</p>
-        <p className="text-xs">Classification is still running...</p>
+        <p className="mb-2">No substantive pages identified yet</p>
+        <p className="text-xs">Extraction is still running...</p>
       </div>
     );
   }

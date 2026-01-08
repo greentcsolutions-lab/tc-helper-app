@@ -1,15 +1,12 @@
 // src/lib/extraction/mistral/extractPdf.ts
-// Version: 1.2.0 - 2026-01-08
-// FIXED: Now extracts subset PDFs per chunk using pdf-lib
-// Uploads to Vercel Blob for temp URL
-// Sends only chunk PDFs to Mistral (bypasses 8-page limit check)
+// Version: 2.0.0 - 2026-01-08
+// SIMPLIFIED: Extracts ALL pages in 8-page batches (no classification needed)
+// Sends full PDF URL with page ranges to Mistral (avoids pdf-lib corruption issues)
+// Filters results by data quality (non-empty extractions)
 // Parallel execution with Promise.all
-// FIX: Added ignoreEncryption: true to handle encrypted PDFs (common in form PDFs)
+// Replaces classification-based filtering with data-presence filtering
 
-import { PDFDocument } from 'pdf-lib';
-import { put } from '@vercel/blob';
 import { mistralExtractorSchema } from './schema';
-import { mergePageExtractions } from '@/lib/extraction/extract/universal/post-processor';
 
 const MISTRAL_API_URL = 'https://api.mistral.ai/v1/ocr';
 const API_KEY = process.env.MISTRAL_API_KEY!;
@@ -18,118 +15,63 @@ if (!API_KEY) {
   throw new Error('MISTRAL_API_KEY is required');
 }
 
-// Exact shape for mergePageExtractions
-interface ExpectedClassificationMetadata {
-  criticalPageNumbers: number[];
-  pageLabels: Record<string, string>;
-  packageMetadata: any;
-  state?: string | null;
-}
-
 interface ExtractionChunk {
   pageNumbers: number[];
   extractions: any[];
 }
 
-async function fetchPdfBuffer(url: string): Promise<Uint8Array> {
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch PDF: ${response.status}`);
-  }
-  const arrayBuffer = await response.arrayBuffer();
-  return new Uint8Array(arrayBuffer);
+// Helper: Check if an extraction has substantive data
+function hasSubstantiveData(extraction: any): boolean {
+  if (!extraction) return false;
+
+  // Check for key transaction fields
+  const hasPrice = extraction.purchasePrice || extraction.listPrice;
+  const hasDates = extraction.closingDate || extraction.acceptanceDate || extraction.effectiveDate;
+  const hasParties = extraction.buyerNames?.length > 0 || extraction.sellerNames?.length > 0;
+  const hasProperty = extraction.propertyAddress;
+  const hasTerms = extraction.earnestMoneyDeposit || extraction.contingencies?.length > 0;
+  const hasSignatures = extraction.signatures?.length > 0;
+
+  // Page is substantive if it has at least 2 key fields
+  const substantiveCount = [hasPrice, hasDates, hasParties, hasProperty, hasTerms, hasSignatures]
+    .filter(Boolean).length;
+
+  return substantiveCount >= 2;
 }
 
-async function extractPdfSubset(buffer: Uint8Array, pageNumbers: number[]): Promise<string> {
-  // Load with ignoreEncryption: true to handle PDFs with encryption flags (common in forms)
-  // This is safe - we only process PDFs accessible via public URL (no password protection)
-  const fullPdf = await PDFDocument.load(buffer, { ignoreEncryption: true });
-  const subsetPdf = await PDFDocument.create();
-
-  // Copy specific pages (1-based → 0-based index)
-  const copiedPages = await subsetPdf.copyPages(fullPdf, pageNumbers.map(p => p - 1));
-  copiedPages.forEach(page => subsetPdf.addPage(page));
-
-  const subsetBuffer = await subsetPdf.save();
-  // Convert Uint8Array to Node Buffer for @vercel/blob put
-  const subsetBufferNode = Buffer.from(subsetBuffer);
-
-  // Upload to Vercel Blob (temp public URL)
-  const { url } = await put(`temp-chunk-${Date.now()}.pdf`, subsetBufferNode, {
-    access: 'public',
-    addRandomSuffix: true, // unique name
-  });
-
-  return url;
-}
-
-export async function extractFromCriticalPages(
+export async function extractAllPages(
   pdfUrl: string,
-  classificationMetadata: {
-    criticalPageNumbers: number[];
-    pageLabels?: Record<number, string>;
-    packageMetadata?: any;
-    state?: string | null;
-  }
+  totalPages: number
 ): Promise<{
   finalTerms: any;
   needsReview: boolean;
-  provenance: any;
-  pageExtractions: any;
+  criticalPages: number[];
+  allExtractions: any[];
 }> {
-  const { criticalPageNumbers, pageLabels = {}, packageMetadata = {}, state = null } = classificationMetadata;
+  console.log(`[extractPdf] Extracting all ${totalPages} pages in batches of 8 (parallel)`);
 
-  if (criticalPageNumbers.length === 0) {
-    return {
-      finalTerms: {},
-      needsReview: false,
-      provenance: {},
-      pageExtractions: [],
-    };
-  }
-
-  // Normalize pageLabels to string keys
-  const normalizedPageLabels: Record<string, string> = {};
-  Object.entries(pageLabels).forEach(([pageNum, label]) => {
-    normalizedPageLabels[String(pageNum)] = label;
-  });
-
-  const normalizedMetadata: ExpectedClassificationMetadata = {
-    criticalPageNumbers,
-    pageLabels: normalizedPageLabels,
-    packageMetadata,
-    state,
-  };
+  // Generate all page numbers
+  const allPageNumbers = Array.from({ length: totalPages }, (_, i) => i + 1);
 
   // Split into chunks of 8 pages max
   const chunks: number[][] = [];
-  for (let i = 0; i < criticalPageNumbers.length; i += 8) {
-    chunks.push(criticalPageNumbers.slice(i, i + 8));
+  for (let i = 0; i < allPageNumbers.length; i += 8) {
+    chunks.push(allPageNumbers.slice(i, i + 8));
   }
 
-  console.log(
-    `[extractPdf] ${criticalPageNumbers.length} critical pages → ${chunks.length} chunk(s) of ≤8 pages (parallel)`
-  );
+  console.log(`[extractPdf] ${totalPages} pages → ${chunks.length} chunk(s) of ≤8 pages`);
 
-  // Fetch full PDF buffer once (shared across chunks)
-  const fullPdfBuffer = await fetchPdfBuffer(pdfUrl);
-
-  // Parallel execution
+  // Parallel execution - each chunk gets the full PDF URL
   const chunkPromises = chunks.map(async (pageNumbers, chunkIndex) => {
     console.log(
       `[extractPdf] Starting chunk ${chunkIndex + 1}/${chunks.length} – pages ${pageNumbers.join(', ')}`
     );
 
-    // Extract subset PDF for this chunk
-    const subsetUrl = await extractPdfSubset(fullPdfBuffer, pageNumbers);
-
-    console.log(`[extractPdf] Chunk ${chunkIndex + 1} subset PDF uploaded: ${subsetUrl}`);
-
     const payload = {
       model: 'mistral-ocr-latest',
       document: {
         type: 'document_url',
-        document_url: subsetUrl,
+        document_url: pdfUrl,
       },
       document_annotation_format: {
         type: 'json_schema',
@@ -188,9 +130,52 @@ export async function extractFromCriticalPages(
     }))
   );
 
-  console.log(`[extractPdf] Merged ${allPageExtractions.length} page extractions`);
+  console.log(`[extractPdf] Total ${allPageExtractions.length} page extractions received`);
 
-  const mergeResult = await mergePageExtractions(allPageExtractions, normalizedMetadata);
+  // Filter by data quality - keep only pages with substantive data
+  const substantiveExtractions = allPageExtractions.filter((ext, idx) => {
+    const isSubstantive = hasSubstantiveData(ext);
+    if (!isSubstantive) {
+      console.log(`[extractPdf] Filtering out page ${ext.sourcePage} - no substantive data`);
+    }
+    return isSubstantive;
+  });
 
-  return mergeResult;
+  const criticalPages = substantiveExtractions.map(ext => ext.sourcePage);
+
+  console.log(
+    `[extractPdf] Filtered ${allPageExtractions.length} → ${substantiveExtractions.length} substantive pages: [${criticalPages.join(', ')}]`
+  );
+
+  // Build minimal metadata for post-processor
+  const classificationMetadata = {
+    criticalPageNumbers: criticalPages,
+    pageLabels: {},
+    packageMetadata: {},
+  };
+
+  // Simple merge - no complex classification logic needed
+  const finalTerms: any = {};
+  const provenance: Record<string, number> = {};
+
+  // Merge all substantive extractions
+  for (const extraction of substantiveExtractions) {
+    for (const [key, value] of Object.entries(extraction)) {
+      if (key === 'sourcePage') continue;
+      if (value && value !== null && value !== undefined) {
+        if (Array.isArray(value) && value.length === 0) continue;
+
+        // Simple last-write-wins for now
+        finalTerms[key] = value;
+        provenance[key] = extraction.sourcePage;
+      }
+    }
+  }
+
+  return {
+    finalTerms,
+    needsReview: substantiveExtractions.length === 0,
+    criticalPages,
+    allExtractions: substantiveExtractions,
+  };
 }

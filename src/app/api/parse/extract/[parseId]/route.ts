@@ -1,14 +1,14 @@
 // src/app/api/parse/extract/[parseId]/route.ts
-// Version: 5.2.0 - 2026-01-07
-// UPDATED: Parallel batched extraction via extractFromCriticalPages
-// Chunks run concurrently with Promise.all() for speed
-// Full classificationMetadata passed for provenance
+// Version: 6.0.0 - 2026-01-08
+// SIMPLIFIED: Extracts ALL pages in batches (no classification needed)
+// Filters by data quality instead of classification labels
+// Cheaper, faster, more reliable than classification-based approach
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
 import { mapExtractionToParseResult } from "@/lib/parse/map-to-parse-result";
-import { extractFromCriticalPages } from "@/lib/extraction/mistral/extractPdf";
+import { extractAllPages } from "@/lib/extraction/mistral/extractPdf";
 import { logStep, logSuccess, logError } from "@/lib/debug/parse-logger";
 
 export const runtime = "nodejs";
@@ -26,7 +26,7 @@ export async function POST(
   console.log(`[extract] START parseId=${parseId}`);
 
   try {
-    logStep("EXTRACT:1", "Loading parse + classification metadata...");
+    logStep("EXTRACT:1", "Loading parse record...");
 
     const parse = await db.parse.findUnique({
       where: { id: parseId },
@@ -35,7 +35,7 @@ export async function POST(
         userId: true,
         status: true,
         pdfPublicUrl: true,
-        classificationCache: true,
+        pageCount: true,
         user: { select: { clerkId: true } },
       },
     });
@@ -48,55 +48,44 @@ export async function POST(
       return Response.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    if (parse.status !== "CLASSIFIED") {
-      return Response.json({ error: `Invalid status: ${parse.status}` }, { status: 400 });
-    }
-
     if (!parse.pdfPublicUrl) {
-      return Response.json({ error: "Missing PDF URL – re-run classification" }, { status: 400 });
+      return Response.json({ error: "Missing PDF URL" }, { status: 400 });
     }
 
-    if (!parse.classificationCache) {
-      return Response.json({ error: "Classification cache missing" }, { status: 400 });
+    if (!parse.pageCount) {
+      return Response.json({ error: "Missing page count – upload failed" }, { status: 400 });
     }
 
-    const classificationMetadata = parse.classificationCache as {
-      criticalPageNumbers: number[];
-      pageLabels: Record<number, string>;
-      packageMetadata: any;
-      state: string | null;
-    };
+    console.log(`[extract] Document: ${parse.pageCount} pages`);
+    logSuccess("EXTRACT:1", `Loaded ${parse.pageCount}-page document`);
 
-    const criticalPages = classificationMetadata.criticalPageNumbers;
+    logStep("EXTRACT:2", "Extracting all pages in batches (≤8 pages per call, parallel)...");
+
+    // Extract all pages - filtering happens based on data quality
+    const extractionResult = await extractAllPages(
+      parse.pdfPublicUrl,
+      parse.pageCount
+    );
 
     console.log(
-      `[extract] Critical pages: ${criticalPages.length} [${criticalPages.join(", ")}]`
-    );
-    logSuccess("EXTRACT:1", `Loaded ${criticalPages.length} critical pages`);
-
-    logStep("EXTRACT:2", "Starting parallel batched Mistral extraction (≤8 pages per call)...");
-
-    // Parallel extraction – chunks run concurrently
-    const mergeResult = await extractFromCriticalPages(
-      parse.pdfPublicUrl,
-      classificationMetadata
+      `[extract] Found ${extractionResult.criticalPages.length} pages with substantive data: [${extractionResult.criticalPages.join(", ")}]`
     );
 
-    logSuccess("EXTRACT:2", `Parallel extraction complete – needsReview: ${mergeResult.needsReview}`);
+    logSuccess("EXTRACT:2", `Extraction complete – ${extractionResult.criticalPages.length} substantive pages found`);
 
     logStep("EXTRACT:3", "Mapping to Parse fields...");
 
     const mappedFields = mapExtractionToParseResult({
-      universal: mergeResult.finalTerms,
-      route: "mistral-parallel-batched-pdf",
+      universal: extractionResult.finalTerms,
+      route: "mistral-simplified-all-pages",
       details: {
-        provenance: mergeResult.provenance,
-        pageExtractions: mergeResult.pageExtractions,
+        criticalPages: extractionResult.criticalPages,
+        allExtractions: extractionResult.allExtractions,
       },
       timelineEvents: [],
     });
 
-    const finalStatus = mergeResult.needsReview ? "NEEDS_REVIEW" : "COMPLETED";
+    const finalStatus = extractionResult.needsReview ? "NEEDS_REVIEW" : "COMPLETED";
 
     const extractionDetailsJson = mappedFields.extractionDetails
       ? JSON.parse(JSON.stringify(mappedFields.extractionDetails))
@@ -135,12 +124,13 @@ export async function POST(
     });
 
     logSuccess("EXTRACT:3", `Saved – status: ${finalStatus}`);
-    logSuccess("EXTRACT:DONE", "Parallel batched extraction pipeline complete");
+    logSuccess("EXTRACT:DONE", "Simplified extraction pipeline complete");
 
     return Response.json({
       success: true,
-      needsReview: mergeResult.needsReview,
-      criticalPageCount: criticalPages.length,
+      needsReview: extractionResult.needsReview,
+      substantivePageCount: extractionResult.criticalPages.length,
+      totalPages: parse.pageCount,
     });
   } catch (error: any) {
     logError("EXTRACT:ERROR", error.message);
