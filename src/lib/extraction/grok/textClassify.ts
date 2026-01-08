@@ -1,8 +1,9 @@
 // src/lib/extraction/grok/textClassify.ts
-// Version: 1.2.0 - 2026-01-08
+// Version: 1.3.0 - 2026-01-08
 // Calls Grok text model (grok-4-1-fast-reasoning) to classify pages using OCR markdown
 // FIX: Use XAI_API_KEY (correct env var) + parse chat completion format correctly
 // FIX: Add debug logging (limited to avoid Vercel log size limits)
+// FIX: Include full schema in prompt with valid enum values + enforce exact array length
 
 import Ajv from "ajv";
 import addFormats from "ajv-formats";
@@ -51,13 +52,58 @@ export async function callGrokTextClassify(
   // Truncate page markdowns to a reasonable size to keep the request smaller
   const pagesForPrompt = markdownPages.map((m) => (m ? m.slice(0, 4000) : ""));
 
-  const systemPrompt = `You are a JSON-only page classifier. Given an ordered array of page markdown texts, return a single JSON object that strictly conforms to the classifier schema (pageCount and pages array). Return NOTHING but the JSON. Use null for pages with no relevant contract content. Fields should use the language from the provided schema (pdfPage, role, formCode, contentCategory, hasFilledFields, confidence, etc.).`;
+  // Include the schema definition for strict compliance
+  const schemaDefinition = JSON.stringify(classifierSchema, null, 2);
 
-  const example = `Example output for a 3-page document:\n{\n  "state": "CA",\n  "pageCount": 3,\n  "pages": [\n    {"pdfPage":1,"formCode":"RPA","role":"main_contract","contentCategory":"transaction_terms","hasFilledFields":true,"confidence":95},\n    null,\n    {"pdfPage":3,"formCode":null,"role":"addendum","contentCategory":"boilerplate","hasFilledFields":false,"confidence":60}\n  ]\n}`;
+  const systemPrompt = `You are a JSON-only page classifier for real estate contract documents.
 
-  const userPrompt = `Document pageCount: ${pageCount}\n\nPages (markdown excerpts):\n${pagesForPrompt
+CRITICAL REQUIREMENTS:
+1. Return a JSON object that EXACTLY matches the schema below
+2. The "pages" array MUST have exactly ${pageCount} entries (one per page, in order)
+3. Each entry can be:
+   - null (for pages with no recognizable standard form or key content)
+   - OR an object with the required fields specified in the schema
+4. ONLY use enum values from the schema - DO NOT invent new values
+5. If unsure about a value, use "other" for role/contentCategory
+
+SCHEMA (your response MUST validate against this):
+${schemaDefinition}
+
+KEY ENUM VALUES TO USE:
+- role: main_contract, counter_offer, addendum, local_addendum, contingency_release, disclosure, financing, broker_info, title_page, other
+- contentCategory: transaction_terms, signatures, broker_info, disclosures, boilerplate, other
+
+IMPORTANT MAPPINGS:
+- Pages with transaction terms/contingencies/property details → contentCategory: "transaction_terms"
+- Pages with signature blocks → contentCategory: "signatures"
+- Pages with agent/broker info → contentCategory: "broker_info" OR role: "broker_info"
+- Disclosure forms (AD, BIA, etc.) → contentCategory: "disclosures" OR role: "disclosure"
+- Dense legal text → contentCategory: "boilerplate"
+- Blank/unknown pages → null OR {role: "other", contentCategory: "other"}
+
+Return ONLY the JSON object. No markdown formatting, no explanations.`;
+
+  const example = `Example for a 3-page document:
+{
+  "state": "CA",
+  "pageCount": 3,
+  "pages": [
+    {"pdfPage":1,"formCode":"RPA","role":"main_contract","contentCategory":"transaction_terms","hasFilledFields":true,"confidence":95},
+    {"pdfPage":2,"formCode":"RPA","role":"main_contract","contentCategory":"signatures","hasFilledFields":true,"confidence":90},
+    null
+  ]
+}`;
+
+  const userPrompt = `Classify this ${pageCount}-page real estate document. Return JSON with EXACTLY ${pageCount} entries in the pages array.
+
+Pages (markdown excerpts):
+${pagesForPrompt
     .map((p, i) => `---- PAGE ${i + 1} ----\n${p || '<EMPTY>'}`)
-    .join("\n\n")}\n\nRespond with JSON only. ${example}`;
+    .join("\n\n")}
+
+${example}
+
+Your response must validate against the schema. Respond with JSON only.`;
 
   let lastError: unknown;
   const maxRetries = 3;
