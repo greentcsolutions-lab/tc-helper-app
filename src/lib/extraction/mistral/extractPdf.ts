@@ -1,13 +1,16 @@
 // src/lib/extraction/mistral/extractPdf.ts
-// Version: 2.2.0 - 2026-01-08
-// UPDATED: Fixed response parsing - Mistral returns document_annotation as single aggregated object per chunk
+// Version: 3.0.0 - 2026-01-08
+// FIXED: Now uses proper post-processor with role-based allowlist merge
+// Counter offers only override explicitly mentioned fields (not last-write-wins)
 // Uses document_url + pages array (≤8 pages per call, 0-indexed)
 // Each chunk returns ONE aggregated extraction covering all pages in that chunk
 // Parallel execution with Promise.all
 // Filters by data quality (chunk-level aggregated extractions)
-// Last-write-wins merge across chunks
+// Proper role detection and selective merge
 
 import { mistralExtractorSchema } from './schema';
+import { mergePageExtractions } from '../extract/universal/post-processor';
+import type { PerPageExtraction } from '@/types/extraction';
 
 const MISTRAL_API_URL = 'https://api.mistral.ai/v1/ocr';
 const API_KEY = process.env.MISTRAL_API_KEY!;
@@ -36,6 +39,45 @@ function hasSubstantiveData(extraction: any): boolean {
     .filter(Boolean).length;
 
   return substantiveCount >= 2;
+}
+
+// Helper: Detect if extraction contains counter offer indicators
+function detectPageRole(extraction: any, chunkIndex: number, mainContractPrice: number | null): 'main_contract' | 'counter_offer' | 'addendum' {
+  if (!extraction) return 'main_contract';
+
+  // First chunk is always main contract
+  if (chunkIndex === 0) return 'main_contract';
+
+  // Check for counter offer indicators:
+  // 1. Price change from main contract
+  if (mainContractPrice && extraction.purchasePrice && extraction.purchasePrice !== mainContractPrice) {
+    console.log(`[role-detection] Chunk ${chunkIndex + 1}: Price changed ${mainContractPrice} → ${extraction.purchasePrice} → counter_offer`);
+    return 'counter_offer';
+  }
+
+  // 2. Has signatures but different dates (suggests negotiation rounds)
+  const hasBuyerSigs = extraction.buyerSignatureDates?.length > 0;
+  const hasSellerSigs = extraction.sellerSignatureDates?.length > 0;
+  if (hasBuyerSigs || hasSellerSigs) {
+    console.log(`[role-detection] Chunk ${chunkIndex + 1}: Has signatures after main contract → counter_offer`);
+    return 'counter_offer';
+  }
+
+  // 3. Has closing date changes (common in counters)
+  if (extraction.closingDate) {
+    console.log(`[role-detection] Chunk ${chunkIndex + 1}: Has closing date → likely counter_offer`);
+    return 'counter_offer';
+  }
+
+  // 4. Has contingency changes
+  if (extraction.contingencies && Object.keys(extraction.contingencies).length > 0) {
+    console.log(`[role-detection] Chunk ${chunkIndex + 1}: Has contingencies → likely counter_offer`);
+    return 'counter_offer';
+  }
+
+  // Default to counter_offer for later chunks (safer assumption)
+  console.log(`[role-detection] Chunk ${chunkIndex + 1}: Default to counter_offer for later chunk`);
+  return 'counter_offer';
 }
 
 export async function extractAllPages(
@@ -155,21 +197,68 @@ export async function extractAllPages(
     `[extractPdf] Filtered ${allPageExtractions.length} → ${substantiveExtractions.length} substantive chunk(s): [${criticalPages.join(', ')}]`
   );
 
-  // Simple merge (last-write-wins)
-  const finalTerms: any = {};
-  for (const extraction of substantiveExtractions) {
-    for (const [key, value] of Object.entries(extraction)) {
-      if (key === 'sourcePage') continue;
-      if (value && value !== null && value !== undefined) {
-        if (Array.isArray(value) && value.length === 0) continue;
-        finalTerms[key] = value;
-      }
-    }
+  // If no substantive data, return early
+  if (substantiveExtractions.length === 0) {
+    return {
+      finalTerms: {},
+      needsReview: true,
+      criticalPages: [],
+      allExtractions: [],
+    };
   }
 
+  // Detect main contract price for role detection
+  const mainContractPrice = substantiveExtractions[0]?.purchasePrice || null;
+
+  // Convert chunks to PerPageExtraction format with role detection
+  const pageExtractions: PerPageExtraction[] = [];
+  const criticalPageNumbers: number[] = [];
+  const pageLabels: Record<number, string> = {};
+
+  let pageNumberCounter = 1;
+
+  for (let i = 0; i < substantiveExtractions.length; i++) {
+    const extraction = substantiveExtractions[i];
+    const role = detectPageRole(extraction, i, mainContractPrice);
+
+    // Remove sourcePage before treating as PerPageExtraction
+    const { sourcePage, ...extractionData } = extraction;
+
+    // Add to arrays
+    pageExtractions.push(extractionData);
+    criticalPageNumbers.push(pageNumberCounter);
+
+    // Create page label based on detected role
+    let labelPrefix = 'MAIN';
+    if (role === 'counter_offer') {
+      labelPrefix = 'COUNTER';
+    } else if (role === 'addendum') {
+      labelPrefix = 'ADDENDUM';
+    }
+
+    pageLabels[pageNumberCounter] = `${labelPrefix} PAGE ${i + 1} (chunk ${sourcePage})`;
+
+    console.log(`[extractPdf] Chunk ${i + 1} (pages ${sourcePage}) → pageNumber ${pageNumberCounter}, role: ${role}`);
+
+    pageNumberCounter++;
+  }
+
+  // Call post-processor with proper metadata
+  console.log(`[extractPdf] Calling post-processor with ${pageExtractions.length} page extractions`);
+
+  const mergeResult = await mergePageExtractions(pageExtractions, {
+    criticalPageNumbers,
+    pageLabels,
+    packageMetadata: {
+      totalPages,
+      pdfUrl,
+      extractionMethod: 'mistral-batched-with-roles',
+    },
+  });
+
   return {
-    finalTerms,
-    needsReview: substantiveExtractions.length === 0,
+    finalTerms: mergeResult.finalTerms,
+    needsReview: mergeResult.needsReview,
     criticalPages,
     allExtractions: substantiveExtractions,
   };
