@@ -182,7 +182,7 @@ model Task {
   parse                Parse?    @relation(fields: [parseId], references: [id], onDelete: Cascade)
 
   // Task Classification
-  taskType             String    // 'timeline' | 'broker' | 'escrow' | 'lender'
+  taskTypes            String[]  // ['timeline', 'broker', 'escrow', 'lender'] - can have multiple categories
   timelineEventId      String?   // For timeline tasks, references the timeline event ID (e.g., "parseId-deposit")
 
   // Task Details
@@ -224,7 +224,7 @@ model UserTaskTemplate {
   // Template Details
   title                   String
   description             String?
-  taskType                String    // 'broker' | 'escrow' | 'lender' (timeline tasks are auto-generated, not templated)
+  taskTypes               String[]  // ['broker', 'escrow', 'lender'] - can have multiple categories (timeline tasks are auto-generated, not templated)
 
   // Default Application Rules
   isDefaultForAll         Boolean   @default(false) // Apply to every new transaction

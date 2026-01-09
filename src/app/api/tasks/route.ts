@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
     // Get query parameters for filtering
     const searchParams = request.nextUrl.searchParams;
     const parseId = searchParams.get('parseId');
-    const taskType = searchParams.get('taskType');
+    const taskType = searchParams.get('taskType'); // Filter by tasks that contain this type
     const status = searchParams.get('status');
 
     // Build where clause
@@ -43,7 +43,10 @@ export async function GET(request: NextRequest) {
     }
 
     if (taskType) {
-      where.taskType = taskType;
+      // Filter tasks that have this type in their taskTypes array
+      where.taskTypes = {
+        has: taskType,
+      };
     }
 
     if (status) {
@@ -108,7 +111,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const {
       parseId,
-      taskType,
+      taskTypes, // Now expects an array of task types
       title,
       description,
       dueDate,
@@ -120,17 +123,27 @@ export async function POST(request: NextRequest) {
     } = body;
 
     // Validation
-    if (!title || !taskType || !dueDate) {
+    if (!title || !taskTypes || !Array.isArray(taskTypes) || taskTypes.length === 0 || !dueDate) {
       return NextResponse.json(
-        { error: 'Missing required fields' },
+        { error: 'Missing required fields. taskTypes must be a non-empty array.' },
         { status: 400 }
       );
     }
 
-    // Don't allow creating timeline tasks via API (they're auto-synced)
-    if (taskType === TASK_TYPES.TIMELINE) {
+    // Validate all taskTypes are valid
+    const validTaskTypes = Object.values(TASK_TYPES);
+    const invalidTypes = taskTypes.filter((type: string) => !validTaskTypes.includes(type));
+    if (invalidTypes.length > 0) {
       return NextResponse.json(
-        { error: 'Cannot create timeline tasks manually' },
+        { error: `Invalid task types: ${invalidTypes.join(', ')}` },
+        { status: 400 }
+      );
+    }
+
+    // Don't allow creating timeline tasks via API (they're auto-synced) unless it's also another type
+    if (taskTypes.includes(TASK_TYPES.TIMELINE) && taskTypes.length === 1) {
+      return NextResponse.json(
+        { error: 'Cannot create timeline-only tasks manually' },
         { status: 400 }
       );
     }
@@ -173,7 +186,7 @@ export async function POST(request: NextRequest) {
       data: {
         userId: dbUser.id,
         parseId: parseId || null,
-        taskType,
+        taskTypes, // Array of task types
         title,
         description: description || null,
         dueDate: new Date(dueDate),

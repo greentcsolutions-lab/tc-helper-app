@@ -39,7 +39,10 @@ const TASK_TYPE_CONFIG = [
 export default function TaskOverview({ tasks }: TaskOverviewProps) {
   const taskStats = useMemo(() => {
     return TASK_TYPE_CONFIG.map((config) => {
-      const tasksOfType = tasks.filter((task) => task.taskType === config.type);
+      // Filter tasks that have this type in their taskTypes array
+      const tasksOfType = tasks.filter((task) =>
+        task.taskTypes?.includes(config.type)
+      );
       const completedTasks = tasksOfType.filter(
         (task) => task.status === TASK_STATUS.COMPLETED
       );

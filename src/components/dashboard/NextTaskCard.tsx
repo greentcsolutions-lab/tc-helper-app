@@ -95,13 +95,18 @@ export default function NextTaskCard({ tasks }: NextTaskCardProps) {
         <div className="space-y-4">
           {/* Task Card */}
           <div className="p-4 rounded-lg border hover:bg-muted/50 transition-colors">
-            {/* Task Type Badge */}
-            <Badge
-              className={`${getTaskTypeColor(nextTask.taskType)} text-xs capitalize mb-3`}
-              variant="outline"
-            >
-              {nextTask.taskType}
-            </Badge>
+            {/* Task Type Badges - can have multiple */}
+            <div className="flex flex-wrap gap-1.5 mb-3">
+              {nextTask.taskTypes?.map((type: string) => (
+                <Badge
+                  key={type}
+                  className={`${getTaskTypeColor(type)} text-xs capitalize`}
+                  variant="outline"
+                >
+                  {type}
+                </Badge>
+              ))}
+            </div>
 
             {/* Title */}
             <h3 className="font-semibold text-lg leading-tight mb-2">

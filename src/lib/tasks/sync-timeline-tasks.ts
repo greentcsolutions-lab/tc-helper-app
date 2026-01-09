@@ -42,11 +42,13 @@ export async function syncTimelineTasks(parseId: string, userId: string): Promis
   // Extract timeline events
   const timelineEvents = extractTimelineEvents(parse);
 
-  // Get existing timeline tasks for this parse
+  // Get existing timeline tasks for this parse (tasks that include TIMELINE in their taskTypes)
   const existingTasks = await db.task.findMany({
     where: {
       parseId,
-      taskType: TASK_TYPES.TIMELINE,
+      taskTypes: {
+        has: TASK_TYPES.TIMELINE,
+      },
     },
   });
 
@@ -70,10 +72,13 @@ export async function syncTimelineTasks(parseId: string, userId: string): Promis
     const existingTask = existingTaskMap.get(event.id);
     const taskStatus = mapTimelineStatusToTaskStatus(event.status);
 
+    // Determine task types based on the event
+    const taskTypes = getEventTaskTypes(event);
+
     const taskData = {
       userId,
       parseId,
-      taskType: TASK_TYPES.TIMELINE,
+      taskTypes, // Array of task types (can have multiple categories)
       timelineEventId: event.id,
       title: event.title,
       description: getEventDescription(event),
@@ -117,6 +122,122 @@ export async function syncTimelineTasks(parseId: string, userId: string): Promis
       },
     });
   }
+
+  // Create default tasks (Escrow Opened and Broker file approved)
+  await syncDefaultTasks(parseId, userId, parse);
+}
+
+/**
+ * Adds business days to a date (skips weekends)
+ */
+function addBusinessDays(date: Date, days: number): Date {
+  const result = new Date(date);
+  let daysAdded = 0;
+
+  while (daysAdded < days) {
+    result.setDate(result.getDate() + 1);
+    // Skip weekends (0 = Sunday, 6 = Saturday)
+    if (result.getDay() !== 0 && result.getDay() !== 6) {
+      daysAdded++;
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Syncs default tasks that should be created for every parse
+ */
+async function syncDefaultTasks(parseId: string, userId: string, parse: any): Promise<void> {
+  const effectiveDate = parse.effectiveDate ? new Date(parse.effectiveDate) : null;
+  const closingDate = parse.closingDate ? new Date(parse.closingDate) : null;
+
+  // Default task 1: Escrow Opened - due 1 business day after acceptance
+  if (effectiveDate) {
+    const escrowOpenedEventId = `${parseId}-escrow-opened`;
+    const escrowOpenedDueDate = addBusinessDays(effectiveDate, 1);
+
+    const existingEscrowTask = await db.task.findFirst({
+      where: {
+        parseId,
+        timelineEventId: escrowOpenedEventId,
+      },
+    });
+
+    const escrowTaskData = {
+      userId,
+      parseId,
+      taskTypes: [TASK_TYPES.ESCROW],
+      timelineEventId: escrowOpenedEventId,
+      title: 'Escrow Opened',
+      description: 'Escrow should be opened within 1 business day of acceptance',
+      propertyAddress: parse.propertyAddress || null,
+      amount: null,
+      dueDate: escrowOpenedDueDate,
+      dueDateType: 'specific' as const,
+      dueDateValue: null,
+      status: existingEscrowTask?.status || TASK_STATUS.NOT_STARTED,
+      columnId: existingEscrowTask?.columnId || TASK_STATUS.NOT_STARTED,
+      sortOrder: existingEscrowTask?.sortOrder || 0,
+      isCustom: false,
+      completedAt: existingEscrowTask?.completedAt || null,
+    };
+
+    if (existingEscrowTask) {
+      await db.task.update({
+        where: { id: existingEscrowTask.id },
+        data: escrowTaskData,
+      });
+    } else {
+      await db.task.create({
+        data: escrowTaskData,
+      });
+    }
+  }
+
+  // Default task 2: Broker file approved - due 7 days before closing
+  if (closingDate) {
+    const brokerFileEventId = `${parseId}-broker-file-approved`;
+    const brokerFileDueDate = new Date(closingDate);
+    brokerFileDueDate.setDate(brokerFileDueDate.getDate() - 7);
+
+    const existingBrokerTask = await db.task.findFirst({
+      where: {
+        parseId,
+        timelineEventId: brokerFileEventId,
+      },
+    });
+
+    const brokerTaskData = {
+      userId,
+      parseId,
+      taskTypes: [TASK_TYPES.BROKER],
+      timelineEventId: brokerFileEventId,
+      title: 'Broker file approved',
+      description: 'Broker file should be approved at least 7 days before closing',
+      propertyAddress: parse.propertyAddress || null,
+      amount: null,
+      dueDate: brokerFileDueDate,
+      dueDateType: 'specific' as const,
+      dueDateValue: null,
+      status: existingBrokerTask?.status || TASK_STATUS.NOT_STARTED,
+      columnId: existingBrokerTask?.columnId || TASK_STATUS.NOT_STARTED,
+      sortOrder: existingBrokerTask?.sortOrder || 0,
+      isCustom: false,
+      completedAt: existingBrokerTask?.completedAt || null,
+    };
+
+    if (existingBrokerTask) {
+      await db.task.update({
+        where: { id: existingBrokerTask.id },
+        data: brokerTaskData,
+      });
+    } else {
+      await db.task.create({
+        data: brokerTaskData,
+      });
+    }
+  }
 }
 
 /**
@@ -134,6 +255,27 @@ export async function syncAllTimelineTasks(userId: string): Promise<void> {
   for (const parse of parses) {
     await syncTimelineTasks(parse.id, userId);
   }
+}
+
+/**
+ * Determines which task types (categories) should be assigned to a timeline event
+ * Some events belong to multiple categories
+ */
+function getEventTaskTypes(event: TimelineEvent): string[] {
+  const types = [TASK_TYPES.TIMELINE]; // All timeline events have TIMELINE category
+
+  // Add additional categories based on event type/title
+  if (event.type === 'contingency') {
+    if (event.title.includes('Loan')) {
+      types.push(TASK_TYPES.LENDER); // Loan contingency is also a LENDER task
+    } else if (event.title.includes('Appraisal')) {
+      types.push(TASK_TYPES.LENDER); // Appraisal contingency is also a LENDER task
+    }
+  } else if (event.type === 'closing') {
+    types.push(TASK_TYPES.ESCROW); // Closing is also an ESCROW task
+  }
+
+  return types;
 }
 
 /**
@@ -180,7 +322,9 @@ export async function deleteTimelineTasks(parseId: string): Promise<void> {
   await db.task.deleteMany({
     where: {
       parseId,
-      taskType: TASK_TYPES.TIMELINE,
+      taskTypes: {
+        has: TASK_TYPES.TIMELINE,
+      },
     },
   });
 }

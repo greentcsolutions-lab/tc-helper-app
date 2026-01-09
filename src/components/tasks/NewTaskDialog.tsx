@@ -24,6 +24,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -48,7 +49,7 @@ export default function NewTaskDialog({ parses }: NewTaskDialogProps) {
   // Form state
   const [title, setTitle] = useState("");
   const [parseId, setParseId] = useState<string>("");
-  const [taskType, setTaskType] = useState<"broker" | "escrow" | "lender">("broker");
+  const [taskTypes, setTaskTypes] = useState<string[]>(["broker"]); // Now an array
   const [dueDateType, setDueDateType] = useState<"specific" | "days_after_acceptance" | "days_from_close">("specific");
   const [specificDate, setSpecificDate] = useState("");
   const [relativeDays, setRelativeDays] = useState("");
@@ -63,6 +64,10 @@ export default function NewTaskDialog({ parses }: NewTaskDialogProps) {
       // Validate required fields
       if (!title.trim()) {
         throw new Error("Task name is required");
+      }
+
+      if (!taskTypes || taskTypes.length === 0) {
+        throw new Error("Please select at least one task category");
       }
 
       // Calculate due date
@@ -108,7 +113,7 @@ export default function NewTaskDialog({ parses }: NewTaskDialogProps) {
         body: JSON.stringify({
           title: title.trim(),
           parseId: parseId || undefined,
-          taskType,
+          taskTypes, // Now an array
           dueDate,
           dueDateType,
           dueDateValue,
@@ -137,12 +142,20 @@ export default function NewTaskDialog({ parses }: NewTaskDialogProps) {
   const resetForm = () => {
     setTitle("");
     setParseId("");
-    setTaskType("broker");
+    setTaskTypes(["broker"]);
     setDueDateType("specific");
     setSpecificDate("");
     setRelativeDays("");
     setStatus("not_started");
     setError(null);
+  };
+
+  const toggleTaskType = (type: string) => {
+    setTaskTypes(prev =>
+      prev.includes(type)
+        ? prev.filter(t => t !== type)
+        : [...prev, type]
+    );
   };
 
   const handleOpenChange = (newOpen: boolean) => {
@@ -169,9 +182,9 @@ export default function NewTaskDialog({ parses }: NewTaskDialogProps) {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid gap-4 py-4">
+          <div className="grid gap-6 py-6">
             {/* Task Name */}
-            <div className="grid gap-2">
+            <div className="grid gap-3">
               <Label htmlFor="title">Task Name *</Label>
               <Input
                 id="title"
@@ -183,7 +196,7 @@ export default function NewTaskDialog({ parses }: NewTaskDialogProps) {
             </div>
 
             {/* Transaction */}
-            <div className="grid gap-2">
+            <div className="grid gap-3">
               <Label htmlFor="parse">Transaction</Label>
               <Select value={parseId} onValueChange={setParseId}>
                 <SelectTrigger id="parse">
@@ -205,38 +218,70 @@ export default function NewTaskDialog({ parses }: NewTaskDialogProps) {
               </Select>
             </div>
 
-            {/* Task Category */}
-            <div className="grid gap-2">
-              <Label htmlFor="taskType">Task Category *</Label>
-              <Select value={taskType} onValueChange={(value: any) => setTaskType(value)}>
-                <SelectTrigger id="taskType">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="broker">Broker</SelectItem>
-                  <SelectItem value="escrow">Escrow</SelectItem>
-                  <SelectItem value="lender">Lender</SelectItem>
-                </SelectContent>
-              </Select>
+            {/* Task Categories - Multiple Selection */}
+            <div className="grid gap-3">
+              <Label>Task Category *</Label>
+              <div className="space-y-3">
+                <div className="flex items-center space-x-3">
+                  <Checkbox
+                    id="type-broker"
+                    checked={taskTypes.includes("broker")}
+                    onCheckedChange={() => toggleTaskType("broker")}
+                  />
+                  <Label htmlFor="type-broker" className="font-normal cursor-pointer">
+                    Broker
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-3">
+                  <Checkbox
+                    id="type-escrow"
+                    checked={taskTypes.includes("escrow")}
+                    onCheckedChange={() => toggleTaskType("escrow")}
+                  />
+                  <Label htmlFor="type-escrow" className="font-normal cursor-pointer">
+                    Escrow
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-3">
+                  <Checkbox
+                    id="type-lender"
+                    checked={taskTypes.includes("lender")}
+                    onCheckedChange={() => toggleTaskType("lender")}
+                  />
+                  <Label htmlFor="type-lender" className="font-normal cursor-pointer">
+                    Lender
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-3">
+                  <Checkbox
+                    id="type-timeline"
+                    checked={taskTypes.includes("timeline")}
+                    onCheckedChange={() => toggleTaskType("timeline")}
+                  />
+                  <Label htmlFor="type-timeline" className="font-normal cursor-pointer">
+                    Timeline
+                  </Label>
+                </div>
+              </div>
             </div>
 
             {/* Due Date Type */}
-            <div className="grid gap-2">
+            <div className="grid gap-3">
               <Label>Due Date *</Label>
               <RadioGroup value={dueDateType} onValueChange={(value: any) => setDueDateType(value)}>
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-3">
                   <RadioGroupItem value="specific" id="specific" />
                   <Label htmlFor="specific" className="font-normal cursor-pointer">
                     Specific date
                   </Label>
                 </div>
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-3">
                   <RadioGroupItem value="days_after_acceptance" id="days_after_acceptance" />
                   <Label htmlFor="days_after_acceptance" className="font-normal cursor-pointer">
                     Days after acceptance
                   </Label>
                 </div>
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-3">
                   <RadioGroupItem value="days_from_close" id="days_from_close" />
                   <Label htmlFor="days_from_close" className="font-normal cursor-pointer">
                     Days from close
@@ -247,7 +292,7 @@ export default function NewTaskDialog({ parses }: NewTaskDialogProps) {
 
             {/* Conditional Date Input */}
             {dueDateType === "specific" ? (
-              <div className="grid gap-2">
+              <div className="grid gap-3">
                 <Label htmlFor="specificDate">Date</Label>
                 <Input
                   id="specificDate"
@@ -258,7 +303,7 @@ export default function NewTaskDialog({ parses }: NewTaskDialogProps) {
                 />
               </div>
             ) : (
-              <div className="grid gap-2">
+              <div className="grid gap-3">
                 <Label htmlFor="relativeDays">Number of Days</Label>
                 <Input
                   id="relativeDays"
@@ -273,7 +318,7 @@ export default function NewTaskDialog({ parses }: NewTaskDialogProps) {
             )}
 
             {/* Status */}
-            <div className="grid gap-2">
+            <div className="grid gap-3">
               <Label htmlFor="status">Status *</Label>
               <Select value={status} onValueChange={(value: any) => setStatus(value)}>
                 <SelectTrigger id="status">
