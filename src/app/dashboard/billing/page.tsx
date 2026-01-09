@@ -74,7 +74,9 @@ export default async function BillingPage() {
           <div className="grid gap-4 md:grid-cols-3">
             <div className="rounded-lg border p-4">
               <div className="flex items-center justify-between mb-2">
-                <p className="text-sm font-medium text-muted-foreground">Monthly Parses</p>
+                <p className="text-sm font-medium text-muted-foreground">
+                  {isFreeUser ? 'Total Parses' : 'Monthly Parses'}
+                </p>
                 <Suspense
                   fallback={
                     <span className="inline-block animate-pulse rounded-full bg-muted px-2 py-1 text-xs">
@@ -90,9 +92,11 @@ export default async function BillingPage() {
                   {user.parseCount} / {user.parseLimit}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {user.parseResetDate
-                    ? `Resets ${new Date(user.parseResetDate).toLocaleDateString()}`
-                    : 'No reset scheduled'}
+                  {isFreeUser
+                    ? 'Free tier (no reset)'
+                    : user.parseResetDate
+                      ? `Resets ${new Date(user.parseResetDate).toLocaleDateString()}`
+                      : 'No reset scheduled'}
                 </p>
               </div>
             </div>
@@ -156,7 +160,7 @@ export default async function BillingPage() {
                 <ul className="space-y-2 text-sm">
                   <li className="flex items-center gap-2">
                     <CheckCircle2 className="h-4 w-4 text-green-500" />
-                    1 AI parse per month
+                    1 AI parse (total, no reset)
                   </li>
                   <li className="flex items-center gap-2">
                     <CheckCircle2 className="h-4 w-4 text-green-500" />

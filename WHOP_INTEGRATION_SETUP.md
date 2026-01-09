@@ -26,12 +26,12 @@ This document explains the complete Whop integration that has been added to your
 **Plan Configurations**:
 ```typescript
 FREE:
-  - 1 AI parse per month
+  - 1 AI parse (total, never resets)
   - 1 concurrent transaction
   - 1 custom task
 
 BASIC:
-  - 5 AI parses per month
+  - 5 AI parses per month (resets monthly)
   - 5 concurrent transactions
   - 10 custom tasks
 ```
@@ -178,10 +178,11 @@ npx prisma migrate deploy
 
 ## Important Notes
 
-### Monthly Parse Reset Logic
-- For Basic plan users, parses reset on the anniversary of their signup date
+### Parse Reset Logic
+- **FREE Plan**: 1 parse total, NEVER resets (lifetime limit)
+- **BASIC Plan**: 5 parses per month, resets on the anniversary of their signup date
 - Reset happens automatically on next upload/transaction after reset date passes
-- Works for both monthly and annual billing (annual users get monthly parse resets)
+- Works for both monthly and annual billing (annual subscribers still get monthly parse resets)
 
 ### Archived Items
 - When a transaction is archived, it no longer counts toward quota

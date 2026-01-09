@@ -30,11 +30,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    // Check if parse count needs to be reset (monthly refresh)
+    // Check if parse count needs to be reset (monthly refresh for BASIC plan only)
     const now = new Date();
     let parseCount = dbUser.parseCount;
 
-    if (dbUser.parseResetDate && now >= dbUser.parseResetDate) {
+    // Only reset for BASIC plan users (FREE plan never resets)
+    if (dbUser.planType === 'BASIC' && dbUser.parseResetDate && now >= dbUser.parseResetDate) {
       parseCount = 0;
 
       // Calculate next reset date (one month from now)
@@ -51,11 +52,15 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Check parse limit (monthly transactions)
+    // Check parse limit
     if (parseCount >= dbUser.parseLimit) {
+      const errorMessage = dbUser.planType === 'FREE'
+        ? 'Free tier parse limit reached'
+        : 'Monthly transaction limit reached';
+
       return NextResponse.json(
         {
-          error: 'Monthly transaction limit reached',
+          error: errorMessage,
           parseCount,
           parseLimit: dbUser.parseLimit,
         },

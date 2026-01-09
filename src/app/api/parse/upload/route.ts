@@ -66,13 +66,14 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "User not found" }, { status: 404 });
   }
 
-  // Check if parse count needs to be reset (monthly refresh)
+  // Check if parse count needs to be reset (monthly refresh for BASIC plan only)
   const now = new Date();
   let parseCount = user.parseCount;
   let needsReset = false;
 
-  if (user.parseResetDate && now >= user.parseResetDate) {
-    console.log("[upload] Parse count reset is due, resetting to 0");
+  // Only reset for BASIC plan users (FREE plan never resets)
+  if (user.planType === 'BASIC' && user.parseResetDate && now >= user.parseResetDate) {
+    console.log("[upload] Parse count reset is due for BASIC user, resetting to 0");
     needsReset = true;
     parseCount = 0;
 
@@ -90,12 +91,16 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // Check parse limit (monthly AI parses)
+  // Check parse limit
   if (parseCount >= user.parseLimit) {
     console.log(`[upload] REJECTED: Parse limit reached (${parseCount}/${user.parseLimit})`);
+    const errorMessage = user.planType === 'FREE'
+      ? "Free tier parse limit reached"
+      : "Monthly parse limit reached";
+
     return Response.json(
       {
-        error: "Monthly parse limit reached",
+        error: errorMessage,
         parseCount,
         parseLimit: user.parseLimit,
         canBuyCredits: true,
