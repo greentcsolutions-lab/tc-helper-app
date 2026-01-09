@@ -24,6 +24,7 @@ import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TASK_STATUS, getTaskStatus } from "@/types/task";
 
@@ -31,7 +32,7 @@ type Task = any; // Use Prisma-generated type
 import TaskCard from "./TaskCard";
 import TaskOverview from "./TaskOverview";
 import NewTaskDialog from "./NewTaskDialog";
-import { Filter } from "lucide-react";
+import { Filter, Search } from "lucide-react";
 
 type Parse = {
   id: string;
@@ -86,6 +87,8 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
     [TASK_STATUS.PENDING]: true,
     [TASK_STATUS.COMPLETED]: true,
   });
+  const [showOverdueOnly, setShowOverdueOnly] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const [isMobile, setIsMobile] = useState(false);
 
   // Detect screen size changes
@@ -108,7 +111,7 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        distance: 8,
+        distance: 1, // Minimal distance for buttery smooth touchpad dragging
       },
     }),
     useSensor(TouchSensor, {
@@ -119,7 +122,7 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
     })
   );
 
-  // Group tasks by column
+  // Filter and group tasks by column
   const tasksByColumn = useMemo(() => {
     const grouped: Record<string, Task[]> = {
       [TASK_STATUS.NOT_STARTED]: [],
@@ -127,7 +130,35 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
       [TASK_STATUS.COMPLETED]: [],
     };
 
-    tasks.forEach((task) => {
+    // First, filter tasks based on search query and overdue filter
+    const filteredTasks = tasks.filter((task) => {
+      const status = getTaskStatus(task);
+
+      // Filter by overdue if that filter is active
+      if (showOverdueOnly && status !== 'overdue') {
+        return false;
+      }
+
+      // Filter by search query (searches across multiple fields)
+      if (searchQuery.trim()) {
+        const query = searchQuery.toLowerCase();
+        const searchableFields = [
+          task.title?.toLowerCase() || '',
+          task.description?.toLowerCase() || '',
+          task.propertyAddress?.toLowerCase() || '',
+          ...(task.taskTypes?.map((t: string) => t.toLowerCase()) || []),
+        ];
+
+        const matches = searchableFields.some((field) => field.includes(query));
+        if (!matches) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+
+    filteredTasks.forEach((task) => {
       // Calculate computed status (including overdue)
       const status = getTaskStatus(task);
 
@@ -161,7 +192,7 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
     }
 
     return grouped;
-  }, [tasks]);
+  }, [tasks, showOverdueOnly, searchQuery]);
 
   // Count tasks in each column
   const taskCounts = useMemo(() => {
@@ -171,6 +202,11 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
       [TASK_STATUS.COMPLETED]: tasksByColumn[TASK_STATUS.COMPLETED].length,
     };
   }, [tasksByColumn]);
+
+  // Count overdue tasks (all tasks that are overdue, regardless of column)
+  const overdueCount = useMemo(() => {
+    return tasks.filter((task) => getTaskStatus(task) === 'overdue').length;
+  }, [tasks]);
 
   const handleDragStart = (event: DragStartEvent) => {
     const { active } = event;
@@ -487,20 +523,47 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
           <NewTaskDialog parses={parses} />
         </div>
 
-        {/* Column Visibility Toggles */}
-        <div className="flex items-center gap-2">
-          <Filter className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm text-muted-foreground mr-2">Show:</span>
-          {COLUMNS.map((column) => (
-            <Badge
-              key={column.id}
-              variant={columnVisibility[column.id] ? "default" : "outline"}
-              className="cursor-pointer"
-              onClick={() => toggleColumnVisibility(column.id)}
-            >
-              {column.title} ({taskCounts[column.id]})
-            </Badge>
-          ))}
+        {/* Filter and Search Bar */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          {/* Column Visibility Toggles */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <Filter className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm text-muted-foreground mr-2">Show:</span>
+
+            {/* Overdue Filter - Only show when there are overdue tasks */}
+            {overdueCount > 0 && (
+              <Badge
+                variant={showOverdueOnly ? "default" : "outline"}
+                className="cursor-pointer bg-red-500 hover:bg-red-600 text-white border-red-500"
+                onClick={() => setShowOverdueOnly(!showOverdueOnly)}
+              >
+                Overdue ({overdueCount})
+              </Badge>
+            )}
+
+            {COLUMNS.map((column) => (
+              <Badge
+                key={column.id}
+                variant={columnVisibility[column.id] ? "default" : "outline"}
+                className="cursor-pointer"
+                onClick={() => toggleColumnVisibility(column.id)}
+              >
+                {column.title} ({taskCounts[column.id]})
+              </Badge>
+            ))}
+          </div>
+
+          {/* Search Bar */}
+          <div className="relative w-full sm:w-80">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder="Search tasks..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10"
+            />
+          </div>
         </div>
 
         {/* Task Board */}
