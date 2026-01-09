@@ -91,7 +91,10 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
   useEffect(() => {
     // Initial check
     const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768); // md breakpoint
+      // Use 640px (sm breakpoint) to target only phones, not tablets/Chromebooks
+      // Phones: typically < 640px
+      // Tablets/Chromebooks/Desktop: >= 640px
+      setIsMobile(window.innerWidth < 640);
     };
 
     checkMobile();
@@ -507,7 +510,7 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
           onDragOver={handleDragOver}
           onDragEnd={handleDragEnd}
         >
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
             {COLUMNS.map((column) => (
               <div
                 key={column.id}
