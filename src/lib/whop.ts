@@ -91,14 +91,15 @@ export async function createBasicPlanCheckout(userId: string, email: string): Pr
     },
   };
 
-  console.log('[Whop] Creating checkout session for Basic plan:', {
+  console.log('[Whop] Creating checkout configuration for Basic plan:', {
     plan_id: requestBody.plan_id,
     redirect_url: requestBody.redirect_url,
     userId: requestBody.metadata.userId,
     apiKeyPrefix: apiKey.substring(0, 15) + '...',
   });
 
-  const response = await fetch('https://api.whop.com/api/v2/checkout_sessions', {
+  // Use V1 API with checkout configurations (V2 and V5 are deprecated)
+  const response = await fetch('https://api.whop.com/api/v1/checkout_configurations', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${apiKey}`,
@@ -109,18 +110,18 @@ export async function createBasicPlanCheckout(userId: string, email: string): Pr
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error('[Whop] Checkout session failed:', {
+    console.error('[Whop] Checkout configuration failed:', {
       status: response.status,
       statusText: response.statusText,
       error: errorText,
-      endpoint: 'https://api.whop.com/api/v2/checkout_sessions',
+      endpoint: 'https://api.whop.com/api/v1/checkout_configurations',
     });
     throw new Error(`Whop API error (${response.status}): ${errorText}`);
   }
 
   const data = await response.json();
-  console.log('[Whop] Checkout session created successfully:', {
-    session_id: data.id,
+  console.log('[Whop] Checkout configuration created successfully:', {
+    config_id: data.id,
     purchase_url: data.purchase_url,
   });
   return { url: data.purchase_url };
@@ -142,13 +143,14 @@ export async function createCreditCheckout(userId: string, email: string): Promi
     },
   };
 
-  console.log('[Whop] Creating checkout session for credit pack:', {
+  console.log('[Whop] Creating checkout configuration for credit pack:', {
     plan_id: requestBody.plan_id,
     redirect_url: requestBody.redirect_url,
     userId: requestBody.metadata.userId,
   });
 
-  const response = await fetch('https://api.whop.com/api/v2/checkout_sessions', {
+  // Use V1 API with checkout configurations (V2 and V5 are deprecated)
+  const response = await fetch('https://api.whop.com/api/v1/checkout_configurations', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${apiKey}`,
@@ -159,16 +161,17 @@ export async function createCreditCheckout(userId: string, email: string): Promi
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error('[Whop] Credit checkout failed:', {
+    console.error('[Whop] Credit checkout configuration failed:', {
       status: response.status,
       statusText: response.statusText,
       error: errorText,
+      endpoint: 'https://api.whop.com/api/v1/checkout_configurations',
     });
     throw new Error(`Whop API error (${response.status}): ${errorText}`);
   }
 
   const data = await response.json();
-  console.log('[Whop] Credit checkout session created successfully');
+  console.log('[Whop] Credit checkout configuration created successfully');
   return { url: data.purchase_url };
 }
 
