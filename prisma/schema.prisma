@@ -23,6 +23,11 @@ model User {
   referralSource       String?   // Google, X, Facebook, Instagram, referral, other
   onboarded            Boolean   @default(false)
 
+  // Progressive Onboarding Tracking
+  onboardingDismissedCount Int    @default(0)      // Number of times user clicked "not now"
+  onboardingOptedOut       Boolean @default(false) // User clicked "don't ask again"
+  lastOnboardingPrompt     DateTime?               // Last time we showed the modal
+
   // Plan & Subscription (Repurposed for Whop)
   planType             String    @default("FREE") // "FREE" | "BASIC"
   quota                Int       @default(1)      // Concurrent active transactions (1 for FREE, 5 for BASIC)

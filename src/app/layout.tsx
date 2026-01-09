@@ -11,6 +11,7 @@ import TopLoader from "@/components/ui/TopLoader";
 
 import ModernSidebar from "@/components/layout/ModernSidebar";
 import ModernHeader from "@/components/layout/ModernHeader";
+import ProgressiveOnboardingModal from "@/components/ProgressiveOnboardingModal";
 
 import { currentUser } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
@@ -44,6 +45,7 @@ export default async function RootLayout({
         <body className={`${inter.className} antialiased`}>
           <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
             <TopLoader />
+            <ProgressiveOnboardingModal />
 
             {user ? (
               <div className="relative min-h-screen">
