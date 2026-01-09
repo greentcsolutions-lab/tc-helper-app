@@ -97,8 +97,7 @@ export async function POST(request: NextRequest) {
       where: { clerkId: user.id },
       select: {
         id: true,
-        customTaskCount: true,
-        priceId: true,
+        planType: true,
       },
     });
 
@@ -136,56 +135,64 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check custom task limit for free tier (1 task max)
-    const isFreeUser = !dbUser.priceId;
+    // Check custom task limit based on plan type
     const isCreatingCustomTask = isCustom !== false; // Default to true if not specified
 
-    if (isFreeUser && isCreatingCustomTask) {
-      if (dbUser.customTaskCount >= 1) {
+    if (isCreatingCustomTask) {
+      // Count non-archived custom tasks
+      const currentCustomTaskCount = await db.task.count({
+        where: {
+          userId: dbUser.id,
+          isCustom: true,
+          archived: false,
+        },
+      });
+
+      // Determine limit based on plan type
+      const customTaskLimit = dbUser.planType === 'BASIC' ? 10 : 1;
+
+      if (currentCustomTaskCount >= customTaskLimit) {
+        const upgradeMessage =
+          dbUser.planType === 'FREE'
+            ? 'Free tier limited to 1 custom task. Upgrade to Basic for 10 custom tasks.'
+            : 'Basic plan limited to 10 custom tasks.';
+
         return NextResponse.json(
-          { error: 'Free tier limited to 1 custom task. Upgrade to create more.' },
+          {
+            error: upgradeMessage,
+            currentCount: currentCustomTaskCount,
+            limit: customTaskLimit,
+          },
           { status: 403 }
         );
       }
     }
 
-    // Create the task and increment custom task count in a transaction
-    const result = await db.$transaction(async (tx) => {
-      const task = await tx.task.create({
-        data: {
-          userId: dbUser.id,
-          parseId: parseId || null,
-          taskType,
-          title,
-          description: description || null,
-          dueDate: new Date(dueDate),
-          dueDateType: dueDateType || 'specific',
-          dueDateValue: dueDateValue || null,
-          status: status || TASK_STATUS.NOT_STARTED,
-          columnId: columnId || TASK_STATUS.NOT_STARTED,
-          isCustom: isCustom !== undefined ? isCustom : true,
-        },
-        include: {
-          parse: {
-            select: {
-              id: true,
-              propertyAddress: true,
-              effectiveDate: true,
-              closingDate: true,
-            },
+    // Create the task
+    const result = await db.task.create({
+      data: {
+        userId: dbUser.id,
+        parseId: parseId || null,
+        taskType,
+        title,
+        description: description || null,
+        dueDate: new Date(dueDate),
+        dueDateType: dueDateType || 'specific',
+        dueDateValue: dueDateValue || null,
+        status: status || TASK_STATUS.NOT_STARTED,
+        columnId: columnId || TASK_STATUS.NOT_STARTED,
+        isCustom: isCustom !== undefined ? isCustom : true,
+      },
+      include: {
+        parse: {
+          select: {
+            id: true,
+            propertyAddress: true,
+            effectiveDate: true,
+            closingDate: true,
           },
         },
-      });
-
-      // Increment custom task count if this is a custom task
-      if (isCreatingCustomTask) {
-        await tx.user.update({
-          where: { id: dbUser.id },
-          data: { customTaskCount: { increment: 1 } },
-        });
-      }
-
-      return task;
+      },
     });
 
     return NextResponse.json({ task: result }, { status: 201 });

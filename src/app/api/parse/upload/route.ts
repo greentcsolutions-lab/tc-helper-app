@@ -49,18 +49,93 @@ export async function POST(req: NextRequest) {
 
   const user = await db.user.findUnique({
     where: { clerkId: clerkUserId },
-    select: { id: true, credits: true },
+    select: {
+      id: true,
+      credits: true,
+      planType: true,
+      quota: true,
+      parseLimit: true,
+      parseCount: true,
+      parseResetDate: true,
+    },
   });
-  console.log(`[upload] User lookup: ${user ? `ID ${user.id}, ${user.credits} credits` : "NOT FOUND"}`);
+  console.log(`[upload] User lookup: ${user ? `ID ${user.id}, ${user.credits} credits, ${user.planType} plan` : "NOT FOUND"}`);
 
   if (!user) {
     console.log("[upload] REJECTED: User not found in database");
     return Response.json({ error: "User not found" }, { status: 404 });
   }
 
+  // Check if parse count needs to be reset (monthly refresh)
+  const now = new Date();
+  let parseCount = user.parseCount;
+  let needsReset = false;
+
+  if (user.parseResetDate && now >= user.parseResetDate) {
+    console.log("[upload] Parse count reset is due, resetting to 0");
+    needsReset = true;
+    parseCount = 0;
+
+    // Calculate next reset date (one month from now)
+    const nextReset = new Date(now);
+    nextReset.setMonth(nextReset.getMonth() + 1);
+
+    // Update user with reset values
+    await db.user.update({
+      where: { id: user.id },
+      data: {
+        parseCount: 0,
+        parseResetDate: nextReset,
+      },
+    });
+  }
+
+  // Check parse limit (monthly AI parses)
+  if (parseCount >= user.parseLimit) {
+    console.log(`[upload] REJECTED: Parse limit reached (${parseCount}/${user.parseLimit})`);
+    return Response.json(
+      {
+        error: "Monthly parse limit reached",
+        parseCount,
+        parseLimit: user.parseLimit,
+        canBuyCredits: true,
+      },
+      { status: 402 }
+    );
+  }
+
+  // Check credits (for actual API usage)
   if (user.credits < 1) {
     console.log("[upload] REJECTED: No credits");
-    return Response.json({ error: "No credits remaining" }, { status: 402 });
+    return Response.json(
+      {
+        error: "No credits remaining",
+        canBuyCredits: true,
+      },
+      { status: 402 }
+    );
+  }
+
+  // Check concurrent transaction quota (count only non-archived parses)
+  const activeParseCount = await db.parse.count({
+    where: {
+      userId: user.id,
+      archived: false,
+    },
+  });
+  console.log(`[upload] Active transactions: ${activeParseCount}/${user.quota}`);
+
+  if (activeParseCount >= user.quota) {
+    console.log(`[upload] REJECTED: Quota limit reached (${activeParseCount}/${user.quota})`);
+    return Response.json(
+      {
+        error: "Concurrent transaction limit reached",
+        activeParseCount,
+        quota: user.quota,
+        message: "Archive or delete existing transactions to upload new files",
+      },
+      { status: 402 }
+    );
   }
 
   const formData = await req.formData();
@@ -137,7 +212,7 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "Upload failed" }, { status: 500 });
   }
 
-  // Create parse record
+  // Create parse record and increment parseCount
   try {
     const parse = await db.parse.create({
       data: {
@@ -154,7 +229,17 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    console.log(`[upload] Created parse ${parse.id} – ${pageCount} pages`);
+    // Increment parseCount
+    await db.user.update({
+      where: { id: user.id },
+      data: {
+        parseCount: {
+          increment: 1,
+        },
+      },
+    });
+
+    console.log(`[upload] Created parse ${parse.id} – ${pageCount} pages, parseCount incremented to ${parseCount + 1}`);
 
     return Response.json({
       success: true,

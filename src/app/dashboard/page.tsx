@@ -6,10 +6,11 @@ import Link from "next/link";
 import { db } from "@/lib/prisma";
 import { currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
-import { FileUp, FileText, Sparkles, TrendingUp, Clock, CheckCircle } from "lucide-react";
+import { FileUp, FileText, Sparkles, TrendingUp, Clock, CheckCircle, Zap } from "lucide-react";
 import NextDueCard from "@/components/dashboard/NextDueCard";
 import NextClosingCard from "@/components/dashboard/NextClosingCard";
 import NextTaskCard from "@/components/dashboard/NextTaskCard";
+import { UpgradeButton } from "@/components/billing/BillingActions";
 
 export const dynamic = "force-dynamic";
 
@@ -19,10 +20,16 @@ export default async function Dashboard() {
 
   const dbUser = await db.user.findUnique({
     where: { clerkId: user.id },
-    select: { credits: true, id: true },
+    select: {
+      credits: true,
+      id: true,
+      planType: true,
+    },
   });
 
   if (!dbUser) redirect("/onboarding");
+
+  const isFreeUser = dbUser.planType === 'FREE';
 
   const parseCount = await db.parse.count({
     where: { userId: dbUser.id },
@@ -91,6 +98,38 @@ export default async function Dashboard() {
           Here's your daily workflow
         </p>
       </div>
+
+      {/* Upgrade CTA for Free Users */}
+      {isFreeUser && (
+        <Card className="border-2 border-primary/30 bg-gradient-to-br from-primary/10 via-purple-500/5 to-cyan-500/5">
+          <CardContent className="pt-6">
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div className="flex items-start gap-4">
+                <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
+                  <Zap className="h-6 w-6 text-primary" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-lg mb-1">Unlock the Power of Basic Plan</h3>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Get 5 AI parses per month, 5 concurrent transactions, and 10 custom tasks for just $15/month
+                  </p>
+                  <ul className="text-sm text-muted-foreground space-y-1">
+                    <li>• 5x more AI parses</li>
+                    <li>• 5x more concurrent transactions</li>
+                    <li>• 10x more custom tasks</li>
+                  </ul>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" asChild>
+                  <Link href="/dashboard/billing">Learn More</Link>
+                </Button>
+                <UpgradeButton size="default" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* PRIORITY 1: Next Due, Next Closing & Next Task - Most Important */}
       <div className="grid gap-6 md:grid-cols-3">

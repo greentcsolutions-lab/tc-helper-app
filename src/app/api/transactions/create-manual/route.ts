@@ -16,11 +16,71 @@ export async function POST(req: NextRequest) {
 
     const dbUser = await db.user.findUnique({
       where: { clerkId: user.id },
-      select: { id: true },
+      select: {
+        id: true,
+        planType: true,
+        quota: true,
+        parseLimit: true,
+        parseCount: true,
+        parseResetDate: true,
+      },
     });
 
     if (!dbUser) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
+    // Check if parse count needs to be reset (monthly refresh)
+    const now = new Date();
+    let parseCount = dbUser.parseCount;
+
+    if (dbUser.parseResetDate && now >= dbUser.parseResetDate) {
+      parseCount = 0;
+
+      // Calculate next reset date (one month from now)
+      const nextReset = new Date(now);
+      nextReset.setMonth(nextReset.getMonth() + 1);
+
+      // Update user with reset values
+      await db.user.update({
+        where: { id: dbUser.id },
+        data: {
+          parseCount: 0,
+          parseResetDate: nextReset,
+        },
+      });
+    }
+
+    // Check parse limit (monthly transactions)
+    if (parseCount >= dbUser.parseLimit) {
+      return NextResponse.json(
+        {
+          error: 'Monthly transaction limit reached',
+          parseCount,
+          parseLimit: dbUser.parseLimit,
+        },
+        { status: 402 }
+      );
+    }
+
+    // Check concurrent transaction quota (count only non-archived parses)
+    const activeParseCount = await db.parse.count({
+      where: {
+        userId: dbUser.id,
+        archived: false,
+      },
+    });
+
+    if (activeParseCount >= dbUser.quota) {
+      return NextResponse.json(
+        {
+          error: 'Concurrent transaction limit reached',
+          activeParseCount,
+          quota: dbUser.quota,
+          message: 'Archive or delete existing transactions to create new ones',
+        },
+        { status: 402 }
+      );
     }
 
     const data: ManualTransactionData = await req.json();
@@ -214,7 +274,7 @@ export async function POST(req: NextRequest) {
         },
       });
 
-      // Increment UserUsage counter
+      // Increment UserUsage counter and parseCount
       await tx.userUsage.upsert({
         where: { userId: dbUser.id },
         create: {
@@ -228,6 +288,17 @@ export async function POST(req: NextRequest) {
         },
       });
       console.log(`[create-manual:${newParse.id}] Incremented user usage counter`);
+
+      // Increment parseCount for monthly limit tracking
+      await tx.user.update({
+        where: { id: dbUser.id },
+        data: {
+          parseCount: {
+            increment: 1,
+          },
+        },
+      });
+      console.log(`[create-manual:${newParse.id}] Incremented parseCount`);
 
       return newParse;
     });
