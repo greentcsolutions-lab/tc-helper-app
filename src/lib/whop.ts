@@ -7,14 +7,18 @@
  * - Plan management and user updates
  */
 
-// Whop Plan IDs (NOT Product IDs - plans define pricing for products)
+// Whop Plan IDs - Direct from Whop dashboard
 export const WHOP_PLANS = {
-  BASIC_PLAN: 'plan_qBP7zVT60nXmZ',      // $15/mo or $150/yr (UPDATE with your actual plan ID)
-  CREDIT_PACK: 'plan_NolysBAikHLtP',     // $10 for 5 credits (UPDATE with your actual plan ID)
+  BASIC_MONTHLY: 'plan_jiXiD1lGMTEy6',   // $15/month Basic plan
+  BASIC_YEARLY: 'plan_z80DjYcElspeg',    // $150/year Basic plan
+  CREDIT_PACK: 'plan_aNk5dVMU4VTtf',     // $10 for 5 credits
 } as const;
 
-// Legacy naming for backwards compatibility
-export const WHOP_PRODUCTS = WHOP_PLANS;
+// Legacy naming for backwards compatibility (defaults to monthly)
+export const WHOP_PRODUCTS = {
+  BASIC_PLAN: WHOP_PLANS.BASIC_MONTHLY,
+  CREDIT_PACK: WHOP_PLANS.CREDIT_PACK,
+} as const;
 
 // Plan Types
 export type PlanType = 'FREE' | 'BASIC';
@@ -78,95 +82,50 @@ export function getWhopWebhookSecret(): string {
 
 /**
  * Create a checkout session for the Basic plan
- * This retrieves the plan and returns its purchase URL with optional metadata
+ * Uses direct Whop checkout URLs (no API call needed)
  */
 export async function createBasicPlanCheckout(userId: string, email: string): Promise<{ url: string }> {
-  const apiKey = getWhopApiKey();
-  const planId = WHOP_PLANS.BASIC_PLAN;
+  const planId = WHOP_PRODUCTS.BASIC_PLAN; // Defaults to monthly plan
 
-  console.log('[Whop] Fetching plan details for Basic plan:', {
+  console.log('[Whop] Creating checkout URL for Basic plan:', {
     plan_id: planId,
     userId,
-    apiKeyPrefix: apiKey.substring(0, 15) + '...',
   });
 
-  // Retrieve the plan to get its purchase URL
-  const response = await fetch(`https://api.whop.com/api/v1/plans/${planId}`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-    },
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('[Whop] Failed to retrieve plan:', {
-      status: response.status,
-      statusText: response.statusText,
-      error: errorText,
-      endpoint: `https://api.whop.com/api/v1/plans/${planId}`,
-    });
-    throw new Error(`Whop API error (${response.status}): ${errorText}`);
-  }
-
-  const plan = await response.json();
-
-  // Build purchase URL with metadata
+  // Build direct checkout URL with metadata
   const redirectUrl = encodeURIComponent(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard/billing?success=true`);
-  const purchaseUrl = `${plan.purchase_url}?redirect_url=${redirectUrl}&metadata[userId]=${userId}&metadata[email]=${email}`;
+  const checkoutUrl = `https://whop.com/checkout/${planId}?redirect_url=${redirectUrl}&d[userId]=${userId}&d[email]=${email}`;
 
-  console.log('[Whop] Plan retrieved successfully:', {
-    plan_id: plan.id,
-    purchase_url: purchaseUrl,
+  console.log('[Whop] Checkout URL created:', {
+    plan_id: planId,
+    checkout_url: checkoutUrl,
   });
 
-  return { url: purchaseUrl };
+  return { url: checkoutUrl };
 }
 
 /**
  * Create a checkout session for credit purchase
- * This retrieves the plan and returns its purchase URL with optional metadata
+ * Uses direct Whop checkout URLs (no API call needed)
  */
 export async function createCreditCheckout(userId: string, email: string): Promise<{ url: string }> {
-  const apiKey = getWhopApiKey();
-  const planId = WHOP_PLANS.CREDIT_PACK;
+  const planId = WHOP_PRODUCTS.CREDIT_PACK;
 
-  console.log('[Whop] Fetching plan details for credit pack:', {
+  console.log('[Whop] Creating checkout URL for credit pack:', {
     plan_id: planId,
     userId,
   });
 
-  // Retrieve the plan to get its purchase URL
-  const response = await fetch(`https://api.whop.com/api/v1/plans/${planId}`, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-    },
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('[Whop] Failed to retrieve credit plan:', {
-      status: response.status,
-      statusText: response.statusText,
-      error: errorText,
-      endpoint: `https://api.whop.com/api/v1/plans/${planId}`,
-    });
-    throw new Error(`Whop API error (${response.status}): ${errorText}`);
-  }
-
-  const plan = await response.json();
-
-  // Build purchase URL with metadata
+  // Build direct checkout URL with metadata
   const redirectUrl = encodeURIComponent(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard/billing?credits=true`);
-  const purchaseUrl = `${plan.purchase_url}?redirect_url=${redirectUrl}&metadata[userId]=${userId}&metadata[email]=${email}&metadata[type]=credit_purchase`;
+  const checkoutUrl = `https://whop.com/checkout/${planId}?redirect_url=${redirectUrl}&d[userId]=${userId}&d[email]=${email}&d[type]=credit_purchase`;
 
-  console.log('[Whop] Credit plan retrieved successfully:', {
-    plan_id: plan.id,
-    purchase_url: purchaseUrl,
+  console.log('[Whop] Checkout URL created:', {
+    plan_id: planId,
+    checkout_url: checkoutUrl,
   });
 
-  return { url: purchaseUrl };
+  return { url: checkoutUrl };
 }
 
 /**
