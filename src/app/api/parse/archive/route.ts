@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
       return new Response("User not found", { status: 404 });
     }
 
-    // Archive transactions (update status to ARCHIVED) and decrement UserUsage counter
+    // Archive transactions and associated tasks
     await db.$transaction(async (tx) => {
       // Verify all parses belong to this user and count how many are currently non-archived
       const parses = await tx.parse.findMany({
@@ -46,6 +46,7 @@ export async function POST(request: NextRequest) {
         select: {
           id: true,
           status: true,
+          archived: true,
         },
       });
 
@@ -54,9 +55,9 @@ export async function POST(request: NextRequest) {
       }
 
       // Count how many are being archived (currently non-archived)
-      const countToDecrement = parses.filter(p => p.status !== "ARCHIVED").length;
+      const countToDecrement = parses.filter(p => !p.archived).length;
 
-      // Update all to ARCHIVED status
+      // Update all to ARCHIVED status and set archived flag
       await tx.parse.updateMany({
         where: {
           id: { in: ids },
@@ -64,8 +65,22 @@ export async function POST(request: NextRequest) {
         },
         data: {
           status: "ARCHIVED",
+          archived: true,
         },
       });
+
+      // Also mark all tasks associated with these parses as archived
+      await tx.task.updateMany({
+        where: {
+          parseId: { in: ids },
+          userId: user.id,
+        },
+        data: {
+          archived: true,
+        },
+      });
+
+      console.log(`[archive] ✓ Archived ${ids.length} transaction(s) and their associated tasks`);
 
       // Decrement the user's parse counter (cannot go below 0)
       if (countToDecrement > 0) {

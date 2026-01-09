@@ -17,13 +17,21 @@ model User {
   email                String?
   state                String?
   onboarded            Boolean   @default(false)
-  quota                Int       @default(1)
-  credits              Int       @default(1)
-  stripeCustomerId     String?
-  stripeSubscriptionId String?
-  priceId              String?
-  currentPeriodEnd     DateTime?
-  customTaskCount      Int       @default(0)  // Tracks number of custom tasks created (max 1 in free tier)
+
+  // Plan & Subscription (Repurposed for Whop)
+  planType             String    @default("FREE") // "FREE" | "BASIC"
+  quota                Int       @default(1)      // Concurrent active transactions (1 for FREE, 5 for BASIC)
+  credits              Int       @default(1)      // AI parse credits (1 for FREE, resets monthly for BASIC)
+  stripeCustomerId     String?                    // Repurposed: Whop membership ID
+  stripeSubscriptionId String?                    // Repurposed: Whop product ID
+  priceId              String?                    // Repurposed: Whop plan variant (monthly/annual)
+  currentPeriodEnd     DateTime?                  // Subscription period end
+
+  // Usage Tracking
+  customTaskCount      Int       @default(0)      // Current custom tasks (max 1 for FREE, 10 for BASIC)
+  parseLimit           Int       @default(1)      // Monthly parse limit (1 for FREE, 5 for BASIC)
+  parseCount           Int       @default(0)      // Current month's parse count
+  parseResetDate       DateTime? @default(now())  // When to reset parseCount to 0
 
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
@@ -71,6 +79,7 @@ model Parse {
   // - "CLASSIFICATION_FAILED" → Classification crashed
   // - "EXTRACTION_FAILED" → Extraction crashed
   status               String    @default("PENDING")
+  archived             Boolean   @default(false) // Archived/deleted transactions don't count toward quota
 
   // ============================================================================
   // TEMPORARY STORAGE (deleted after cleanup)
@@ -181,6 +190,7 @@ model Task {
   status               String    @default("not_started") // 'not_started' | 'pending' | 'completed'
   sortOrder            Int       @default(0)  // For drag-drop positioning within columns
   columnId             String    @default("not_started") // Which column the task appears in
+  archived             Boolean   @default(false) // Archived tasks (from archived parses) don't count toward limits
 
   // Metadata
   isCustom             Boolean   @default(false) // false for timeline tasks, true for user-created
