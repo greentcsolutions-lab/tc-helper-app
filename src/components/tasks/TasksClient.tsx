@@ -4,7 +4,7 @@
 
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   DndContext,
   DragEndEvent,
@@ -86,6 +86,24 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
     [TASK_STATUS.PENDING]: true,
     [TASK_STATUS.COMPLETED]: true,
   });
+  const [isMobile, setIsMobile] = useState(false);
+
+  // Detect screen size changes
+  useEffect(() => {
+    // Initial check
+    const checkMobile = () => {
+      // Use 640px (sm breakpoint) to target only phones, not tablets/Chromebooks
+      // Phones: typically < 640px
+      // Tablets/Chromebooks/Desktop: >= 640px
+      setIsMobile(window.innerWidth < 640);
+    };
+
+    checkMobile();
+
+    // Add listener for window resize
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -493,7 +511,7 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
           onDragOver={handleDragOver}
           onDragEnd={handleDragEnd}
         >
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
             {COLUMNS.map((column) => (
               <div
                 key={column.id}
@@ -553,17 +571,6 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
     </div>
   );
 
-  return (
-    <>
-      {/* Mobile Layout (< md breakpoint) */}
-      <div className="md:hidden h-full">
-        <MobileLayout />
-      </div>
-
-      {/* Desktop Layout (>= md breakpoint) */}
-      <div className="hidden md:block h-full">
-        <DesktopLayout />
-      </div>
-    </>
-  );
+  // Conditionally render only one layout to avoid duplicate DOM elements
+  return isMobile ? <MobileLayout /> : <DesktopLayout />;
 }
