@@ -13,20 +13,26 @@ export async function GET() {
     }
 
     // Get user from database
-    const user = await db.user.findUnique({
-      where: { clerkId: userId },
-      select: {
-        name: true,
-        phone: true,
-        role: true,
-        problems: true,
-        referralSource: true,
-        onboarded: true,
-        onboardingOptedOut: true,
-        onboardingDismissedCount: true,
-        lastOnboardingPrompt: true,
-      },
-    });
+    let user;
+    try {
+      user = await db.user.findUnique({
+        where: { clerkId: userId },
+        select: {
+          name: true,
+          phone: true,
+          role: true,
+          problems: true,
+          referralSource: true,
+          onboarded: true,
+          onboardingOptedOut: true,
+          onboardingDismissedCount: true,
+          lastOnboardingPrompt: true,
+        },
+      });
+    } catch (dbError: any) {
+      console.error('[progressive-onboarding/check] Database error (migrations not run?):', dbError.message);
+      return NextResponse.json({ shouldShow: false, missingFields: [] });
+    }
 
     if (!user) {
       return NextResponse.json({ shouldShow: false, missingFields: [] });
