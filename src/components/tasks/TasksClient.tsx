@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   DndContext,
   DragEndEvent,
@@ -85,6 +85,21 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
     [TASK_STATUS.PENDING]: true,
     [TASK_STATUS.COMPLETED]: true,
   });
+  const [isMobile, setIsMobile] = useState(false);
+
+  // Detect screen size changes
+  useEffect(() => {
+    // Initial check
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768); // md breakpoint
+    };
+
+    checkMobile();
+
+    // Add listener for window resize
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -552,17 +567,6 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
     </div>
   );
 
-  return (
-    <>
-      {/* Mobile Layout (< md breakpoint) */}
-      <div className="md:hidden h-full">
-        <MobileLayout />
-      </div>
-
-      {/* Desktop Layout (>= md breakpoint) */}
-      <div className="hidden md:block h-full">
-        <DesktopLayout />
-      </div>
-    </>
-  );
+  // Conditionally render only one layout to avoid duplicate DOM elements
+  return isMobile ? <MobileLayout /> : <DesktopLayout />;
 }
