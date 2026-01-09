@@ -161,7 +161,16 @@ const EXTRACTION_SCHEMA = {
   required: ["extracted", "confidence", "handwriting_detected"]
 };
 
-const EXTRACTION_PROMPT = `Extract JSON from this PDF matching this schema. Focus on buyer/seller names, address, price, closing and contingencies. Any counters or addenda override contract terms ONLY if explicitly mentioned. If no mention of specific terms in counters/addenda then the contract wins.
+const EXTRACTION_PROMPT = `Extract JSON from this PDF matching this schema. Focus on ALL fields in the schema, especially:
+- Buyer/seller names, property address, purchase price
+- Final acceptance date (effective date)
+- Close of escrow date
+- Initial deposit amount AND due date (initial_deposit.due)
+- Seller delivery of documents days (seller_delivery_of_documents_days)
+- Contingency periods (loan, appraisal, investigation)
+- Broker contact information
+
+Any counters or addenda override contract terms ONLY if explicitly mentioned. If no mention of specific terms in counters/addenda then the contract wins.
 
 Schema:
 ${JSON.stringify(EXTRACTION_SCHEMA, null, 2)}
@@ -171,7 +180,9 @@ Return ONLY valid JSON matching the schema above. Use your reasoning to:
 2. Apply override logic: counters/addenda only change explicitly mentioned fields
 3. Calculate dates accurately (e.g., close of escrow from acceptance date + contingency days)
 4. Handle handwritten annotations and signatures
-5. Normalize formats (prices with $, dates as MM/DD/YYYY)`;
+5. Normalize formats (prices with $, dates as MM/DD/YYYY)
+6. Extract BOTH the initial deposit amount AND the due date
+7. Look for "Seller to deliver documents within X days" or similar language for seller_delivery_of_documents_days`;
 
 export async function extractWithGemini(
   pdfUrl: string,
