@@ -15,7 +15,12 @@ model User {
   id                   String    @id @default(cuid())
   clerkId              String    @unique
   email                String?
+  name                 String?
+  phone                String?
   state                String?
+  role                 String?   // office admin, solo agent, team agent, team leader, broker/CEO, other
+  problems             String[]  @default([]) // contract terms extraction, team workflows, task management, timeline management, other
+  referralSource       String?   // Google, X, Facebook, Instagram, referral, other
   onboarded            Boolean   @default(false)
 
   // Plan & Subscription (Repurposed for Whop)
