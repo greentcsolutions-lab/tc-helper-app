@@ -9,8 +9,8 @@
 
 // Whop Product IDs
 export const WHOP_PRODUCTS = {
-  BASIC_PLAN: 'prod_qBP7zVT60nXmZ',      // $15/mo or $150/yr
-  CREDIT_PACK: 'prod_NolysBAikHLtP',     // $10 for 5 credits
+  BASIC_PLAN: 'basic-5f-dce8',      // $15/mo or $150/yr
+  CREDIT_PACK: 'credit-refill-53',     // $10 for 5 credits
 } as const;
 
 // Plan Types
