@@ -4,7 +4,7 @@
 
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import {
   DndContext,
   DragEndEvent,
@@ -90,6 +90,7 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
   const [showOverdueOnly, setShowOverdueOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [isMobile, setIsMobile] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Detect screen size changes
   useEffect(() => {
@@ -208,6 +209,11 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
     return tasks.filter((task) => getTaskStatus(task) === 'overdue').length;
   }, [tasks]);
 
+  // Memoized search handler to prevent input from losing focus
+  const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchQuery(e.target.value);
+  }, []);
+
   const handleDragStart = (event: DragStartEvent) => {
     const { active } = event;
     const task = tasks.find((t) => t.id === active.id);
@@ -223,39 +229,9 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
   };
 
   const handleDragOver = (event: DragOverEvent) => {
-    const { active, over } = event;
-    if (!over) return;
-
-    const activeId = active.id as string;
-    const overId = over.id as string;
-
-    const activeTask = tasks.find((t) => t.id === activeId);
-    if (!activeTask) return;
-
-    // Check if we're over a column
-    const overColumn = COLUMNS.find((col) => col.id === overId);
-    if (overColumn && activeTask.columnId !== overColumn.id) {
-      console.log('🔄 DragOver: Moving task to column', { taskId: activeId, from: activeTask.columnId, to: overColumn.id });
-      // Optimistically move task to the new column for visual feedback
-      setTasks((prev) =>
-        prev.map((t) =>
-          t.id === activeId ? { ...t, columnId: overColumn.id, status: overColumn.id } : t
-        )
-      );
-      return;
-    }
-
-    // Check if we're over another task
-    const overTask = tasks.find((t) => t.id === overId);
-    if (overTask && activeTask.columnId !== overTask.columnId) {
-      console.log('🔄 DragOver: Moving task to another task\'s column', { taskId: activeId, from: activeTask.columnId, to: overTask.columnId });
-      // Move to the column containing the task we're over
-      setTasks((prev) =>
-        prev.map((t) =>
-          t.id === activeId ? { ...t, columnId: overTask.columnId, status: overTask.columnId } : t
-        )
-      );
-    }
+    // Visual feedback is handled by DragOverlay
+    // Don't update task positions until drop (handleDragEnd)
+    // This prevents the "auto-drop" issue where cards jump before mouse release
   };
 
   const handleDragEnd = async (event: DragEndEvent) => {
@@ -557,10 +533,11 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
           <div className="relative w-full sm:w-80">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
+              ref={searchInputRef}
               type="text"
               placeholder="Search tasks..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={handleSearchChange}
               className="pl-10"
             />
           </div>
