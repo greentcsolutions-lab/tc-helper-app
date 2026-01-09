@@ -1,6 +1,6 @@
 import { auth } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { db } from '@/lib/prisma';
 
 const ONBOARDING_FIELDS = ['name', 'phone', 'role', 'problems', 'referralSource'] as const;
 

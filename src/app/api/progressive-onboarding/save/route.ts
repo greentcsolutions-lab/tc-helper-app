@@ -1,6 +1,6 @@
 import { auth, clerkClient } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { db } from '@/lib/prisma';
 
 const ALLOWED_FIELDS = ['name', 'phone', 'role', 'problems', 'referralSource'] as const;
 
