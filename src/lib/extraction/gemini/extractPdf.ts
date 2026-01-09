@@ -165,8 +165,8 @@ const EXTRACTION_PROMPT = `Extract JSON from this PDF matching this schema. Focu
 - Buyer/seller names, property address, purchase price
 - Final acceptance date (effective date)
 - Close of escrow date
-- Initial deposit amount AND due date (initial_deposit.due)
-- Seller delivery of documents days (seller_delivery_of_documents_days)
+- Initial deposit amount AND due date (initial_deposit.due) - CALCULATE the actual date if given as "X days after acceptance"
+- Seller delivery of documents days (seller_delivery_of_documents_days) - extract as NUMBER of days
 - Contingency periods (loan, appraisal, investigation)
 - Broker contact information
 
@@ -178,11 +178,14 @@ ${JSON.stringify(EXTRACTION_SCHEMA, null, 2)}
 Return ONLY valid JSON matching the schema above. Use your reasoning to:
 1. Merge terms from multiple pages (contract, counters, addenda)
 2. Apply override logic: counters/addenda only change explicitly mentioned fields
-3. Calculate dates accurately (e.g., close of escrow from acceptance date + contingency days)
+3. Calculate dates accurately:
+   - If close of escrow says "30 days after acceptance", calculate the actual date
+   - If initial deposit says "within 3 business days", calculate the actual date (acceptance + 4-5 days)
+   - Return dates in MM/DD/YYYY format when possible
 4. Handle handwritten annotations and signatures
 5. Normalize formats (prices with $, dates as MM/DD/YYYY)
-6. Extract BOTH the initial deposit amount AND the due date
-7. Look for "Seller to deliver documents within X days" or similar language for seller_delivery_of_documents_days`;
+6. For seller_delivery_of_documents_days: extract just the NUMBER (e.g., 7 not "7 days")
+7. For initial_deposit.due: prefer calculating the actual MM/DD/YYYY date over relative phrases`;
 
 export async function extractWithGemini(
   pdfUrl: string,
@@ -333,10 +336,46 @@ function transformGeminiToUniversal(geminiData: any): any {
     }
   }
 
-  // Normalize initial deposit due date
+  // Calculate initial deposit due date (handle both specific dates and relative phrases)
   let initialDepositDueDate: string | null = null;
-  if (e.initial_deposit?.due) {
-    initialDepositDueDate = normalizeDateString(e.initial_deposit.due) || e.initial_deposit.due;
+  if (e.initial_deposit?.due && effectiveDate) {
+    // First try to normalize if it's already a date
+    const normalizedDate = normalizeDateString(e.initial_deposit.due);
+    if (normalizedDate) {
+      initialDepositDueDate = normalizedDate;
+    } else {
+      // Try to extract business days or regular days from phrases like:
+      // "Within 3 business days after Acceptance"
+      // "3 days after acceptance"
+      const businessDaysMatch = e.initial_deposit.due.match(/(\d+)\s*business\s*days?\s*after/i);
+      const regularDaysMatch = e.initial_deposit.due.match(/(\d+)\s*days?\s*after/i);
+
+      let daysToAdd = 0;
+      if (businessDaysMatch) {
+        // For business days, approximate as 1.4x regular days (accounts for weekends)
+        daysToAdd = Math.ceil(parseInt(businessDaysMatch[1], 10) * 1.4);
+      } else if (regularDaysMatch) {
+        daysToAdd = parseInt(regularDaysMatch[1], 10);
+      }
+
+      if (daysToAdd > 0) {
+        try {
+          const baseDate = new Date(effectiveDate);
+          if (!isNaN(baseDate.getTime())) {
+            baseDate.setDate(baseDate.getDate() + daysToAdd);
+            const year = baseDate.getFullYear();
+            const month = String(baseDate.getMonth() + 1).padStart(2, '0');
+            const day = String(baseDate.getDate()).padStart(2, '0');
+            initialDepositDueDate = `${year}-${month}-${day}`;
+          }
+        } catch (error) {
+          console.error(`[gemini-transform] Failed to calculate initial deposit due date:`, error);
+        }
+      } else {
+        // If we can't parse it, keep the original string (better than null)
+        initialDepositDueDate = e.initial_deposit.due;
+      }
+    }
   }
 
   console.log(`[gemini-transform] Coerced purchasePrice: "${e.purchase_price}" → ${purchasePrice}`);
