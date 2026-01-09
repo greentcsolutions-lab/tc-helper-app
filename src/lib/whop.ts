@@ -7,11 +7,14 @@
  * - Plan management and user updates
  */
 
-// Whop Product IDs
-export const WHOP_PRODUCTS = {
-  BASIC_PLAN: 'prod_qBP7zVT60nXmZ',      // $15/mo or $150/yr
-  CREDIT_PACK: 'prod_NolysBAikHLtP',     // $10 for 5 credits
+// Whop Plan IDs (NOT Product IDs - plans define pricing for products)
+export const WHOP_PLANS = {
+  BASIC_PLAN: 'plan_qBP7zVT60nXmZ',      // $15/mo or $150/yr (UPDATE with your actual plan ID)
+  CREDIT_PACK: 'plan_NolysBAikHLtP',     // $10 for 5 credits (UPDATE with your actual plan ID)
 } as const;
+
+// Legacy naming for backwards compatibility
+export const WHOP_PRODUCTS = WHOP_PLANS;
 
 // Plan Types
 export type PlanType = 'FREE' | 'BASIC';
@@ -80,23 +83,22 @@ export async function createBasicPlanCheckout(userId: string, email: string): Pr
   const apiKey = getWhopApiKey();
 
   const requestBody = {
-    product_id: WHOP_PRODUCTS.BASIC_PLAN,
-    customer_email: email,
+    plan_id: WHOP_PLANS.BASIC_PLAN,
+    redirect_url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard/billing?success=true`,
     metadata: {
       userId,
+      email,
     },
-    success_url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard/billing?success=true`,
-    cancel_url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard/billing?canceled=true`,
   };
 
   console.log('[Whop] Creating checkout session for Basic plan:', {
-    product_id: requestBody.product_id,
-    customer_email: requestBody.customer_email,
+    plan_id: requestBody.plan_id,
+    redirect_url: requestBody.redirect_url,
     userId: requestBody.metadata.userId,
-    success_url: requestBody.success_url,
+    apiKeyPrefix: apiKey.substring(0, 15) + '...',
   });
 
-  const response = await fetch('https://api.whop.com/api/v2/checkout/sessions', {
+  const response = await fetch('https://api.whop.com/api/v2/checkout_sessions', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${apiKey}`,
@@ -111,13 +113,17 @@ export async function createBasicPlanCheckout(userId: string, email: string): Pr
       status: response.status,
       statusText: response.statusText,
       error: errorText,
+      endpoint: 'https://api.whop.com/api/v2/checkout_sessions',
     });
     throw new Error(`Whop API error (${response.status}): ${errorText}`);
   }
 
   const data = await response.json();
-  console.log('[Whop] Checkout session created successfully');
-  return { url: data.checkout_url };
+  console.log('[Whop] Checkout session created successfully:', {
+    session_id: data.id,
+    purchase_url: data.purchase_url,
+  });
+  return { url: data.purchase_url };
 }
 
 /**
@@ -126,31 +132,44 @@ export async function createBasicPlanCheckout(userId: string, email: string): Pr
 export async function createCreditCheckout(userId: string, email: string): Promise<{ url: string }> {
   const apiKey = getWhopApiKey();
 
-  const response = await fetch('https://api.whop.com/api/v2/checkout/sessions', {
+  const requestBody = {
+    plan_id: WHOP_PLANS.CREDIT_PACK,
+    redirect_url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard/billing?credits=true`,
+    metadata: {
+      userId,
+      email,
+      type: 'credit_purchase',
+    },
+  };
+
+  console.log('[Whop] Creating checkout session for credit pack:', {
+    plan_id: requestBody.plan_id,
+    redirect_url: requestBody.redirect_url,
+    userId: requestBody.metadata.userId,
+  });
+
+  const response = await fetch('https://api.whop.com/api/v2/checkout_sessions', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      product_id: WHOP_PRODUCTS.CREDIT_PACK,
-      customer_email: email,
-      metadata: {
-        userId,
-        type: 'credit_purchase',
-      },
-      success_url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard/billing?credits=true`,
-      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard/billing?canceled=true`,
-    }),
+    body: JSON.stringify(requestBody),
   });
 
   if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Failed to create credit checkout session: ${error}`);
+    const errorText = await response.text();
+    console.error('[Whop] Credit checkout failed:', {
+      status: response.status,
+      statusText: response.statusText,
+      error: errorText,
+    });
+    throw new Error(`Whop API error (${response.status}): ${errorText}`);
   }
 
   const data = await response.json();
-  return { url: data.checkout_url };
+  console.log('[Whop] Credit checkout session created successfully');
+  return { url: data.purchase_url };
 }
 
 /**
