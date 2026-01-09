@@ -1,20 +1,31 @@
 // src/app/dashboard/billing/page.tsx
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/prisma";
 import { PLAN_CONFIGS } from "@/lib/whop";
 import { lazy, Suspense } from "react";
-import { CheckCircle2, XCircle, Zap } from "lucide-react";
+import { CheckCircle2, XCircle, Zap, Loader2 } from "lucide-react";
 import { UpgradeButton, BuyCreditsButton } from "@/components/billing/BillingActions";
 
 const CreditsBadge = lazy(() => import("@/components/ui/CreditsBadge"));
 
 export const dynamic = "force-dynamic";
 
-export default async function BillingPage() {
+interface BillingPageProps {
+  searchParams: Promise<{
+    success?: string;
+    credits?: string;
+    canceled?: string;
+  }>;
+}
+
+export default async function BillingPage({ searchParams }: BillingPageProps) {
   const { userId } = await auth();
   if (!userId) redirect("/sign-in");
+
+  const params = await searchParams;
 
   const user = await db.user.findUnique({
     where: { clerkId: userId },
@@ -51,6 +62,49 @@ export default async function BillingPage() {
 
   return (
     <div className="container mx-auto p-6 space-y-6">
+      {/* Success Messages */}
+      {params.success && (
+        <Alert variant="success">
+          <CheckCircle2 className="h-4 w-4" />
+          <AlertTitle>Welcome to TC Helper Basic! 🎉</AlertTitle>
+          <AlertDescription>
+            <p className="mb-2">
+              Your subscription is being activated. This usually takes just a few seconds.
+            </p>
+            <p className="text-xs flex items-center gap-1">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              If your plan hasn't updated yet, refresh the page in a moment.
+            </p>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {params.credits && (
+        <Alert variant="success">
+          <CheckCircle2 className="h-4 w-4" />
+          <AlertTitle>Credits Purchased! ✅</AlertTitle>
+          <AlertDescription>
+            <p className="mb-2">
+              Your 5 additional AI parse credits are being added to your account.
+            </p>
+            <p className="text-xs flex items-center gap-1">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Credits should appear in a few seconds. Refresh if needed.
+            </p>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {params.canceled && (
+        <Alert>
+          <XCircle className="h-4 w-4" />
+          <AlertTitle>Checkout Canceled</AlertTitle>
+          <AlertDescription>
+            Your checkout was canceled. No charges were made. Feel free to try again when you're ready!
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Current Plan Card */}
       <Card>
         <CardHeader>
