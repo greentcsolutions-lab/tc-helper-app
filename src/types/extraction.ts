@@ -84,6 +84,8 @@ export interface UniversalExtractionResult {
   } | null;
   effectiveDate: string | null;
   closeOfEscrowDate: string | null; // ← Calculated COE (new primary field)
+  initialDepositDueDate?: string | null; // ← Earnest money due date (YYYY-MM-DD)
+  sellerDeliveryOfDisclosuresDate?: string | null; // ← Seller disclosures due date (YYYY-MM-DD)
   closing?: {
     daysAfterAcceptance?: number | null;
     specificDate?: string | null;
