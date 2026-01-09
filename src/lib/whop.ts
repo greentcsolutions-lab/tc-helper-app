@@ -79,29 +79,44 @@ export function getWhopWebhookSecret(): string {
 export async function createBasicPlanCheckout(userId: string, email: string): Promise<{ url: string }> {
   const apiKey = getWhopApiKey();
 
+  const requestBody = {
+    product_id: WHOP_PRODUCTS.BASIC_PLAN,
+    customer_email: email,
+    metadata: {
+      userId,
+    },
+    success_url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard/billing?success=true`,
+    cancel_url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard/billing?canceled=true`,
+  };
+
+  console.log('[Whop] Creating checkout session for Basic plan:', {
+    product_id: requestBody.product_id,
+    customer_email: requestBody.customer_email,
+    userId: requestBody.metadata.userId,
+    success_url: requestBody.success_url,
+  });
+
   const response = await fetch('https://api.whop.com/api/v2/checkout/sessions', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      product_id: WHOP_PRODUCTS.BASIC_PLAN,
-      customer_email: email,
-      metadata: {
-        userId,
-      },
-      success_url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard/billing?success=true`,
-      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard/billing?canceled=true`,
-    }),
+    body: JSON.stringify(requestBody),
   });
 
   if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Failed to create checkout session: ${error}`);
+    const errorText = await response.text();
+    console.error('[Whop] Checkout session failed:', {
+      status: response.status,
+      statusText: response.statusText,
+      error: errorText,
+    });
+    throw new Error(`Whop API error (${response.status}): ${errorText}`);
   }
 
   const data = await response.json();
+  console.log('[Whop] Checkout session created successfully');
   return { url: data.checkout_url };
 }
 
