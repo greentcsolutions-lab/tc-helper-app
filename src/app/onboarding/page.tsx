@@ -212,7 +212,9 @@ export default function OnboardingPage() {
           window.location.href = '/dashboard';
         }, 3000);
       } else {
-        alert('Failed to save. Please try again.');
+        const errorData = await res.json();
+        console.error('Save failed:', errorData);
+        alert(`Failed to save: ${errorData.error || 'Please try again.'}`);
         setSaving(false);
       }
     } catch (err) {
