@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { state, onboarded = true } = body;
+    const { name, phone, state, role, problems, referralSource, onboarded = true } = body;
 
     if (!state) {
       return NextResponse.json({ error: "State is required" }, { status: 400 });
@@ -34,14 +34,24 @@ export async function POST(req: NextRequest) {
     const updatedUser = await db.user.upsert({
       where: { clerkId: userId },
       update: {
+        ...(name !== undefined && { name }),
+        ...(phone !== undefined && { phone }),
         state,
+        ...(role !== undefined && { role }),
+        ...(problems !== undefined && { problems }),
+        ...(referralSource !== undefined && { referralSource }),
         onboarded,
         email, // ✅ Save email on every update too (in case it changes)
       },
       create: {
         clerkId: userId,
         email, // ✅ Save email from Clerk
+        name: name || null,
+        phone: phone || null,
         state,
+        role: role || null,
+        problems: problems || [],
+        referralSource: referralSource || null,
         onboarded,
         credits: 1, // your free parse
       },
