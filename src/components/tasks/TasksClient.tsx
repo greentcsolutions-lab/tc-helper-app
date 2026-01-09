@@ -380,7 +380,7 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
     }
   }, [tasks]);
 
-  const persistTaskColumn = async (
+  const persistTaskColumn = useCallback(async (
     taskId: string,
     newColumnId: string,
     fallbackColumnId: string
@@ -429,7 +429,7 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
       );
       console.error('Failed to persist task column:', error);
     }
-  };
+  }, []);
 
 
   const toggleColumnVisibility = useCallback((columnId: string) => {
@@ -513,7 +513,7 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
         </TabsContent>
       </Tabs>
     </div>
-  ), [tasksByColumn, columnVisibility, taskCounts, parses, tasks, shiftTask, COLUMNS]);
+  ), [tasksByColumn, columnVisibility, taskCounts, parses, tasks, shiftTask]);
 
   // Desktop Layout with Sidebar (memoized to prevent search input losing focus)
   const DesktopLayout = useMemo(() => (
@@ -658,7 +658,6 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
     handleSearchChange,
     toggleColumnVisibility,
     shiftTask,
-    COLUMNS,
   ]);
 
   // Conditionally render only one layout to avoid duplicate DOM elements
