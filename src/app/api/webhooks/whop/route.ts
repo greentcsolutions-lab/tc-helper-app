@@ -8,7 +8,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { db } from '@/lib/prisma';
 import {
   verifyWhopWebhook,
   PLAN_CONFIGS,
@@ -87,7 +87,7 @@ async function handleMembershipActivated(data: any) {
   const planConfig = PLAN_CONFIGS.BASIC;
 
   // Update user with Basic plan
-  await prisma.user.update({
+  await db.user.update({
     where: { id: userId },
     data: {
       planType: 'BASIC',
@@ -123,7 +123,7 @@ async function handleMembershipDeactivated(data: any) {
   const freePlanConfig = PLAN_CONFIGS.FREE;
 
   // Downgrade user to free tier
-  await prisma.user.update({
+  await db.user.update({
     where: { id: userId },
     data: {
       planType: 'FREE',
@@ -162,7 +162,7 @@ async function handlePaymentSucceeded(data: any) {
   console.log(`Processing credit purchase for user ${userId}`);
 
   // Add 5 credits to user's account
-  await prisma.user.update({
+  await db.user.update({
     where: { id: userId },
     data: {
       credits: {
