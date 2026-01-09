@@ -1,4 +1,6 @@
 // src/app/upload/page.tsx
+// version 1.0.0 01/09/2026
+
 import UploadZone from "@/components/ui/upload/upload-zone";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
