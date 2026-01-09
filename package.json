@@ -8,7 +8,8 @@
     "start": "next start",
     "seed": "ts-node prisma/seed.ts",
     "postinstall": "prisma generate",
-    "type-check": "tsc --noEmit --pretty"
+    "type-check": "tsc --noEmit --pretty",
+    "vercel-build": "npx prisma migrate resolve --applied 20260109122422_add_basic_plan_support || true && npx prisma generate && npx prisma migrate deploy && next build"
   },
   "dependencies": {
     "@clerk/nextjs": "5.7.4",
