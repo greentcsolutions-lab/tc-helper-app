@@ -23,6 +23,7 @@ import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TASK_STATUS, getTaskStatus } from "@/types/task";
 
 type Task = any; // Use Prisma-generated type
@@ -389,7 +390,70 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
     updateTaskColumn(taskId, newColumnId);
   };
 
-  return (
+  // Mobile Layout with Tabs
+  const MobileLayout = () => (
+    <div className="h-full p-4">
+      <Tabs defaultValue="board" className="h-full flex flex-col">
+        <div className="flex items-center justify-between mb-4">
+          <h1 className="text-2xl font-bold">Tasks</h1>
+          <NewTaskDialog parses={parses} />
+        </div>
+
+        <TabsList className="grid w-full grid-cols-2 mb-4">
+          <TabsTrigger value="board">Board</TabsTrigger>
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="board" className="flex-1 space-y-4 overflow-auto">
+          {COLUMNS.map((column) => {
+            if (!columnVisibility[column.id]) return null;
+            const columnIndex = COLUMNS.findIndex((col) => col.id === column.id);
+
+            return (
+              <div key={column.id} className="space-y-2">
+                {/* Column Header */}
+                <Card className={column.color}>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center justify-between">
+                      <span>{column.title}</span>
+                      <Badge variant="secondary">{taskCounts[column.id]}</Badge>
+                    </CardTitle>
+                  </CardHeader>
+                </Card>
+
+                {/* Horizontal Scrolling Tasks */}
+                {tasksByColumn[column.id].length > 0 ? (
+                  <div className="flex gap-3 overflow-x-auto pb-2 snap-x snap-mandatory">
+                    {tasksByColumn[column.id].map((task) => (
+                      <div key={task.id} className="flex-shrink-0 w-[85vw] snap-start">
+                        <TaskCard
+                          task={task}
+                          onShiftLeft={columnIndex > 0 ? () => shiftTask(task.id, 'left') : undefined}
+                          onShiftRight={columnIndex < COLUMNS.length - 1 ? () => shiftTask(task.id, 'right') : undefined}
+                          disableDrag={true}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-6 text-sm text-muted-foreground border-2 border-dashed border-muted-foreground/20 rounded-lg">
+                    No tasks
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </TabsContent>
+
+        <TabsContent value="overview" className="flex-1 overflow-auto">
+          <TaskOverview tasks={tasks} />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+
+  // Desktop Layout with Sidebar
+  const DesktopLayout = () => (
     <div className="flex gap-0.5 h-full">
       {/* Main Content */}
       <div className="flex-1 p-6 space-y-6 overflow-auto">
@@ -486,5 +550,19 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
         <TaskOverview tasks={tasks} />
       </div>
     </div>
+  );
+
+  return (
+    <>
+      {/* Mobile Layout (< md breakpoint) */}
+      <div className="md:hidden h-full">
+        <MobileLayout />
+      </div>
+
+      {/* Desktop Layout (>= md breakpoint) */}
+      <div className="hidden md:block h-full">
+        <DesktopLayout />
+      </div>
+    </>
   );
 }

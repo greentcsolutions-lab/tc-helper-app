@@ -17,6 +17,7 @@ interface TaskCardProps {
   onEdit?: (task: Task) => void;
   onShiftLeft?: () => void;
   onShiftRight?: () => void;
+  disableDrag?: boolean;
 }
 
 /**
@@ -46,7 +47,7 @@ function getTaskTypeColor(taskType: string): string {
   }
 }
 
-export default function TaskCard({ task, onEdit, onShiftLeft, onShiftRight }: TaskCardProps) {
+export default function TaskCard({ task, onEdit, onShiftLeft, onShiftRight, disableDrag }: TaskCardProps) {
   const {
     attributes,
     listeners,
@@ -54,7 +55,7 @@ export default function TaskCard({ task, onEdit, onShiftLeft, onShiftRight }: Ta
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: task.id });
+  } = useSortable({ id: task.id, disabled: disableDrag });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -67,9 +68,9 @@ export default function TaskCard({ task, onEdit, onShiftLeft, onShiftRight }: Ta
   const daysUntilDue = formatDaysUntilDue(task.dueDate);
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+    <div ref={setNodeRef} style={style} {...(disableDrag ? {} : { ...attributes, ...listeners })}>
       <Card
-        className={`cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow ${
+        className={`${disableDrag ? '' : 'cursor-grab active:cursor-grabbing'} hover:shadow-md transition-shadow ${
           isOverdue ? 'border-red-500 border-2' : ''
         }`}
         onClick={() => onEdit?.(task)}
