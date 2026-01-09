@@ -305,10 +305,35 @@ function transformGeminiToUniversal(geminiData: any): any {
   closeOfEscrowDate = calculateDateFromRelative(closeOfEscrowDate, effectiveDate);
   closeOfEscrowDate = normalizeDateString(closeOfEscrowDate) || closeOfEscrowDate;
 
+  // Calculate seller delivery of disclosures date from days
+  let sellerDeliveryDate: string | null = null;
+  if (e.seller_delivery_of_documents_days && typeof e.seller_delivery_of_documents_days === 'number' && effectiveDate) {
+    try {
+      const baseDate = new Date(effectiveDate);
+      if (!isNaN(baseDate.getTime())) {
+        baseDate.setDate(baseDate.getDate() + e.seller_delivery_of_documents_days);
+        const year = baseDate.getFullYear();
+        const month = String(baseDate.getMonth() + 1).padStart(2, '0');
+        const day = String(baseDate.getDate()).padStart(2, '0');
+        sellerDeliveryDate = `${year}-${month}-${day}`;
+      }
+    } catch (error) {
+      console.error(`[gemini-transform] Failed to calculate seller delivery date:`, error);
+    }
+  }
+
+  // Normalize initial deposit due date
+  let initialDepositDueDate: string | null = null;
+  if (e.initial_deposit?.due) {
+    initialDepositDueDate = normalizeDateString(e.initial_deposit.due) || e.initial_deposit.due;
+  }
+
   console.log(`[gemini-transform] Coerced purchasePrice: "${e.purchase_price}" → ${purchasePrice}`);
   console.log(`[gemini-transform] Coerced earnestMoney: "${e.initial_deposit?.amount}" → ${earnestMoneyAmount}`);
   console.log(`[gemini-transform] Coerced sellerCredit: "${e.seller_credit_to_buyer}" → ${sellerCreditAmount}`);
   console.log(`[gemini-transform] Calculated closeOfEscrow: "${e.close_of_escrow}" → ${closeOfEscrowDate}`);
+  console.log(`[gemini-transform] Calculated sellerDelivery: ${e.seller_delivery_of_documents_days} days → ${sellerDeliveryDate}`);
+  console.log(`[gemini-transform] Normalized initialDepositDue: "${e.initial_deposit?.due}" → ${initialDepositDueDate}`);
   console.log(`[gemini-transform] Normalized effectiveDate: "${e.final_acceptance_date}" → ${effectiveDate}`);
 
   return {
@@ -319,6 +344,8 @@ function transformGeminiToUniversal(geminiData: any): any {
     purchasePrice,
     closeOfEscrowDate,
     effectiveDate,
+    initialDepositDueDate,
+    sellerDeliveryOfDisclosuresDate: sellerDeliveryDate,
 
     // Earnest money
     earnestMoneyDeposit: e.initial_deposit ? {
