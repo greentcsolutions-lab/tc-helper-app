@@ -28,10 +28,20 @@ import { TASK_STATUS, getTaskStatus } from "@/types/task";
 type Task = any; // Use Prisma-generated type
 import TaskCard from "./TaskCard";
 import TaskOverview from "./TaskOverview";
-import { Filter, Plus } from "lucide-react";
+import NewTaskDialog from "./NewTaskDialog";
+import { Filter } from "lucide-react";
+
+type Parse = {
+  id: string;
+  fileName: string;
+  propertyAddress: string | null;
+  effectiveDate: Date | string | null;
+  closingDate: Date | string | null;
+};
 
 interface TasksClientProps {
   initialTasks: Task[];
+  parses: Parse[];
 }
 
 const COLUMNS = [
@@ -56,7 +66,7 @@ function DroppableColumn({ id, children }: { id: string; children: React.ReactNo
   );
 }
 
-export default function TasksClient({ initialTasks }: TasksClientProps) {
+export default function TasksClient({ initialTasks, parses }: TasksClientProps) {
   // Deserialize dates from server-side rendered data
   const [tasks, setTasks] = useState<Task[]>(() =>
     initialTasks.map((task) => ({
@@ -391,10 +401,7 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
               Manage your transaction tasks and deadlines
             </p>
           </div>
-          <Button>
-            <Plus className="mr-2 h-4 w-4" />
-            New Task
-          </Button>
+          <NewTaskDialog parses={parses} />
         </div>
 
         {/* Column Visibility Toggles */}

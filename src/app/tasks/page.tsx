@@ -46,5 +46,25 @@ export default async function TasksPage() {
     ],
   });
 
-  return <TasksClient initialTasks={tasks} />;
+  // Fetch user's parses for the transaction dropdown
+  const parses = await db.parse.findMany({
+    where: {
+      userId: dbUser.id,
+      status: {
+        in: ['COMPLETED', 'NEEDS_REVIEW'], // Only show completed/reviewed transactions
+      },
+    },
+    select: {
+      id: true,
+      fileName: true,
+      propertyAddress: true,
+      effectiveDate: true,
+      closingDate: true,
+    },
+    orderBy: {
+      createdAt: 'desc',
+    },
+  });
+
+  return <TasksClient initialTasks={tasks} parses={parses} />;
 }
