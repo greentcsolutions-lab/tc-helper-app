@@ -25,8 +25,7 @@ export default function PrivacyPage() {
           <h2>2. Data Flow & Deletion Timeline</h2>
           <ul className="list-disc pl-6 space-y-2">
             <li>PDF uploaded directly to our service (no public sharing).</li>
-            <li>PDF pages may be converted to temporary images and sent to Mistral AI (U.S.) for extraction.</li>
-            <li>Uploaded PDFs and any derived images are deleted immediately after extraction completes (typically within ~90 seconds).</li>
+            <li>Uploaded PDFs and any derived images are deleted immediately after extraction completes (typically within ~30 seconds).</li>
             <li>The extracted JSON and any user-saved artifacts are retained only so you can interact with them in the app; you can delete them anytime.</li>
           </ul>
         </section>
