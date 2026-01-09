@@ -214,7 +214,7 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
     setSearchQuery(e.target.value);
   }, []);
 
-  const handleDragStart = (event: DragStartEvent) => {
+  const handleDragStart = useCallback((event: DragStartEvent) => {
     const { active } = event;
     const task = tasks.find((t) => t.id === active.id);
     if (task) {
@@ -226,15 +226,47 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
       console.log('🎬 DragStart:', { taskId: task.id, status: task.status, columnId: task.columnId, visualColumnId });
       setOriginalColumnId(visualColumnId);
     }
-  };
+  }, [tasks]);
 
-  const handleDragOver = (event: DragOverEvent) => {
-    // Visual feedback is handled by DragOverlay
-    // Don't update task positions until drop (handleDragEnd)
-    // This prevents the "auto-drop" issue where cards jump before mouse release
-  };
+  const handleDragOver = useCallback((event: DragOverEvent) => {
+    const { active, over } = event;
+    if (!over) return;
 
-  const handleDragEnd = async (event: DragEndEvent) => {
+    const activeId = active.id as string;
+    const overId = over.id as string;
+
+    // Find what we're dragging
+    const activeTask = tasks.find((t) => t.id === activeId);
+    if (!activeTask) return;
+
+    // Determine the target column
+    let targetColumnId: string | null = null;
+
+    // Check if we're over a column droppable
+    const overColumn = COLUMNS.find((col) => col.id === overId);
+    if (overColumn) {
+      targetColumnId = overColumn.id;
+    } else {
+      // Check if we're over another task
+      const overTask = tasks.find((t) => t.id === overId);
+      if (overTask) {
+        targetColumnId = overTask.columnId;
+      }
+    }
+
+    // If we found a target column and it's different from current, optimistically move
+    if (targetColumnId && activeTask.columnId !== targetColumnId) {
+      setTasks((prev) =>
+        prev.map((t) =>
+          t.id === activeId
+            ? { ...t, columnId: targetColumnId, status: targetColumnId }
+            : t
+        )
+      );
+    }
+  }, [tasks]);
+
+  const handleDragEnd = useCallback(async (event: DragEndEvent) => {
     const { active, over } = event;
     const taskId = active.id as string;
 
@@ -291,9 +323,9 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
     }
 
     setOriginalColumnId(null);
-  };
+  }, [tasks, originalColumnId, persistTaskColumn]);
 
-  const updateTaskColumn = async (taskId: string, newColumnId: string) => {
+  const updateTaskColumn = useCallback(async (taskId: string, newColumnId: string) => {
     // Optimistic update - update UI immediately
     const previousTasks = tasks;
     setTasks((prev) =>
@@ -346,7 +378,7 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
       console.error('Failed to update task column:', error);
       // Rollback already happened above
     }
-  };
+  }, [tasks]);
 
   const persistTaskColumn = async (
     taskId: string,
@@ -400,14 +432,14 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
   };
 
 
-  const toggleColumnVisibility = (columnId: string) => {
+  const toggleColumnVisibility = useCallback((columnId: string) => {
     setColumnVisibility((prev) => ({
       ...prev,
       [columnId]: !prev[columnId as keyof typeof prev],
     }));
-  };
+  }, []);
 
-  const shiftTask = (taskId: string, direction: 'left' | 'right') => {
+  const shiftTask = useCallback((taskId: string, direction: 'left' | 'right') => {
     const task = tasks.find((t) => t.id === taskId);
     if (!task) return;
 
@@ -419,10 +451,10 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
     const newColumnId = COLUMNS[newIndex].id;
     // Don't await - optimistic update handles it
     updateTaskColumn(taskId, newColumnId);
-  };
+  }, [tasks, updateTaskColumn]);
 
-  // Mobile Layout with Tabs
-  const MobileLayout = () => (
+  // Mobile Layout with Tabs (memoized to prevent search input losing focus)
+  const MobileLayout = useMemo(() => (
     <div className="h-full p-4">
       <Tabs defaultValue="board" className="h-full flex flex-col">
         <div className="flex items-center justify-between mb-4">
@@ -481,10 +513,10 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
         </TabsContent>
       </Tabs>
     </div>
-  );
+  ), [tasksByColumn, columnVisibility, taskCounts, parses, tasks, shiftTask, COLUMNS]);
 
-  // Desktop Layout with Sidebar
-  const DesktopLayout = () => (
+  // Desktop Layout with Sidebar (memoized to prevent search input losing focus)
+  const DesktopLayout = useMemo(() => (
     <div className="flex gap-0.5 h-full">
       {/* Main Content */}
       <div className="flex-1 p-6 space-y-6 overflow-auto">
@@ -609,8 +641,26 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
         <TaskOverview tasks={tasks} />
       </div>
     </div>
-  );
+  ), [
+    tasksByColumn,
+    columnVisibility,
+    taskCounts,
+    parses,
+    tasks,
+    sensors,
+    handleDragStart,
+    handleDragOver,
+    handleDragEnd,
+    activeTask,
+    overdueCount,
+    showOverdueOnly,
+    searchQuery,
+    handleSearchChange,
+    toggleColumnVisibility,
+    shiftTask,
+    COLUMNS,
+  ]);
 
   // Conditionally render only one layout to avoid duplicate DOM elements
-  return isMobile ? <MobileLayout /> : <DesktopLayout />;
+  return isMobile ? MobileLayout : DesktopLayout;
 }
