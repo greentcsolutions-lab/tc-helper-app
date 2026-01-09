@@ -76,13 +76,18 @@ export default function TaskCard({ task, onEdit, onShiftLeft, onShiftRight, disa
         onClick={() => onEdit?.(task)}
       >
         <CardContent className="p-4 space-y-3">
-          {/* Task Type Badge */}
-          <Badge
-            className={`${getTaskTypeColor(task.taskType)} text-xs capitalize`}
-            variant="outline"
-          >
-            {task.taskType}
-          </Badge>
+          {/* Task Type Badges - can have multiple */}
+          <div className="flex flex-wrap gap-1.5">
+            {task.taskTypes?.map((type: string) => (
+              <Badge
+                key={type}
+                className={`${getTaskTypeColor(type)} text-xs capitalize`}
+                variant="outline"
+              >
+                {type}
+              </Badge>
+            ))}
+          </div>
 
           {/* Title */}
           <div>

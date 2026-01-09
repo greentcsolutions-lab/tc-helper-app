@@ -52,7 +52,7 @@ export interface Task {
   parseId: string | null;
 
   // Classification
-  taskType: TaskType;
+  taskTypes: TaskType[]; // Can have multiple categories
   timelineEventId: string | null;
 
   // Details
@@ -99,7 +99,7 @@ export interface UserTaskTemplate {
   // Template Details
   title: string;
   description: string | null;
-  taskType: Exclude<TaskType, 'timeline'>; // Timeline tasks are auto-generated
+  taskTypes: TaskType[]; // Can have multiple categories
 
   // Default Application Rules
   isDefaultForAll: boolean;
