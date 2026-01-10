@@ -179,14 +179,12 @@ export default function TimelineDatesStep({ data, updateData, userState }: Props
         <p className="text-sm text-muted-foreground">
           Set your transaction timeline. Toggle between days from acceptance or specific dates.
         </p>
-        {userState === 'CA' && (
-          <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
-            <p className="text-xs text-blue-800">
-              <span className="font-semibold">California Defaults:</span> Default
-              values have been pre-filled. You can modify any of these.
-            </p>
-          </div>
-        )}
+        <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
+          <p className="text-xs text-blue-800">
+            <span className="font-semibold">Default Values:</span> Common
+            timeline values have been pre-filled. You can modify any of these.
+          </p>
+        </div>
       </div>
 
       <div className="space-y-6">

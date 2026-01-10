@@ -26,7 +26,7 @@ export default function Home() {
           </h1>
 
           <p className="text-xl md:text-2xl text-muted-foreground mb-10 max-w-3xl mx-auto leading-relaxed">
-            California RPA extraction powered by next-gen AI vision. 95% accuracy, <u>zero</u> manual typing.
+            Real estate contract extraction powered by next-gen AI technology. 95% accuracy, <u>zero</u> manual typing.
           </p>
 
           <SignedOut>
@@ -77,8 +77,8 @@ export default function Home() {
               },
               {
                 icon: Award,
-                title: "California Certified",
-                description: "Optimized for CAR forms and CA real estate",
+                title: "Industry Leading",
+                description: "Optimized for all real estate contract forms",
               },
             ].map((feature, i) => (
               <Card
