@@ -81,18 +81,6 @@ function getEventStatus(date: Date): TimelineEvent['status'] {
 }
 
 /**
- * Simplifies a full address to just the street address
- * Example: "123 Main St, Los Angeles, CA 90001" -> "123 Main St"
- */
-function simplifyAddress(address: string | undefined): string {
-  if (!address) return "Unknown Property";
-
-  // Split by comma and take the first part (street address)
-  const parts = address.split(',');
-  return parts[0].trim();
-}
-
-/**
  * Extract all timeline events from a parsed contract
  * Updated to use top-level database fields instead of formatted JSON
  */
@@ -100,14 +88,13 @@ export function extractTimelineEvents(parse: any): TimelineEvent[] {
   const events: TimelineEvent[] = [];
   const parseId = parse.id;
   const propertyAddress = parse.propertyAddress || 'Unknown Property';
-  const simplifiedAddress = simplifyAddress(propertyAddress);
 
   // 1. Effective Date (Acceptance Date) - Always completed, never overdue
   const acceptanceDate = parseDate(parse.effectiveDate);
   if (acceptanceDate) {
     events.push({
       id: `${parseId}-acceptance`,
-      title: `Acceptance: ${simplifiedAddress}`,
+      title: 'Acceptance',
       start: acceptanceDate,
       end: acceptanceDate,
       allDay: true,
@@ -123,7 +110,7 @@ export function extractTimelineEvents(parse: any): TimelineEvent[] {
   if (depositDue) {
     events.push({
       id: `${parseId}-deposit`,
-      title: `Deposit Due: ${simplifiedAddress}`,
+      title: 'Deposit Due',
       start: depositDue,
       end: depositDue,
       allDay: true,
@@ -139,7 +126,7 @@ export function extractTimelineEvents(parse: any): TimelineEvent[] {
   if (sellerDisclosuresDate) {
     events.push({
       id: `${parseId}-seller-disclosures`,
-      title: `Seller Disclosures Due: ${simplifiedAddress}`,
+      title: 'Seller Disclosures Due',
       start: sellerDisclosuresDate,
       end: sellerDisclosuresDate,
       allDay: true,
@@ -159,7 +146,7 @@ export function extractTimelineEvents(parse: any): TimelineEvent[] {
       const loanDate = calculateContingencyDate(acceptanceDate, contingencies.loanDays);
       events.push({
         id: `${parseId}-loan-contingency`,
-        title: `Loan Contingency Removal: ${simplifiedAddress}`,
+        title: 'Loan Contingency Removal',
         start: loanDate,
         end: loanDate,
         allDay: true,
@@ -175,7 +162,7 @@ export function extractTimelineEvents(parse: any): TimelineEvent[] {
       const appraisalDate = calculateContingencyDate(acceptanceDate, contingencies.appraisalDays);
       events.push({
         id: `${parseId}-appraisal-contingency`,
-        title: `Appraisal Contingency Removal: ${simplifiedAddress}`,
+        title: 'Appraisal Contingency Removal',
         start: appraisalDate,
         end: appraisalDate,
         allDay: true,
@@ -191,7 +178,7 @@ export function extractTimelineEvents(parse: any): TimelineEvent[] {
       const investigationDate = calculateContingencyDate(acceptanceDate, contingencies.inspectionDays);
       events.push({
         id: `${parseId}-investigation-contingency`,
-        title: `Investigation Contingency Removal: ${simplifiedAddress}`,
+        title: 'Investigation Contingency Removal',
         start: investigationDate,
         end: investigationDate,
         allDay: true,
@@ -217,7 +204,7 @@ export function extractTimelineEvents(parse: any): TimelineEvent[] {
   if (closeDate) {
     events.push({
       id: `${parseId}-closing`,
-      title: `CLOSING: ${simplifiedAddress}`,
+      title: 'CLOSING',
       start: closeDate,
       end: closeDate,
       allDay: true,
