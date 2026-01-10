@@ -6,6 +6,30 @@ import { OAuth2Client } from 'google-auth-library';
 import { db as prisma } from '@/lib/prisma';
 
 /**
+ * Ensures a URL uses HTTPS protocol for production domains (non-localhost)
+ * Google OAuth requires HTTPS for production domains
+ */
+function ensureHttpsForProduction(url: string | undefined): string {
+  if (!url) {
+    throw new Error('URL is required');
+  }
+
+  try {
+    const urlObj = new URL(url);
+
+    // Only allow HTTP for localhost
+    if (urlObj.protocol === 'http:' && !urlObj.hostname.includes('localhost') && urlObj.hostname !== '127.0.0.1') {
+      urlObj.protocol = 'https:';
+      console.warn(`⚠️ Automatically upgraded ${url} to HTTPS for production use`);
+    }
+
+    return urlObj.toString();
+  } catch (error) {
+    throw new Error(`Invalid URL: ${url}`);
+  }
+}
+
+/**
  * Creates and configures a Google Calendar client for a user
  */
 export async function getGoogleCalendarClient(userId: string): Promise<calendar_v3.Calendar | null> {
@@ -23,7 +47,7 @@ export async function getGoogleCalendarClient(userId: string): Promise<calendar_
     const oauth2Client = new OAuth2Client(
       process.env.GOOGLE_CLIENT_ID,
       process.env.GOOGLE_CLIENT_SECRET,
-      process.env.GOOGLE_REDIRECT_URI
+      ensureHttpsForProduction(process.env.GOOGLE_REDIRECT_URI)
     );
 
     // Set credentials
@@ -62,7 +86,7 @@ export function getOAuth2Client(): OAuth2Client {
   return new OAuth2Client(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,
-    process.env.GOOGLE_REDIRECT_URI
+    ensureHttpsForProduction(process.env.GOOGLE_REDIRECT_URI)
   );
 }
 
