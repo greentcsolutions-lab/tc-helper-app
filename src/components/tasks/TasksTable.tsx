@@ -28,7 +28,7 @@ import { toast } from "sonner";
 
 type Task = any; // Use Prisma-generated type
 
-type SortField = "title" | "dueDate" | "propertyAddress";
+type SortField = "title" | "dueDate" | "propertyAddress" | "status" | "taskTypes";
 type SortDirection = "asc" | "desc";
 
 // Task type configuration for colors and labels
@@ -83,6 +83,21 @@ export default function TasksTable({ tasks, onUpdateTaskStatus }: TasksTableProp
           break;
         case "propertyAddress":
           comparison = (a.propertyAddress || "").localeCompare(b.propertyAddress || "");
+          break;
+        case "status":
+          // Sort by status: not_started, pending, completed
+          const statusOrder: Record<string, number> = {
+            'not_started': 1,
+            'pending': 2,
+            'completed': 3,
+          };
+          comparison = (statusOrder[a.status] || 0) - (statusOrder[b.status] || 0);
+          break;
+        case "taskTypes":
+          // Sort by first task type alphabetically
+          const aTypes = (a.taskTypes || []).join(", ");
+          const bTypes = (b.taskTypes || []).join(", ");
+          comparison = aTypes.localeCompare(bTypes);
           break;
       }
 
@@ -144,14 +159,24 @@ export default function TasksTable({ tasks, onUpdateTaskStatus }: TasksTableProp
             >
               Property Address <SortIcon field="propertyAddress" />
             </TableHead>
-            <TableHead>Task Types</TableHead>
+            <TableHead
+              className="cursor-pointer hover:bg-muted/50"
+              onClick={() => handleSort("taskTypes")}
+            >
+              Task Types <SortIcon field="taskTypes" />
+            </TableHead>
             <TableHead
               className="cursor-pointer hover:bg-muted/50"
               onClick={() => handleSort("dueDate")}
             >
               Due Date <SortIcon field="dueDate" />
             </TableHead>
-            <TableHead>Status</TableHead>
+            <TableHead
+              className="cursor-pointer hover:bg-muted/50"
+              onClick={() => handleSort("status")}
+            >
+              Status <SortIcon field="status" />
+            </TableHead>
             <TableHead>Days Until/Overdue</TableHead>
           </TableRow>
         </TableHeader>
