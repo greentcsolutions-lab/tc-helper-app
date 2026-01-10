@@ -24,9 +24,10 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { FileText, Loader2 } from "lucide-react";
+import { FileText, Loader2, Plus } from "lucide-react";
 import { UserTaskTemplate } from "@/types/task";
 import { toast } from "sonner";
+import CreateTemplateDialog from "@/components/settings/CreateTemplateDialog";
 
 type Parse = {
   id: string;
@@ -50,6 +51,7 @@ export default function AddFromTemplateDialog({ parses, onTasksAdded }: AddFromT
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [selectedTasks, setSelectedTasks] = useState<Set<number>>(new Set());
   const [creating, setCreating] = useState(false);
+  const [isCreatingTemplate, setIsCreatingTemplate] = useState(false);
 
   const selectedParse = parses.find(p => p.id === parseId) || null;
 
@@ -186,7 +188,8 @@ export default function AddFromTemplateDialog({ parses, onTasksAdded }: AddFromT
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    <>
+      <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button variant="outline">
           <FileText className="mr-2 h-4 w-4" />
@@ -242,13 +245,30 @@ export default function AddFromTemplateDialog({ parses, onTasksAdded }: AddFromT
             <div className="text-center py-8 text-muted-foreground">
               <FileText className="h-12 w-12 mx-auto mb-3 opacity-50" />
               <p>No templates available for this transaction type.</p>
-              <p className="text-sm mt-1">Create templates in Settings to use them here.</p>
+              <p className="text-sm mt-1 mb-4">Create a template to get started.</p>
+              <Button
+                variant="outline"
+                onClick={() => setIsCreatingTemplate(true)}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Create Template
+              </Button>
             </div>
           ) : (
             <>
               {/* Template Selection */}
               <div className="space-y-2">
-                <Label>Select Template</Label>
+                <div className="flex items-center justify-between">
+                  <Label>Select Template</Label>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setIsCreatingTemplate(true)}
+                  >
+                    <Plus className="h-3 w-3 mr-1" />
+                    New Template
+                  </Button>
+                </div>
                 <div className="space-y-2">
                   {templates.map((template) => (
                     <div
@@ -380,5 +400,17 @@ export default function AddFromTemplateDialog({ parses, onTasksAdded }: AddFromT
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+      {/* Create Template Dialog */}
+      {selectedParse && (
+        <CreateTemplateDialog
+          open={isCreatingTemplate}
+          onOpenChange={setIsCreatingTemplate}
+          onSuccess={() => {
+            fetchTemplates();
+          }}
+        />
+      )}
+    </>
   );
 }
