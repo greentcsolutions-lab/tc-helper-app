@@ -234,6 +234,7 @@ model UserTaskTemplate {
   name                    String    // Template name
   description             String?   // Template description
   fileType                String    @default("escrow") // "listing" or "escrow" - which transaction type this template applies to
+  isDefaultForNewFiles    Boolean   @default(false) // Auto-generate tasks from this template on new files
 
   // Task Collection (JSON array of task definitions)
   // Each task: { title: string, description?: string, taskTypes: string[], dueDateType: 'days_after_acceptance' | 'days_from_close', dueDateValue: number }

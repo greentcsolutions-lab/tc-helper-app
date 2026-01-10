@@ -6,6 +6,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import {
   DndContext,
   DragEndEvent,
@@ -33,12 +34,14 @@ type Task = any; // Use Prisma-generated type
 import TaskCard from "./TaskCard";
 import TaskOverview from "./TaskOverview";
 import NewTaskDialog from "./NewTaskDialog";
+import AddFromTemplateDialog from "./AddFromTemplateDialog";
 import { Filter, Search } from "lucide-react";
 
 type Parse = {
   id: string;
   fileName: string;
   propertyAddress: string | null;
+  transactionType: string | null;
   effectiveDate: Date | string | null;
   closingDate: Date | string | null;
 };
@@ -71,6 +74,8 @@ function DroppableColumn({ id, children }: { id: string; children: React.ReactNo
 }
 
 export default function TasksClient({ initialTasks, parses }: TasksClientProps) {
+  const router = useRouter();
+
   // Deserialize dates from server-side rendered data
   const [tasks, setTasks] = useState<Task[]>(() =>
     initialTasks.map((task) => ({
@@ -92,6 +97,10 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
   const [searchQuery, setSearchQuery] = useState("");
   const [isMobile, setIsMobile] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const handleRefresh = () => {
+    router.refresh();
+  };
 
   // Detect screen size changes
   useEffect(() => {
@@ -460,7 +469,10 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
       <Tabs defaultValue="board" className="h-full flex flex-col">
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-2xl font-bold">Tasks</h1>
-          <NewTaskDialog parses={parses} />
+          <div className="flex gap-2">
+            <AddFromTemplateDialog parses={parses} onTasksAdded={handleRefresh} />
+            <NewTaskDialog parses={parses} />
+          </div>
         </div>
 
         <TabsList className="grid w-full grid-cols-2 mb-4">
@@ -529,7 +541,10 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
               Manage your transaction tasks and deadlines
             </p>
           </div>
-          <NewTaskDialog parses={parses} />
+          <div className="flex gap-2">
+            <AddFromTemplateDialog parses={parses} onTasksAdded={handleRefresh} />
+            <NewTaskDialog parses={parses} />
+          </div>
         </div>
 
         {/* Filter and Search Bar */}
