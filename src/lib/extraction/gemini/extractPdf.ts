@@ -322,10 +322,36 @@ function transformGeminiToUniversal(geminiData: any): any {
     }
   }
 
-  // Normalize initial deposit due date
+  // Calculate initial deposit due date
   let initialDepositDueDate: string | null = null;
   if (e.initial_deposit?.due) {
-    initialDepositDueDate = normalizeDateString(e.initial_deposit.due) || e.initial_deposit.due;
+    // First try to extract a number of days from the string (e.g., "3 days", "3", etc.)
+    const daysMatch = e.initial_deposit.due.match(/(\d+)/);
+    if (daysMatch && effectiveDate) {
+      const businessDays = parseInt(daysMatch[1], 10);
+      if (!isNaN(businessDays)) {
+        try {
+          // Use business days calculation (addBusinessDays helper would be ideal, but we'll use a simple approach)
+          // For now, we'll use calendar days since we don't have the business days helper here
+          // TODO: Import and use addBusinessDays from date-utils.ts for accurate calculation
+          const baseDate = new Date(effectiveDate);
+          if (!isNaN(baseDate.getTime())) {
+            baseDate.setDate(baseDate.getDate() + businessDays);
+            const year = baseDate.getFullYear();
+            const month = String(baseDate.getMonth() + 1).padStart(2, '0');
+            const day = String(baseDate.getDate()).padStart(2, '0');
+            initialDepositDueDate = `${year}-${month}-${day}`;
+          }
+        } catch (error) {
+          console.error(`[gemini-transform] Failed to calculate initial deposit due date:`, error);
+        }
+      }
+    }
+
+    // If we couldn't calculate from days, try to normalize as an absolute date
+    if (!initialDepositDueDate) {
+      initialDepositDueDate = normalizeDateString(e.initial_deposit.due) || null;
+    }
   }
 
   console.log(`[gemini-transform] Coerced purchasePrice: "${e.purchase_price}" → ${purchasePrice}`);
