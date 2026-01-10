@@ -53,7 +53,7 @@ export default function TeamSettings() {
           <div className="pt-4 border-t">
             <h4 className="font-semibold mb-2">What&apos;s Included</h4>
             <ul className="space-y-1 text-sm text-muted-foreground">
-              <li>• Up to 6 team members (1 owner + 5 members)</li>
+              <li>• Up to 5 team members (1 owner + 4 members)</li>
               <li>• Shared team quotas and AI credits</li>
               <li>• Task assignment to team members</li>
               <li>• Centralized workflow management</li>

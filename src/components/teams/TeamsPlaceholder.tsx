@@ -127,7 +127,7 @@ export function TeamsPlaceholder() {
                 What&apos;s Included
               </h4>
               <ul className="space-y-1 text-sm text-muted-foreground">
-                <li>• Up to 6 team members (1 owner + 5 members)</li>
+                <li>• Up to 5 team members (1 owner + 4 members)</li>
                 <li>• 10 concurrent transactions</li>
                 <li>• Shared AI parse credits</li>
                 <li>• Team templates and workflows</li>

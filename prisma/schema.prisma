@@ -349,7 +349,7 @@ model Team {
 
   // Plan & Subscription
   planType             String    @default("TEAMS") // "TEAMS" plan type
-  maxMembers           Int       @default(6)      // 5 members + 1 owner (configurable)
+  maxMembers           Int       @default(5)      // 4 members + 1 owner (configurable)
 
   // Shared Usage & Quotas (team-level limits)
   quota                Int       @default(10)     // Shared concurrent transactions for team

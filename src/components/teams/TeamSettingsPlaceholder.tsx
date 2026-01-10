@@ -106,7 +106,7 @@ export function TeamSettingsPlaceholder() {
           <div className="pt-4 border-t">
             <h4 className="font-semibold mb-2">Team Limits</h4>
             <ul className="space-y-1 text-sm text-muted-foreground">
-              <li>• Maximum 6 team members (1 owner + 5 members)</li>
+              <li>• Maximum 5 team members (1 owner + 4 members)</li>
               <li>• Owner is responsible for team billing</li>
               <li>• All members share team quotas and credits</li>
               <li>• Configurable based on your Teams plan tier</li>
