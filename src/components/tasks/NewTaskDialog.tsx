@@ -218,10 +218,10 @@ export default function NewTaskDialog({ parses }: NewTaskDialogProps) {
               </Select>
             </div>
 
-            {/* Task Categories - Multiple Selection */}
+            {/* Task Categories - Multiple Selection - 2 Column Grid */}
             <div className="grid gap-3">
               <Label>Task Category *</Label>
-              <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-4">
                 <div className="flex items-center space-x-3">
                   <Checkbox
                     id="type-broker"
