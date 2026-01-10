@@ -8,10 +8,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Plus, Trash2, Edit2, FileText } from "lucide-react";
-import { UserTaskTemplate, TemplateTask, FILE_TYPES } from "@/types/task";
+import { UserTaskTemplate, TemplateTask, FILE_TYPES, TASK_TYPES, TaskType } from "@/types/task";
 
 export default function TaskTemplatesSettings() {
   const [isLoading, setIsLoading] = useState(true);
@@ -217,6 +218,7 @@ function TemplateEditor({ template, onSave, onCancel }: TemplateEditorProps) {
       {
         title: "",
         description: "",
+        taskTypes: [],
         dueDateType: "days_after_acceptance",
         dueDateValue: 1,
       },
@@ -233,6 +235,16 @@ function TemplateEditor({ template, onSave, onCancel }: TemplateEditorProps) {
     setTasks(updatedTasks);
   };
 
+  const handleTaskTypeToggle = (index: number, taskType: TaskType) => {
+    const updatedTasks = [...tasks];
+    const currentTypes = updatedTasks[index].taskTypes;
+    const newTypes = currentTypes.includes(taskType)
+      ? currentTypes.filter((t) => t !== taskType)
+      : [...currentTypes, taskType];
+    updatedTasks[index] = { ...updatedTasks[index], taskTypes: newTypes };
+    setTasks(updatedTasks);
+  };
+
   const handleSave = async () => {
     if (!name.trim()) {
       toast.error("Template name is required");
@@ -246,6 +258,11 @@ function TemplateEditor({ template, onSave, onCancel }: TemplateEditorProps) {
 
     if (tasks.some((t) => !t.title.trim())) {
       toast.error("All tasks must have a title");
+      return;
+    }
+
+    if (tasks.some((t) => t.taskTypes.length === 0)) {
+      toast.error("All tasks must have at least one category selected");
       return;
     }
 
@@ -355,6 +372,50 @@ function TemplateEditor({ template, onSave, onCancel }: TemplateEditorProps) {
                         onChange={(e) => handleTaskChange(index, "description", e.target.value)}
                         placeholder="Task description (optional)"
                       />
+                      <div className="space-y-2">
+                        <Label className="text-sm">Categories *</Label>
+                        <div className="flex gap-4">
+                          <div className="flex items-center space-x-2">
+                            <Checkbox
+                              id={`task-${index}-broker`}
+                              checked={task.taskTypes.includes(TASK_TYPES.BROKER)}
+                              onCheckedChange={() => handleTaskTypeToggle(index, TASK_TYPES.BROKER)}
+                            />
+                            <label
+                              htmlFor={`task-${index}-broker`}
+                              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                            >
+                              Broker
+                            </label>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <Checkbox
+                              id={`task-${index}-escrow`}
+                              checked={task.taskTypes.includes(TASK_TYPES.ESCROW)}
+                              onCheckedChange={() => handleTaskTypeToggle(index, TASK_TYPES.ESCROW)}
+                            />
+                            <label
+                              htmlFor={`task-${index}-escrow`}
+                              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                            >
+                              Escrow
+                            </label>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <Checkbox
+                              id={`task-${index}-lender`}
+                              checked={task.taskTypes.includes(TASK_TYPES.LENDER)}
+                              onCheckedChange={() => handleTaskTypeToggle(index, TASK_TYPES.LENDER)}
+                            />
+                            <label
+                              htmlFor={`task-${index}-lender`}
+                              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                            >
+                              Lender
+                            </label>
+                          </div>
+                        </div>
+                      </div>
                       <div className="grid grid-cols-2 gap-2">
                         <Select
                           value={task.dueDateType}

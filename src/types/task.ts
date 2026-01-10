@@ -102,6 +102,7 @@ export type FileType = typeof FILE_TYPES[keyof typeof FILE_TYPES];
 export interface TemplateTask {
   title: string;
   description?: string;
+  taskTypes: TaskType[]; // Can have multiple categories (broker, escrow, lender)
   dueDateType: 'days_after_acceptance' | 'days_from_close';
   dueDateValue: number;
 }
