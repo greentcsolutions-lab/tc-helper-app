@@ -25,6 +25,7 @@ export default async function BillingPage() {
       parseLimit: true,
       parseCount: true,
       parseResetDate: true,
+      templateCount: true,
     },
   });
 
@@ -71,7 +72,7 @@ export default async function BillingPage() {
           </div>
 
           {/* Usage Metrics */}
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <div className="rounded-lg border p-4">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-sm font-medium text-muted-foreground">
@@ -118,6 +119,16 @@ export default async function BillingPage() {
               </p>
               <p className="text-xs text-muted-foreground">
                 Active custom tasks
+              </p>
+            </div>
+
+            <div className="rounded-lg border p-4">
+              <p className="text-sm font-medium text-muted-foreground mb-2">Task Templates</p>
+              <p className="text-2xl font-bold">
+                {user.templateCount} / {planConfig.templateLimit}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Saved templates
               </p>
             </div>
           </div>
@@ -168,7 +179,11 @@ export default async function BillingPage() {
                   </li>
                   <li className="flex items-center gap-2">
                     <CheckCircle2 className="h-4 w-4 text-green-500" />
-                    1 custom task
+                    10 custom tasks
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-green-500" />
+                    1 task template
                   </li>
                 </ul>
               </div>
@@ -189,7 +204,11 @@ export default async function BillingPage() {
                   </li>
                   <li className="flex items-center gap-2">
                     <CheckCircle2 className="h-4 w-4 text-green-500" />
-                    10 custom tasks
+                    100 custom tasks
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-green-500" />
+                    10 task templates
                   </li>
                   <li className="flex items-center gap-2">
                     <CheckCircle2 className="h-4 w-4 text-green-500" />

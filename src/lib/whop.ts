@@ -22,6 +22,7 @@ export interface PlanConfig {
   quota: number;           // Concurrent active transactions
   parseLimit: number;      // AI parses (FREE: total, BASIC: per month)
   customTaskLimit: number; // Custom tasks limit
+  templateLimit: number;   // Task templates limit
   price: {
     monthly: number;
     annual: number;
@@ -33,7 +34,8 @@ export const PLAN_CONFIGS: Record<PlanType, PlanConfig> = {
     name: 'Free',
     quota: 1,              // 1 concurrent transaction
     parseLimit: 1,         // 1 AI parse total (never resets)
-    customTaskLimit: 1,    // 1 custom task
+    customTaskLimit: 10,   // 10 custom tasks
+    templateLimit: 1,      // 1 task template
     price: {
       monthly: 0,
       annual: 0,
@@ -43,7 +45,8 @@ export const PLAN_CONFIGS: Record<PlanType, PlanConfig> = {
     name: 'Basic',
     quota: 5,              // 5 concurrent transactions
     parseLimit: 5,         // 5 AI parses per month (resets monthly)
-    customTaskLimit: 10,   // 10 custom tasks
+    customTaskLimit: 100,  // 100 custom tasks
+    templateLimit: 10,     // 10 task templates
     price: {
       monthly: 15,
       annual: 150,
