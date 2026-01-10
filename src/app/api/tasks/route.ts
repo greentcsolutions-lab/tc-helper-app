@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { currentUser } from '@clerk/nextjs/server';
 import { db } from '@/lib/prisma';
 import { TASK_TYPES, TASK_STATUS } from '@/types/task';
+import { syncTaskToCalendar } from '@/lib/google-calendar/sync';
 
 /**
  * GET /api/tasks
@@ -206,6 +207,12 @@ export async function POST(request: NextRequest) {
           },
         },
       },
+    });
+
+    // Sync to Google Calendar (async, don't wait for completion)
+    syncTaskToCalendar(dbUser.id, result.id).catch((error) => {
+      console.error('Failed to sync task to calendar:', error);
+      // Don't fail the request if calendar sync fails
     });
 
     return NextResponse.json({ task: result }, { status: 201 });
