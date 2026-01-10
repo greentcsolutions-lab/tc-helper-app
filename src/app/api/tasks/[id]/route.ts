@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { currentUser } from '@clerk/nextjs/server';
 import { db } from '@/lib/prisma';
 import { TASK_STATUS } from '@/types/task';
+import { syncTaskToCalendar, deleteTaskFromCalendar, archiveTaskInCalendar } from '@/lib/google-calendar/sync';
 
 /**
  * PATCH /api/tasks/[id]
@@ -92,6 +93,9 @@ export async function PATCH(
       updateData.dueDateValue = body.dueDateValue;
     }
 
+    // Check if task is being archived
+    const wasArchived = body.archived === true && task.status !== 'archived';
+
     // Update the task
     const updatedTask = await db.task.update({
       where: { id },
@@ -107,6 +111,19 @@ export async function PATCH(
         },
       },
     });
+
+    // Sync to Google Calendar (async, don't wait for completion)
+    if (wasArchived) {
+      // Move to archived calendar
+      archiveTaskInCalendar(dbUser.id, id).catch((error) => {
+        console.error('Failed to archive task in calendar:', error);
+      });
+    } else {
+      // Regular update sync
+      syncTaskToCalendar(dbUser.id, id).catch((error) => {
+        console.error('Failed to sync task to calendar:', error);
+      });
+    }
 
     return NextResponse.json({ task: updatedTask });
   } catch (error) {
@@ -164,6 +181,12 @@ export async function DELETE(
         { status: 400 }
       );
     }
+
+    // Delete from Google Calendar first (before deleting from database)
+    await deleteTaskFromCalendar(dbUser.id, id).catch((error) => {
+      console.error('Failed to delete task from calendar:', error);
+      // Continue with deletion even if calendar sync fails
+    });
 
     // Delete the task and decrement custom task count in a transaction
     await db.$transaction(async (tx) => {

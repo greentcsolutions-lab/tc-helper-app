@@ -51,6 +51,8 @@ model User {
   parses               Parse[]
   tasks                Task[]
   taskTemplates        UserTaskTemplate[]
+  calendarSettings     CalendarSettings?
+  calendarEvents       CalendarEvent[]
 
   @@map("users")
 }
@@ -207,6 +209,11 @@ model Task {
   isCustom             Boolean   @default(false) // false for timeline tasks, true for user-created
   templateId           String?   // If created from a template, reference to UserTaskTemplate
 
+  // Google Calendar Sync
+  googleCalendarEventId String?  @unique // Google Calendar event ID for synced events
+  syncedToCalendar     Boolean   @default(false) // Whether this task has been synced to Google Calendar
+  lastSyncedAt         DateTime? // Last time this task was synced to Google Calendar
+
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
   completedAt          DateTime? // When task was marked completed
@@ -214,6 +221,7 @@ model Task {
   @@index([userId, parseId])
   @@index([userId, status])
   @@index([userId, dueDate])
+  @@index([googleCalendarEventId])
   @@map("tasks")
 }
 
@@ -236,4 +244,77 @@ model UserTaskTemplate {
 
   @@index([userId])
   @@map("user_task_templates")
+}
+
+// ============================================================================
+// GOOGLE CALENDAR INTEGRATION
+// ============================================================================
+
+model CalendarSettings {
+  id                      String    @id @default(cuid())
+  userId                  String    @unique
+  user                    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Google OAuth Tokens (encrypted in application layer)
+  googleAccessToken       String?   // OAuth access token
+  googleRefreshToken      String?   // OAuth refresh token
+  googleTokenExpiry       DateTime? // When the access token expires
+
+  // Calendar IDs
+  primaryCalendarId       String?   // "TC Helper" calendar ID
+  archivedCalendarId      String?   // "TC Helper Archived Events" calendar ID
+
+  // Sync Settings
+  syncEnabled             Boolean   @default(true)   // Master toggle for calendar sync
+  includeFullDetails      Boolean   @default(true)   // Include full task details in calendar events
+  syncNonAppEvents        Boolean   @default(true)   // Fetch and display non-app events as grayed out
+  excludeFinancialData    Boolean   @default(true)   // Exclude financial amounts from calendar sync
+
+  // Webhook Configuration (for real-time push notifications)
+  webhookChannelId        String?   // Google Calendar push notification channel ID
+  webhookResourceId       String?   // Google Calendar push notification resource ID
+  webhookExpiration       DateTime? // When the webhook expires (renew before this)
+
+  // Sync Status
+  lastSyncAt              DateTime? // Last successful sync timestamp
+  lastSyncError           String?   // Last error message if sync failed
+  initialSyncCompleted    Boolean   @default(false) // Whether initial push of all tasks is done
+
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  @@map("calendar_settings")
+}
+
+model CalendarEvent {
+  id                      String    @id @default(cuid())
+  userId                  String
+  user                    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Google Calendar Event Details
+  googleEventId           String    @unique // Google Calendar event ID
+  calendarId              String    // Which calendar this event belongs to
+
+  // Event Details
+  title                   String
+  description             String?
+  start                   DateTime
+  end                     DateTime
+  allDay                  Boolean   @default(false)
+
+  // Classification
+  isAppEvent              Boolean   @default(false) // true = created by app, false = external event
+  matchedPropertyAddress  String?   // If fuzzy matched to a property, store the address
+  inferredTaskTypes       String[]  @default([])    // AI-inferred task types for external events (BASIC plan feature)
+
+  // Sync Metadata
+  lastSyncedAt            DateTime  @default(now())
+
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  @@index([userId, isAppEvent])
+  @@index([userId, start])
+  @@index([googleEventId])
+  @@map("calendar_events")
 }
