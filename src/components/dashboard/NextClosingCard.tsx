@@ -95,8 +95,8 @@ export default function NextClosingCard({ parses }: NextClosingCardProps) {
             key={closing.id}
             className="flex items-start gap-3 p-3 rounded-lg border hover:bg-muted/50 transition-colors"
           >
-            <div className="text-2xl" role="img" aria-label="closing">
-              🏠
+            <div className="shrink-0 mt-0.5" role="img" aria-label="closing">
+              <Home className="h-5 w-5" />
             </div>
             <div className="flex-1 min-w-0">
               <p className="font-medium text-sm leading-tight">

@@ -5,7 +5,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Calendar, AlertCircle, ArrowRight } from "lucide-react";
+import { Calendar, AlertCircle, ArrowRight, Home, ClipboardList, DollarSign, AlarmClock, CheckCircle } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { getNextEventsByDate, TimelineEvent } from "@/lib/dates/extract-timeline-events";
 import Link from "next/link";
@@ -51,19 +51,20 @@ export default function NextDueCard({ parses }: NextDueCardProps) {
   }
 
   const getEventIcon = (type: TimelineEvent['type']) => {
+    const iconClass = "h-5 w-5";
     switch (type) {
       case 'closing':
-        return '🏠';
+        return <Home className={iconClass} />;
       case 'contingency':
-        return '📋';
+        return <ClipboardList className={iconClass} />;
       case 'deposit':
-        return '💰';
+        return <DollarSign className={iconClass} />;
       case 'deadline':
-        return '⏰';
+        return <AlarmClock className={iconClass} />;
       case 'acceptance':
-        return '✅';
+        return <CheckCircle className={iconClass} />;
       default:
-        return '📅';
+        return <Calendar className={iconClass} />;
     }
   };
 
@@ -104,7 +105,7 @@ export default function NextDueCard({ parses }: NextDueCardProps) {
             key={event.id}
             className="flex items-start gap-3 p-3 rounded-lg border hover:bg-muted/50 transition-colors"
           >
-            <div className="text-2xl" role="img" aria-label={event.type}>
+            <div className="shrink-0 mt-0.5" role="img" aria-label={event.type}>
               {getEventIcon(event.type)}
             </div>
             <div className="flex-1 min-w-0">

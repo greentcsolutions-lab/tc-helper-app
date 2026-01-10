@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Checkbox } from '@/components/ui/checkbox';
+import { PartyPopper } from 'lucide-react';
 
 // Define the onboarding fields we care about
 const ONBOARDING_FIELDS = [
@@ -382,7 +383,9 @@ export default function ProgressiveOnboardingModal() {
       >
         {showCelebration ? (
           <div className="text-center space-y-6 py-12 animate-fade-in">
-            <div className="text-6xl">🎉</div>
+            <div className="flex justify-center">
+              <PartyPopper className="h-16 w-16 text-primary" />
+            </div>
             <h2 className="text-3xl font-bold text-foreground">All done!</h2>
             <p className="text-muted-foreground">Thanks for helping us serve you better!</p>
           </div>
