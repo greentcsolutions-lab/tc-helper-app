@@ -58,6 +58,7 @@ export default async function TasksPage() {
       id: true,
       fileName: true,
       propertyAddress: true,
+      transactionType: true,
       effectiveDate: true,
       closingDate: true,
     },

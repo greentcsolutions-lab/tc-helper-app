@@ -210,6 +210,7 @@ function TemplateEditor({ template, onSave, onCancel }: TemplateEditorProps) {
   const [name, setName] = useState(template?.name || "");
   const [description, setDescription] = useState(template?.description || "");
   const [fileType, setFileType] = useState(template?.fileType || FILE_TYPES.ESCROW);
+  const [isDefaultForNewFiles, setIsDefaultForNewFiles] = useState(template?.isDefaultForNewFiles || false);
   const [tasks, setTasks] = useState<TemplateTask[]>(template?.tasks || []);
 
   const handleAddTask = () => {
@@ -280,6 +281,7 @@ function TemplateEditor({ template, onSave, onCancel }: TemplateEditorProps) {
           name,
           description: description || null,
           fileType,
+          isDefaultForNewFiles,
           tasks,
         }),
       });
@@ -340,6 +342,25 @@ function TemplateEditor({ template, onSave, onCancel }: TemplateEditorProps) {
               <SelectItem value={FILE_TYPES.LISTING}>Listing</SelectItem>
             </SelectContent>
           </Select>
+        </div>
+
+        <div className="flex items-center space-x-2 rounded-lg border p-4">
+          <Checkbox
+            id="isDefaultForNewFiles"
+            checked={isDefaultForNewFiles}
+            onCheckedChange={(checked) => setIsDefaultForNewFiles(checked as boolean)}
+          />
+          <div className="flex-1">
+            <label
+              htmlFor="isDefaultForNewFiles"
+              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+            >
+              Auto-generate on new files
+            </label>
+            <p className="text-sm text-muted-foreground mt-1">
+              Automatically create tasks from this template when a new file is uploaded
+            </p>
+          </div>
         </div>
 
         {/* Tasks */}
