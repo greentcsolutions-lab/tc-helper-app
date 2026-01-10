@@ -214,6 +214,58 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
     setSearchQuery(e.target.value);
   }, []);
 
+  // Define persistTaskColumn BEFORE handleDragEnd (to avoid temporal dead zone error)
+  const persistTaskColumn = useCallback(async (
+    taskId: string,
+    newColumnId: string,
+    fallbackColumnId: string
+  ) => {
+    // Persist to database (UI already updated by dragOver)
+    console.log('Persisting task:', { taskId, newColumnId, fallbackColumnId });
+
+    try {
+      const response = await fetch(`/api/tasks/${taskId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          columnId: newColumnId,
+          status: newColumnId,
+        }),
+      });
+
+      console.log('API response status:', response.status);
+
+      if (!response.ok) {
+        // Rollback to original column on error
+        console.error('API call failed, rolling back to:', fallbackColumnId);
+        setTasks((prev) =>
+          prev.map((t) =>
+            t.id === taskId ? { ...t, columnId: fallbackColumnId, status: fallbackColumnId } : t
+          )
+        );
+        const error = await response.json();
+        console.error('Failed to persist task column:', error);
+        return;
+      }
+
+      // Success - UI already updated by dragOver, just log confirmation
+      const { task: updatedTask } = await response.json();
+      console.log('✅ Server confirmed task update. columnId:', updatedTask.columnId, 'status:', updatedTask.status);
+
+      // Don't update state here - dragOver already did it and we don't want to trigger re-render
+      // The task should stay in the position dragOver put it in
+    } catch (error) {
+      // Rollback on error
+      console.error('Exception during persist, rolling back:', error);
+      setTasks((prev) =>
+        prev.map((t) =>
+          t.id === taskId ? { ...t, columnId: fallbackColumnId, status: fallbackColumnId } : t
+        )
+      );
+      console.error('Failed to persist task column:', error);
+    }
+  }, []);
+
   const handleDragStart = useCallback((event: DragStartEvent) => {
     const { active } = event;
     const task = tasks.find((t) => t.id === active.id);
@@ -379,58 +431,6 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
       // Rollback already happened above
     }
   }, [tasks]);
-
-  const persistTaskColumn = useCallback(async (
-    taskId: string,
-    newColumnId: string,
-    fallbackColumnId: string
-  ) => {
-    // Persist to database (UI already updated by dragOver)
-    console.log('Persisting task:', { taskId, newColumnId, fallbackColumnId });
-
-    try {
-      const response = await fetch(`/api/tasks/${taskId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          columnId: newColumnId,
-          status: newColumnId,
-        }),
-      });
-
-      console.log('API response status:', response.status);
-
-      if (!response.ok) {
-        // Rollback to original column on error
-        console.error('API call failed, rolling back to:', fallbackColumnId);
-        setTasks((prev) =>
-          prev.map((t) =>
-            t.id === taskId ? { ...t, columnId: fallbackColumnId, status: fallbackColumnId } : t
-          )
-        );
-        const error = await response.json();
-        console.error('Failed to persist task column:', error);
-        return;
-      }
-
-      // Success - UI already updated by dragOver, just log confirmation
-      const { task: updatedTask } = await response.json();
-      console.log('✅ Server confirmed task update. columnId:', updatedTask.columnId, 'status:', updatedTask.status);
-
-      // Don't update state here - dragOver already did it and we don't want to trigger re-render
-      // The task should stay in the position dragOver put it in
-    } catch (error) {
-      // Rollback on error
-      console.error('Exception during persist, rolling back:', error);
-      setTasks((prev) =>
-        prev.map((t) =>
-          t.id === taskId ? { ...t, columnId: fallbackColumnId, status: fallbackColumnId } : t
-        )
-      );
-      console.error('Failed to persist task column:', error);
-    }
-  }, []);
-
 
   const toggleColumnVisibility = useCallback((columnId: string) => {
     setColumnVisibility((prev) => ({
