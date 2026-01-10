@@ -228,7 +228,7 @@ model UserTaskTemplate {
   fileType                String    @default("escrow") // "listing" or "escrow" - which transaction type this template applies to
 
   // Task Collection (JSON array of task definitions)
-  // Each task: { title: string, description?: string, dueDateType: 'days_after_acceptance' | 'days_from_close', dueDateValue: number }
+  // Each task: { title: string, description?: string, taskTypes: string[], dueDateType: 'days_after_acceptance' | 'days_from_close', dueDateValue: number }
   tasks                   Json      @default("[]")
 
   createdAt               DateTime  @default(now())
