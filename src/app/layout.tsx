@@ -12,6 +12,7 @@ import TopLoader from "@/components/ui/TopLoader";
 import ModernSidebar from "@/components/layout/ModernSidebar";
 import ModernHeader from "@/components/layout/ModernHeader";
 import ProgressiveOnboardingModal from "@/components/ProgressiveOnboardingModal";
+import { TestingBanner } from "@/components/layout/TestingBanner";
 
 import { currentUser } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
@@ -46,6 +47,7 @@ export default async function RootLayout({
           <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
             <TopLoader />
             <ProgressiveOnboardingModal />
+            <TestingBanner />
 
             {user ? (
               <div className="relative min-h-screen">
