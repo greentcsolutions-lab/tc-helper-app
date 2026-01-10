@@ -7,7 +7,7 @@ import { getTokensFromCode } from '@/lib/google-calendar/client';
 import { initializeCalendars } from '@/lib/google-calendar/calendar-init';
 import { setupWebhook } from '@/lib/google-calendar/webhook';
 import { performInitialSync } from '@/lib/google-calendar/sync';
-import prisma from '@/lib/prisma';
+import { db as prisma } from '@/lib/prisma';
 
 export async function GET(request: NextRequest) {
   try {

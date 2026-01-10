@@ -3,7 +3,7 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import { getGoogleCalendarClient } from './client';
-import prisma from '@/lib/prisma';
+import { db as prisma } from '@/lib/prisma';
 
 /**
  * Sets up a webhook (push notification channel) for a user's calendar

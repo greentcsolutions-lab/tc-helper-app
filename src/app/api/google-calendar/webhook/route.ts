@@ -3,7 +3,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { syncCalendarToApp } from '@/lib/google-calendar/calendar-to-app';
-import prisma from '@/lib/prisma';
+import { db as prisma } from '@/lib/prisma';
 
 export async function POST(request: NextRequest) {
   try {

@@ -1,7 +1,7 @@
 // src/lib/google-calendar/property-matcher.ts
 // Fuzzy matching of property addresses in calendar events
 
-import prisma from '@/lib/prisma';
+import { db as prisma } from '@/lib/prisma';
 import { PropertyMatch } from '@/types/calendar';
 
 /**
