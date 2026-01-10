@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { CheckCircle2, Sparkles, Zap, Shield, Clock, Users, Award } from "lucide-react";
+import { CheckCircle2, Sparkles, Zap, Shield, Clock, Users, Award, Heart } from "lucide-react";
 import { SignUpButton, SignedOut } from "@clerk/nextjs";
 import Link from "next/link";
 
@@ -118,8 +118,8 @@ export default function Home() {
       {/* Footer */}
       <footer className="py-12 border-t">
         <div className="max-w-6xl mx-auto px-4 text-center">
-          <p className="text-sm text-muted-foreground mb-3">
-            © 2025 TC Helper App. Built with ❤️ in Missouri.
+          <p className="text-sm text-muted-foreground mb-3 flex items-center justify-center gap-1">
+            © 2025 TC Helper App. Built with <Heart className="h-3.5 w-3.5 text-red-500 fill-red-500" /> in Missouri.
           </p>
           <Link
             href="/privacy"

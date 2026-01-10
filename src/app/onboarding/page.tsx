@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Checkbox } from '@/components/ui/checkbox';
+import { PartyPopper, AlertTriangle } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 const usStates = [
@@ -260,7 +261,9 @@ export default function OnboardingPage() {
     if (showCelebration || actualStep === 'done') {
       return (
         <div className="text-center space-y-6 animate-fade-in">
-          <div className="text-6xl animate-bounce">🎉</div>
+          <div className="flex justify-center animate-bounce">
+            <PartyPopper className="h-16 w-16 text-primary" />
+          </div>
           <h2 className="text-2xl font-bold text-foreground">Welcome to TC Helper!</h2>
           <p className="text-muted-foreground">Getting your workspace ready...</p>
           <div className="flex justify-center">
@@ -330,9 +333,12 @@ export default function OnboardingPage() {
             </div>
             {showPhoneWarning && (
               <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4 animate-fade-in">
-                <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                  ⚠️ Without a phone number, you may not be able to access certain features like SMS notifications.
-                </p>
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="h-5 w-5 text-yellow-600 dark:text-yellow-400 shrink-0 mt-0.5" />
+                  <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                    Without a phone number, you may not be able to access certain features like SMS notifications.
+                  </p>
+                </div>
               </div>
             )}
             <div className="flex gap-2">
