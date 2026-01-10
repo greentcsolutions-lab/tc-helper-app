@@ -76,7 +76,7 @@ export function Dropzone({
                 Drop your PDF here
               </p>
               <p className="mt-2 text-sm text-muted-foreground">
-                California RPA packets only • Max 25 MB
+                Real estate documents • Max 25 MB
               </p>
             </>
           )}

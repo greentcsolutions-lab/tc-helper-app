@@ -136,7 +136,7 @@ Your response must validate against the schema. Respond with JSON only.`;
 
       if (!res.ok) {
         const text = await res.text().catch(() => "");
-        lastError = new Error(`Grok API error ${res.status}: ${text}`);
+        lastError = new Error(`AI API error ${res.status}: ${text}`);
         if (res.status >= 500 || res.status === 429) {
           if (attempt < maxRetries) {
             await new Promise((r) => setTimeout(r, 1000 * attempt));
@@ -161,7 +161,7 @@ Your response must validate against the schema. Respond with JSON only.`;
       // Extract content from OpenAI-compatible chat completion format
       if (!responseJson.choices?.[0]?.message?.content) {
         console.error("[grokClassify] Invalid response structure. Top-level keys:", Object.keys(responseJson));
-        throw new Error("Invalid Grok response structure: missing choices[0].message.content");
+        throw new Error("Invalid AI response structure: missing choices[0].message.content");
       }
 
       const jsonText = responseJson.choices[0].message.content.trim();
@@ -182,7 +182,7 @@ Your response must validate against the schema. Respond with JSON only.`;
         });
       } catch (e) {
         console.error("[grokClassify] Failed to parse JSON. First 1000 chars:", jsonText.substring(0, 1000));
-        throw new Error("Invalid JSON in Grok response content");
+        throw new Error("Invalid JSON in AI response content");
       }
 
       // Basic structural checks with proper narrowing

@@ -99,7 +99,7 @@ export async function GET(
         logSuccess("CLASSIFY:4", `Heuristic classification complete – ${detectedPages.length} pages labeled`);
 
         logStep("CLASSIFY:4.5", "Running Grok text classifier for page-level labels...");
-        emit(controller, { type: "progress", phase: "classify", message: "Running page classifier (grok text model)..." });
+        emit(controller, { type: "progress", phase: "classify", message: "Running page classifier (AI technology)..." });
 
         // Grok classification is REQUIRED - do not fall back to heuristics
         const grokResult = await callGrokTextClassify(
@@ -108,18 +108,18 @@ export async function GET(
         );
 
         if (!grokResult.valid) {
-          const errorMsg = `Grok classifier failed: ${grokResult.errors?.join(", ") || "Unknown error"}`;
+          const errorMsg = `AI classifier failed: ${grokResult.errors?.join(", ") || "Unknown error"}`;
           logError("CLASSIFY:4.5", errorMsg);
           throw new Error(errorMsg);
         }
 
         if (!grokResult.classification || !Array.isArray(grokResult.classification.pages)) {
-          logError("CLASSIFY:4.5", "Grok classifier returned invalid structure");
-          throw new Error("Grok classifier returned invalid structure");
+          logError("CLASSIFY:4.5", "AI classifier returned invalid structure");
+          throw new Error("AI classifier returned invalid structure");
         }
 
         if (grokResult.classification.pageCount !== detectedPageCount) {
-          const errorMsg = `Grok page count mismatch: expected ${detectedPageCount}, got ${grokResult.classification.pageCount}`;
+          const errorMsg = `AI classifier page count mismatch: expected ${detectedPageCount}, got ${grokResult.classification.pageCount}`;
           logError("CLASSIFY:4.5", errorMsg);
           throw new Error(errorMsg);
         }
@@ -130,7 +130,7 @@ export async function GET(
         emit(controller, {
           type: "progress",
           phase: "classify",
-          message: "Grok classifier returned valid labels, merging with heuristics",
+          message: "AI classifier returned valid labels, merging with heuristics",
         });
 
         // Merge: prefer LLM labels when present, otherwise fall back to heuristic
