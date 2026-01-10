@@ -17,13 +17,16 @@ export interface TimelineEvent {
 }
 
 /**
- * Parses a date string in MM/DD/YYYY format or ISO format
+ * Parses a date string in MM/DD/YYYY format, ISO format, or relative days format
  */
-function parseDate(dateStr: string | number | undefined): Date | null {
+function parseDate(dateStr: string | number | undefined, acceptanceDate?: Date): Date | null {
   if (!dateStr) return null;
 
-  // If it's a number of days, return null (needs anchor date)
-  if (typeof dateStr === 'number') return null;
+  // If it's a number of days, calculate from acceptance date
+  if (typeof dateStr === 'number') {
+    if (!acceptanceDate) return null;
+    return addDays(acceptanceDate, dateStr);
+  }
 
   // Try MM/DD/YYYY format (common in California contracts)
   const mmddyyyyRegex = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
@@ -38,10 +41,23 @@ function parseDate(dateStr: string | number | undefined): Date | null {
   // Try ISO format
   try {
     const date = parseISO(dateStr);
-    return isValid(date) ? date : null;
+    if (isValid(date)) return date;
   } catch {
-    return null;
+    // Continue to next attempt
   }
+
+  // Try to extract number of days from string like "3 days" or "3"
+  if (acceptanceDate) {
+    const daysMatch = dateStr.match(/^(\d+)\s*(?:days?)?$/i);
+    if (daysMatch) {
+      const days = parseInt(daysMatch[1], 10);
+      if (!isNaN(days)) {
+        return addDays(acceptanceDate, days);
+      }
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -103,7 +119,7 @@ export function extractTimelineEvents(parse: any): TimelineEvent[] {
   }
 
   // 2. Initial Deposit Due
-  const depositDue = parseDate(parse.initialDepositDueDate);
+  const depositDue = parseDate(parse.initialDepositDueDate, acceptanceDate || undefined);
   if (depositDue) {
     events.push({
       id: `${parseId}-deposit`,
@@ -119,7 +135,7 @@ export function extractTimelineEvents(parse: any): TimelineEvent[] {
   }
 
   // 3. Seller Delivery of Disclosures
-  const sellerDisclosuresDate = parseDate(parse.sellerDeliveryOfDisclosuresDate);
+  const sellerDisclosuresDate = parseDate(parse.sellerDeliveryOfDisclosuresDate, acceptanceDate || undefined);
   if (sellerDisclosuresDate) {
     events.push({
       id: `${parseId}-seller-disclosures`,
@@ -194,8 +210,8 @@ export function extractTimelineEvents(parse: any): TimelineEvent[] {
     // Days after acceptance
     closeDate = calculateContingencyDate(acceptanceDate, parse.closingDate);
   } else if (typeof parse.closingDate === 'string') {
-    // Specific date
-    closeDate = parseDate(parse.closingDate);
+    // Specific date or relative days format
+    closeDate = parseDate(parse.closingDate, acceptanceDate || undefined);
   }
 
   if (closeDate) {
