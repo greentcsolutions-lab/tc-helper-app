@@ -18,6 +18,7 @@ import {
   Menu,
   X,
   Calendar,
+  Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -29,6 +30,7 @@ const navItems = [
   { name: "Transactions", href: "/transactions", icon: FileText },
   { name: "Listings", href: "#", icon: Building2, soon: true },
   { name: "Tasks", href: "/tasks", icon: CheckSquare },
+  { name: "Teams", href: "/teams", icon: Users, soon: true },
   { name: "Email", href: "#", icon: Mail, soon: true },
   { name: "Settings", href: "/settings", icon: Settings },
   { name: "Billing", href: "/dashboard/billing", icon: CreditCard },

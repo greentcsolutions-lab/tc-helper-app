@@ -2,21 +2,23 @@
 "use client";
 
 import { useState } from "react";
-import { User, FileText, CreditCard, SlidersHorizontal, Calendar } from "lucide-react";
+import { User, FileText, CreditCard, SlidersHorizontal, Calendar, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import ProfileSettings from "@/components/settings/ProfileSettings";
 import TaskTemplatesSettings from "@/components/settings/TaskTemplatesSettings";
 import BillingSettings from "@/components/settings/BillingSettings";
 import PreferencesSettings from "@/components/settings/PreferencesSettings";
 import CalendarSyncSettings from "@/components/settings/CalendarSyncSettings";
+import TeamSettings from "@/components/settings/TeamSettings";
 
-type SettingsSection = "profile" | "templates" | "billing" | "calendar" | "preferences";
+type SettingsSection = "profile" | "templates" | "billing" | "calendar" | "team" | "preferences";
 
 const settingsSections = [
   { id: "profile" as SettingsSection, name: "Profile", icon: User },
   { id: "templates" as SettingsSection, name: "Task Templates", icon: FileText },
   { id: "billing" as SettingsSection, name: "Billing & Plan", icon: CreditCard },
   { id: "calendar" as SettingsSection, name: "Calendar Sync", icon: Calendar },
+  { id: "team" as SettingsSection, name: "Team", icon: Users },
   { id: "preferences" as SettingsSection, name: "Preferences", icon: SlidersHorizontal },
 ];
 
@@ -62,6 +64,7 @@ export default function SettingsPage() {
           {activeSection === "templates" && <TaskTemplatesSettings />}
           {activeSection === "billing" && <BillingSettings />}
           {activeSection === "calendar" && <CalendarSyncSettings />}
+          {activeSection === "team" && <TeamSettings />}
           {activeSection === "preferences" && <PreferencesSettings />}
         </main>
       </div>

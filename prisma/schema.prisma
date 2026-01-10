@@ -53,6 +53,7 @@ model User {
   taskTemplates        UserTaskTemplate[]
   calendarSettings     CalendarSettings?
   calendarEvents       CalendarEvent[]
+  teamMembers          TeamMember[]
 
   @@map("users")
 }
@@ -71,6 +72,10 @@ model Parse {
   id                   String    @id @default(cuid())
   userId               String
   user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Team Support (optional - transactions can belong to individual or team)
+  teamId               String?
+  team                 Team?     @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
   fileName             String
   state                String    @default("Unknown")
@@ -184,6 +189,15 @@ model Task {
   parseId              String?   // Null for user-created tasks not tied to a transaction
   parse                Parse?    @relation(fields: [parseId], references: [id], onDelete: Cascade)
 
+  // Team Support (optional - tasks can belong to individual or team)
+  teamId               String?
+  team                 Team?     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  // Task Assignment (TEAMS plan feature)
+  assignedToId         String?   // TeamMember ID - who is responsible for this task
+  assignedTo           TeamMember? @relation("TaskAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  assignedToRole       String?   // For 3rd party assignments (e.g., "Broker", "Escrow Officer") - not actual team members
+
   // Task Classification
   taskTypes            String[]  // ['timeline', 'broker', 'escrow', 'lender'] - can have multiple categories
   timelineEventId      String?   // For timeline tasks, references the timeline event ID (e.g., "parseId-deposit")
@@ -229,6 +243,10 @@ model UserTaskTemplate {
   id                      String    @id @default(cuid())
   userId                  String
   user                    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Team Support (optional - templates can be shared with team)
+  teamId                  String?
+  team                    Team?     @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
   // Template Details
   name                    String    // Template name
@@ -318,4 +336,68 @@ model CalendarEvent {
   @@index([userId, start])
   @@index([googleEventId])
   @@map("calendar_events")
+}
+
+// ============================================================================
+// TEAMS COLLABORATION SYSTEM
+// ============================================================================
+
+model Team {
+  id                   String    @id @default(cuid())
+  name                 String
+  clerkOrgId           String?   @unique // Clerk organization ID for team management
+
+  // Plan & Subscription
+  planType             String    @default("TEAMS") // "TEAMS" plan type
+  maxMembers           Int       @default(6)      // 5 members + 1 owner (configurable)
+
+  // Shared Usage & Quotas (team-level limits)
+  quota                Int       @default(10)     // Shared concurrent transactions for team
+  credits              Int       @default(10)     // Shared AI parse credits for team
+  parseLimit           Int       @default(10)     // Monthly parse limit for team
+  parseCount           Int       @default(0)      // Current month's parse count
+  parseResetDate       DateTime? @default(now())  // When to reset parseCount
+
+  // Billing (team leader responsible)
+  stripeCustomerId     String?   // Whop membership ID for team
+  stripeSubscriptionId String?   // Whop product ID for team
+  priceId              String?   // Whop plan variant
+  currentPeriodEnd     DateTime? // Subscription period end
+
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  members              TeamMember[]
+  parses               Parse[]
+  tasks                Task[]
+  templates            UserTaskTemplate[]
+
+  @@index([clerkOrgId])
+  @@map("teams")
+}
+
+model TeamMember {
+  id                   String    @id @default(cuid())
+  teamId               String
+  team                 Team      @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  userId               String
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  clerkUserId          String    // Clerk user ID for sync
+  role                 String    // "owner" (admin/team leader) or "member" (regular team member)
+
+  // Member Info
+  email                String
+  name                 String?
+
+  joinedAt             DateTime  @default(now())
+
+  assignedTasks        Task[]    @relation("TaskAssignee")
+
+  @@unique([teamId, userId])
+  @@index([teamId])
+  @@index([userId])
+  @@index([clerkUserId])
+  @@map("team_members")
 }
