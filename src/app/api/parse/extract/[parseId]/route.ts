@@ -85,6 +85,13 @@ export async function POST(
       timelineEvents: [],
     });
 
+    // Debug logging for timeline dates
+    console.log('[extract] Timeline dates being saved:');
+    console.log('  effectiveDate:', mappedFields.effectiveDate);
+    console.log('  initialDepositDueDate:', mappedFields.initialDepositDueDate);
+    console.log('  sellerDeliveryOfDisclosuresDate:', mappedFields.sellerDeliveryOfDisclosuresDate);
+    console.log('  closingDate:', mappedFields.closingDate);
+
     const finalStatus = extractionResult.needsReview ? "NEEDS_REVIEW" : "COMPLETED";
 
     const extractionDetailsJson = mappedFields.extractionDetails
