@@ -35,7 +35,8 @@ import TaskCard from "./TaskCard";
 import TaskOverview from "./TaskOverview";
 import NewTaskDialog from "./NewTaskDialog";
 import AddFromTemplateDialog from "./AddFromTemplateDialog";
-import { Filter, Search } from "lucide-react";
+import TasksTable from "./TasksTable";
+import { Filter, Search, LayoutGrid, Table as TableIcon } from "lucide-react";
 
 type Parse = {
   id: string;
@@ -96,6 +97,7 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
   const [showOverdueOnly, setShowOverdueOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [isMobile, setIsMobile] = useState(false);
+  const [viewMode, setViewMode] = useState<"cards" | "table">("cards");
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const handleRefresh = () => {
@@ -118,6 +120,19 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
+
+  // Load view mode from localStorage
+  useEffect(() => {
+    const savedViewMode = localStorage.getItem("tasksViewMode");
+    if (savedViewMode === "cards" || savedViewMode === "table") {
+      setViewMode(savedViewMode);
+    }
+  }, []);
+
+  // Save view mode to localStorage when it changes
+  useEffect(() => {
+    localStorage.setItem("tasksViewMode", viewMode);
+  }, [viewMode]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -577,79 +592,132 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
             ))}
           </div>
 
-          {/* Search Bar */}
-          <div className="relative w-full sm:w-80">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              ref={searchInputRef}
-              type="text"
-              placeholder="Search tasks..."
-              value={searchQuery}
-              onChange={handleSearchChange}
-              className="pl-10"
-            />
+          {/* Search Bar and View Toggle */}
+          <div className="flex items-center gap-2">
+            <div className="relative w-full sm:w-80">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                ref={searchInputRef}
+                type="text"
+                placeholder="Search tasks..."
+                value={searchQuery}
+                onChange={handleSearchChange}
+                className="pl-10"
+              />
+            </div>
+            {/* View Mode Toggle */}
+            <div className="flex items-center gap-1 border rounded-md p-1">
+              <Button
+                variant={viewMode === "cards" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setViewMode("cards")}
+                className="h-8 px-3"
+              >
+                <LayoutGrid className="h-4 w-4" />
+              </Button>
+              <Button
+                variant={viewMode === "table" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setViewMode("table")}
+                className="h-8 px-3"
+              >
+                <TableIcon className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </div>
 
-        {/* Task Board */}
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCorners}
-          onDragStart={handleDragStart}
-          onDragOver={handleDragOver}
-          onDragEnd={handleDragEnd}
-        >
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-            {COLUMNS.map((column) => (
-              <div
-                key={column.id}
-                className={`space-y-4 ${
-                  !columnVisibility[column.id] ? "hidden" : ""
-                }`}
-              >
-                {/* Column Header */}
-                <Card className={column.color}>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-lg flex items-center justify-between">
-                      <span>{column.title}</span>
-                      <Badge variant="secondary">{taskCounts[column.id]}</Badge>
-                    </CardTitle>
-                  </CardHeader>
-                </Card>
+        {/* Task Board or Table View */}
+        {viewMode === "table" ? (
+          <TasksTable
+            tasks={tasks.filter((task) => {
+              const status = getTaskStatus(task);
 
-                {/* Column Content */}
-                <SortableContext
-                  items={tasksByColumn[column.id].map((t) => t.id)}
-                  strategy={verticalListSortingStrategy}
+              // Filter by overdue if that filter is active
+              if (showOverdueOnly && status !== 'overdue') {
+                return false;
+              }
+
+              // Filter by search query (searches across multiple fields)
+              if (searchQuery.trim()) {
+                const query = searchQuery.toLowerCase();
+                const searchableFields = [
+                  task.title?.toLowerCase() || '',
+                  task.description?.toLowerCase() || '',
+                  task.propertyAddress?.toLowerCase() || '',
+                  ...(task.taskTypes?.map((t: string) => t.toLowerCase()) || []),
+                ];
+
+                const matches = searchableFields.some((field) => field.includes(query));
+                if (!matches) {
+                  return false;
+                }
+              }
+
+              return true;
+            })}
+            onUpdateTaskStatus={updateTaskColumn}
+          />
+        ) : (
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCorners}
+            onDragStart={handleDragStart}
+            onDragOver={handleDragOver}
+            onDragEnd={handleDragEnd}
+          >
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+              {COLUMNS.map((column) => (
+                <div
+                  key={column.id}
+                  className={`space-y-4 ${
+                    !columnVisibility[column.id] ? "hidden" : ""
+                  }`}
                 >
-                  <DroppableColumn id={column.id}>
-                    {tasksByColumn[column.id].map((task) => {
-                      const columnIndex = COLUMNS.findIndex((col) => col.id === column.id);
-                      return (
-                        <TaskCard
-                          key={task.id}
-                          task={task}
-                          onShiftLeft={columnIndex > 0 ? () => shiftTask(task.id, 'left') : undefined}
-                          onShiftRight={columnIndex < COLUMNS.length - 1 ? () => shiftTask(task.id, 'right') : undefined}
-                        />
-                      );
-                    })}
-                    {tasksByColumn[column.id].length === 0 && (
-                      <div className="text-center py-8 text-sm text-muted-foreground">
-                        No tasks
-                      </div>
-                    )}
-                  </DroppableColumn>
-                </SortableContext>
-              </div>
-            ))}
-          </div>
+                  {/* Column Header */}
+                  <Card className={column.color}>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-lg flex items-center justify-between">
+                        <span>{column.title}</span>
+                        <Badge variant="secondary">{taskCounts[column.id]}</Badge>
+                      </CardTitle>
+                    </CardHeader>
+                  </Card>
 
-          {/* Drag Overlay */}
-          <DragOverlay dropAnimation={null}>
-            {activeTask && <TaskCard task={activeTask} />}
-          </DragOverlay>
-        </DndContext>
+                  {/* Column Content */}
+                  <SortableContext
+                    items={tasksByColumn[column.id].map((t) => t.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <DroppableColumn id={column.id}>
+                      {tasksByColumn[column.id].map((task) => {
+                        const columnIndex = COLUMNS.findIndex((col) => col.id === column.id);
+                        return (
+                          <TaskCard
+                            key={task.id}
+                            task={task}
+                            onShiftLeft={columnIndex > 0 ? () => shiftTask(task.id, 'left') : undefined}
+                            onShiftRight={columnIndex < COLUMNS.length - 1 ? () => shiftTask(task.id, 'right') : undefined}
+                          />
+                        );
+                      })}
+                      {tasksByColumn[column.id].length === 0 && (
+                        <div className="text-center py-8 text-sm text-muted-foreground">
+                          No tasks
+                        </div>
+                      )}
+                    </DroppableColumn>
+                  </SortableContext>
+                </div>
+              ))}
+            </div>
+
+            {/* Drag Overlay */}
+            <DragOverlay dropAnimation={null}>
+              {activeTask && <TaskCard task={activeTask} />}
+            </DragOverlay>
+          </DndContext>
+        )}
       </div>
 
       {/* Right Sidebar */}
@@ -674,6 +742,8 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
     handleSearchChange,
     toggleColumnVisibility,
     shiftTask,
+    viewMode,
+    updateTaskColumn,
   ]);
 
   // Conditionally render only one layout to avoid duplicate DOM elements

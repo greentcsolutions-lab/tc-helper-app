@@ -1,0 +1,234 @@
+// src/components/tasks/TasksTable.tsx
+// Table view component for tasks with sortable columns
+// Version: 1.0.0 01/10/2026
+
+"use client";
+
+import { useState, useMemo } from "react";
+import { format } from "date-fns";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { TASK_STATUS, TASK_TYPES, getTaskStatus, getDaysUntilDue, formatDaysUntilDue } from "@/types/task";
+import { ArrowUp, ArrowDown, AlertTriangle } from "lucide-react";
+import { toast } from "sonner";
+
+type Task = any; // Use Prisma-generated type
+
+type SortField = "title" | "dueDate" | "propertyAddress";
+type SortDirection = "asc" | "desc";
+
+// Task type configuration for colors and labels
+const TASK_TYPE_CONFIG: Record<string, { label: string; color: string }> = {
+  [TASK_TYPES.TIMELINE]: {
+    label: 'Timeline',
+    color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+  },
+  [TASK_TYPES.BROKER]: {
+    label: 'Broker',
+    color: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
+  },
+  [TASK_TYPES.ESCROW]: {
+    label: 'Escrow',
+    color: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
+  },
+  [TASK_TYPES.LENDER]: {
+    label: 'Lender',
+    color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+  },
+};
+
+interface TasksTableProps {
+  tasks: Task[];
+  onUpdateTaskStatus: (taskId: string, newStatus: string) => Promise<void>;
+}
+
+export default function TasksTable({ tasks, onUpdateTaskStatus }: TasksTableProps) {
+  const [sortField, setSortField] = useState<SortField>("dueDate");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+
+  // Filter to only show not_started and pending tasks (default behavior)
+  const filteredTasks = useMemo(() => {
+    return tasks.filter((task) => {
+      return task.status === TASK_STATUS.NOT_STARTED || task.status === TASK_STATUS.PENDING;
+    });
+  }, [tasks]);
+
+  // Sort tasks based on current sort field and direction
+  const sortedTasks = useMemo(() => {
+    const sorted = [...filteredTasks];
+
+    sorted.sort((a, b) => {
+      let comparison = 0;
+
+      switch (sortField) {
+        case "title":
+          comparison = (a.title || "").localeCompare(b.title || "");
+          break;
+        case "dueDate":
+          comparison = new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+          break;
+        case "propertyAddress":
+          comparison = (a.propertyAddress || "").localeCompare(b.propertyAddress || "");
+          break;
+      }
+
+      return sortDirection === "asc" ? comparison : -comparison;
+    });
+
+    return sorted;
+  }, [filteredTasks, sortField, sortDirection]);
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      // Toggle direction if clicking the same field
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    } else {
+      // New field, default to ascending
+      setSortField(field);
+      setSortDirection("asc");
+    }
+  };
+
+  const handleStatusChange = async (taskId: string, newStatus: string) => {
+    try {
+      await onUpdateTaskStatus(taskId, newStatus);
+
+      if (newStatus === TASK_STATUS.COMPLETED) {
+        toast.success("Task marked as completed");
+      } else {
+        toast.success("Task status updated");
+      }
+    } catch (error) {
+      toast.error("Failed to update task status");
+      console.error("Failed to update task status:", error);
+    }
+  };
+
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sortField !== field) return null;
+    return sortDirection === "asc" ? (
+      <ArrowUp className="h-4 w-4 inline ml-1" />
+    ) : (
+      <ArrowDown className="h-4 w-4 inline ml-1" />
+    );
+  };
+
+  return (
+    <div className="border rounded-lg">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead
+              className="cursor-pointer hover:bg-muted/50"
+              onClick={() => handleSort("title")}
+            >
+              Task Title <SortIcon field="title" />
+            </TableHead>
+            <TableHead
+              className="cursor-pointer hover:bg-muted/50"
+              onClick={() => handleSort("propertyAddress")}
+            >
+              Property Address <SortIcon field="propertyAddress" />
+            </TableHead>
+            <TableHead>Task Types</TableHead>
+            <TableHead
+              className="cursor-pointer hover:bg-muted/50"
+              onClick={() => handleSort("dueDate")}
+            >
+              Due Date <SortIcon field="dueDate" />
+            </TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Days Until/Overdue</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {sortedTasks.length === 0 ? (
+            <TableRow>
+              <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                No tasks to display
+              </TableCell>
+            </TableRow>
+          ) : (
+            sortedTasks.map((task) => {
+              const taskStatus = getTaskStatus(task);
+              const isOverdue = taskStatus === "overdue";
+              const daysUntil = getDaysUntilDue(task.dueDate);
+              const daysText = formatDaysUntilDue(task.dueDate);
+
+              return (
+                <TableRow key={task.id} className={isOverdue ? "bg-red-50" : ""}>
+                  <TableCell className="font-medium">{task.title}</TableCell>
+                  <TableCell>{task.propertyAddress || "-"}</TableCell>
+                  <TableCell>
+                    <div className="flex flex-wrap gap-1">
+                      {task.taskTypes?.map((type: string) => {
+                        const typeConfig = TASK_TYPE_CONFIG[type];
+                        return (
+                          <Badge
+                            key={type}
+                            variant="outline"
+                            className={`${typeConfig?.color || ""} border-0`}
+                          >
+                            {typeConfig?.label || type}
+                          </Badge>
+                        );
+                      })}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    {format(new Date(task.dueDate), "MMM d, yyyy")}
+                  </TableCell>
+                  <TableCell>
+                    <Select
+                      value={task.status}
+                      onValueChange={(value) => handleStatusChange(task.id, value)}
+                    >
+                      <SelectTrigger className="w-[140px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={TASK_STATUS.NOT_STARTED}>
+                          Not Started
+                        </SelectItem>
+                        <SelectItem value={TASK_STATUS.PENDING}>
+                          Pending
+                        </SelectItem>
+                        <SelectItem value={TASK_STATUS.COMPLETED}>
+                          Completed
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      {isOverdue && (
+                        <AlertTriangle className="h-4 w-4 text-red-500" />
+                      )}
+                      <span className={isOverdue ? "text-red-600 font-semibold" : ""}>
+                        {daysText}
+                      </span>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              );
+            })
+          )}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
