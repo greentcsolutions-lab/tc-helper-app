@@ -11,6 +11,7 @@ import "./calendar.css";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { getAllTimelineEvents, TimelineEvent } from "@/lib/dates/extract-timeline-events";
 import { Calendar as CalendarIcon, AlertCircle, CheckCircle, Clock } from "lucide-react";
 
@@ -115,6 +116,32 @@ export default function TimelineClient({ parses }: TimelineClientProps) {
           </p>
         </div>
       </div>
+
+      {/* Google Calendar Connection Banner */}
+      <Card className="border-dashed bg-muted/50">
+        <CardContent className="pt-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
+                <CalendarIcon className="h-6 w-6 text-primary" />
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-semibold">Connect Google Calendar</h3>
+                  <Badge variant="secondary">Coming Soon</Badge>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Sync your timeline events with Google Calendar for automatic updates
+                </p>
+              </div>
+            </div>
+            <Button disabled variant="outline">
+              <CalendarIcon className="mr-2 h-4 w-4" />
+              Connect Calendar
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-3">
