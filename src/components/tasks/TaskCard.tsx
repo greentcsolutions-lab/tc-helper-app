@@ -73,7 +73,6 @@ export default function TaskCard({ task, onEdit, onShiftLeft, onShiftRight, disa
         className={`${disableDrag ? '' : 'cursor-grab active:cursor-grabbing'} hover:shadow-md transition-shadow ${
           isOverdue ? 'border-red-500 border-2' : ''
         }`}
-        onClick={() => onEdit?.(task)}
       >
         <CardContent className="p-4 space-y-3">
           {/* Task Type Badges - can have multiple */}

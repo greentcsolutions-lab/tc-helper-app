@@ -118,6 +118,78 @@ export default function CategoryTimelineContingencies({
     );
   }
 
+  // === Initial Deposit Due Date (Earnest Money) ===
+  if (data.initialDepositDueDate || isEditing) {
+    let display: string | null = null;
+
+    if (!isEditing) {
+      if (typeof data.initialDepositDueDate === 'number') {
+        // It's days after acceptance
+        const formatted = formatTimelineField(data.initialDepositDueDate, data.effectiveDate, false);
+        if (formatted.displayDate) {
+          const shortDate = toShortYear(formatted.displayDate);
+          display = `${shortDate} (${data.initialDepositDueDate} days after acceptance)`;
+        } else {
+          display = `${data.initialDepositDueDate} days after acceptance`;
+        }
+      } else if (typeof data.initialDepositDueDate === 'string') {
+        // It's a specific date
+        const formatted = formatTimelineField(data.initialDepositDueDate, data.effectiveDate, false);
+        if (formatted.displayDate) {
+          const shortDate = toShortYear(formatted.displayDate);
+          display = `${shortDate} (specified)`;
+        } else {
+          display = formatDate(data.initialDepositDueDate);
+        }
+      }
+    }
+
+    fields.push(
+      createField(
+        "Initial Deposit Due Date",
+        isEditing ? data.initialDepositDueDate ?? '' : display,
+        'date',
+        (val) => onDataChange?.({ ...data, initialDepositDueDate: val })
+      )
+    );
+  }
+
+  // === Seller Delivery of Disclosures Date ===
+  if (data.sellerDeliveryOfDisclosuresDate || isEditing) {
+    let display: string | null = null;
+
+    if (!isEditing) {
+      if (typeof data.sellerDeliveryOfDisclosuresDate === 'number') {
+        // It's days after acceptance
+        const formatted = formatTimelineField(data.sellerDeliveryOfDisclosuresDate, data.effectiveDate, false);
+        if (formatted.displayDate) {
+          const shortDate = toShortYear(formatted.displayDate);
+          display = `${shortDate} (${data.sellerDeliveryOfDisclosuresDate} days after acceptance)`;
+        } else {
+          display = `${data.sellerDeliveryOfDisclosuresDate} days after acceptance`;
+        }
+      } else if (typeof data.sellerDeliveryOfDisclosuresDate === 'string') {
+        // It's a specific date
+        const formatted = formatTimelineField(data.sellerDeliveryOfDisclosuresDate, data.effectiveDate, false);
+        if (formatted.displayDate) {
+          const shortDate = toShortYear(formatted.displayDate);
+          display = `${shortDate} (specified)`;
+        } else {
+          display = formatDate(data.sellerDeliveryOfDisclosuresDate);
+        }
+      }
+    }
+
+    fields.push(
+      createField(
+        "Seller Delivery of Disclosures",
+        isEditing ? data.sellerDeliveryOfDisclosuresDate ?? '' : display,
+        'date',
+        (val) => onDataChange?.({ ...data, sellerDeliveryOfDisclosuresDate: val })
+      )
+    );
+  }
+
   // === Inspection Contingency ===
   if (cont?.inspectionDays != null || isEditing) {
     const display = formatContingencyDisplay(cont?.inspectionDays, "Inspection Contingency");

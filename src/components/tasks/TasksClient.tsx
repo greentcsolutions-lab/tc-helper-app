@@ -5,7 +5,8 @@
 
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import {
   DndContext,
   DragEndEvent,
@@ -25,6 +26,7 @@ import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TASK_STATUS, getTaskStatus } from "@/types/task";
 
@@ -32,12 +34,14 @@ type Task = any; // Use Prisma-generated type
 import TaskCard from "./TaskCard";
 import TaskOverview from "./TaskOverview";
 import NewTaskDialog from "./NewTaskDialog";
-import { Filter } from "lucide-react";
+import AddFromTemplateDialog from "./AddFromTemplateDialog";
+import { Filter, Search } from "lucide-react";
 
 type Parse = {
   id: string;
   fileName: string;
   propertyAddress: string | null;
+  transactionType: string | null;
   effectiveDate: Date | string | null;
   closingDate: Date | string | null;
 };
@@ -70,6 +74,8 @@ function DroppableColumn({ id, children }: { id: string; children: React.ReactNo
 }
 
 export default function TasksClient({ initialTasks, parses }: TasksClientProps) {
+  const router = useRouter();
+
   // Deserialize dates from server-side rendered data
   const [tasks, setTasks] = useState<Task[]>(() =>
     initialTasks.map((task) => ({
@@ -87,7 +93,14 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
     [TASK_STATUS.PENDING]: true,
     [TASK_STATUS.COMPLETED]: true,
   });
+  const [showOverdueOnly, setShowOverdueOnly] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const [isMobile, setIsMobile] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const handleRefresh = () => {
+    router.refresh();
+  };
 
   // Detect screen size changes
   useEffect(() => {
@@ -109,7 +122,7 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        distance: 8,
+        distance: 1, // Minimal distance for buttery smooth touchpad dragging
       },
     }),
     useSensor(TouchSensor, {
@@ -120,7 +133,7 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
     })
   );
 
-  // Group tasks by column
+  // Filter and group tasks by column
   const tasksByColumn = useMemo(() => {
     const grouped: Record<string, Task[]> = {
       [TASK_STATUS.NOT_STARTED]: [],
@@ -128,7 +141,35 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
       [TASK_STATUS.COMPLETED]: [],
     };
 
-    tasks.forEach((task) => {
+    // First, filter tasks based on search query and overdue filter
+    const filteredTasks = tasks.filter((task) => {
+      const status = getTaskStatus(task);
+
+      // Filter by overdue if that filter is active
+      if (showOverdueOnly && status !== 'overdue') {
+        return false;
+      }
+
+      // Filter by search query (searches across multiple fields)
+      if (searchQuery.trim()) {
+        const query = searchQuery.toLowerCase();
+        const searchableFields = [
+          task.title?.toLowerCase() || '',
+          task.description?.toLowerCase() || '',
+          task.propertyAddress?.toLowerCase() || '',
+          ...(task.taskTypes?.map((t: string) => t.toLowerCase()) || []),
+        ];
+
+        const matches = searchableFields.some((field) => field.includes(query));
+        if (!matches) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+
+    filteredTasks.forEach((task) => {
       // Calculate computed status (including overdue)
       const status = getTaskStatus(task);
 
@@ -162,7 +203,7 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
     }
 
     return grouped;
-  }, [tasks]);
+  }, [tasks, showOverdueOnly, searchQuery]);
 
   // Count tasks in each column
   const taskCounts = useMemo(() => {
@@ -173,7 +214,69 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
     };
   }, [tasksByColumn]);
 
-  const handleDragStart = (event: DragStartEvent) => {
+  // Count overdue tasks (all tasks that are overdue, regardless of column)
+  const overdueCount = useMemo(() => {
+    return tasks.filter((task) => getTaskStatus(task) === 'overdue').length;
+  }, [tasks]);
+
+  // Memoized search handler to prevent input from losing focus
+  const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchQuery(e.target.value);
+  }, []);
+
+  // Define persistTaskColumn BEFORE handleDragEnd (to avoid temporal dead zone error)
+  const persistTaskColumn = useCallback(async (
+    taskId: string,
+    newColumnId: string,
+    fallbackColumnId: string
+  ) => {
+    // Persist to database (UI already updated by dragOver)
+    console.log('Persisting task:', { taskId, newColumnId, fallbackColumnId });
+
+    try {
+      const response = await fetch(`/api/tasks/${taskId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          columnId: newColumnId,
+          status: newColumnId,
+        }),
+      });
+
+      console.log('API response status:', response.status);
+
+      if (!response.ok) {
+        // Rollback to original column on error
+        console.error('API call failed, rolling back to:', fallbackColumnId);
+        setTasks((prev) =>
+          prev.map((t) =>
+            t.id === taskId ? { ...t, columnId: fallbackColumnId, status: fallbackColumnId } : t
+          )
+        );
+        const error = await response.json();
+        console.error('Failed to persist task column:', error);
+        return;
+      }
+
+      // Success - UI already updated by dragOver, just log confirmation
+      const { task: updatedTask } = await response.json();
+      console.log('✅ Server confirmed task update. columnId:', updatedTask.columnId, 'status:', updatedTask.status);
+
+      // Don't update state here - dragOver already did it and we don't want to trigger re-render
+      // The task should stay in the position dragOver put it in
+    } catch (error) {
+      // Rollback on error
+      console.error('Exception during persist, rolling back:', error);
+      setTasks((prev) =>
+        prev.map((t) =>
+          t.id === taskId ? { ...t, columnId: fallbackColumnId, status: fallbackColumnId } : t
+        )
+      );
+      console.error('Failed to persist task column:', error);
+    }
+  }, []);
+
+  const handleDragStart = useCallback((event: DragStartEvent) => {
     const { active } = event;
     const task = tasks.find((t) => t.id === active.id);
     if (task) {
@@ -185,45 +288,47 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
       console.log('🎬 DragStart:', { taskId: task.id, status: task.status, columnId: task.columnId, visualColumnId });
       setOriginalColumnId(visualColumnId);
     }
-  };
+  }, [tasks]);
 
-  const handleDragOver = (event: DragOverEvent) => {
+  const handleDragOver = useCallback((event: DragOverEvent) => {
     const { active, over } = event;
     if (!over) return;
 
     const activeId = active.id as string;
     const overId = over.id as string;
 
+    // Find what we're dragging
     const activeTask = tasks.find((t) => t.id === activeId);
     if (!activeTask) return;
 
-    // Check if we're over a column
+    // Determine the target column
+    let targetColumnId: string | null = null;
+
+    // Check if we're over a column droppable
     const overColumn = COLUMNS.find((col) => col.id === overId);
-    if (overColumn && activeTask.columnId !== overColumn.id) {
-      console.log('🔄 DragOver: Moving task to column', { taskId: activeId, from: activeTask.columnId, to: overColumn.id });
-      // Optimistically move task to the new column for visual feedback
-      setTasks((prev) =>
-        prev.map((t) =>
-          t.id === activeId ? { ...t, columnId: overColumn.id, status: overColumn.id } : t
-        )
-      );
-      return;
+    if (overColumn) {
+      targetColumnId = overColumn.id;
+    } else {
+      // Check if we're over another task
+      const overTask = tasks.find((t) => t.id === overId);
+      if (overTask) {
+        targetColumnId = overTask.columnId;
+      }
     }
 
-    // Check if we're over another task
-    const overTask = tasks.find((t) => t.id === overId);
-    if (overTask && activeTask.columnId !== overTask.columnId) {
-      console.log('🔄 DragOver: Moving task to another task\'s column', { taskId: activeId, from: activeTask.columnId, to: overTask.columnId });
-      // Move to the column containing the task we're over
+    // If we found a target column and it's different from current, optimistically move
+    if (targetColumnId && activeTask.columnId !== targetColumnId) {
       setTasks((prev) =>
         prev.map((t) =>
-          t.id === activeId ? { ...t, columnId: overTask.columnId, status: overTask.columnId } : t
+          t.id === activeId
+            ? { ...t, columnId: targetColumnId, status: targetColumnId }
+            : t
         )
       );
     }
-  };
+  }, [tasks]);
 
-  const handleDragEnd = async (event: DragEndEvent) => {
+  const handleDragEnd = useCallback(async (event: DragEndEvent) => {
     const { active, over } = event;
     const taskId = active.id as string;
 
@@ -280,9 +385,9 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
     }
 
     setOriginalColumnId(null);
-  };
+  }, [tasks, originalColumnId, persistTaskColumn]);
 
-  const updateTaskColumn = async (taskId: string, newColumnId: string) => {
+  const updateTaskColumn = useCallback(async (taskId: string, newColumnId: string) => {
     // Optimistic update - update UI immediately
     const previousTasks = tasks;
     setTasks((prev) =>
@@ -335,68 +440,16 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
       console.error('Failed to update task column:', error);
       // Rollback already happened above
     }
-  };
+  }, [tasks]);
 
-  const persistTaskColumn = async (
-    taskId: string,
-    newColumnId: string,
-    fallbackColumnId: string
-  ) => {
-    // Persist to database (UI already updated by dragOver)
-    console.log('Persisting task:', { taskId, newColumnId, fallbackColumnId });
-
-    try {
-      const response = await fetch(`/api/tasks/${taskId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          columnId: newColumnId,
-          status: newColumnId,
-        }),
-      });
-
-      console.log('API response status:', response.status);
-
-      if (!response.ok) {
-        // Rollback to original column on error
-        console.error('API call failed, rolling back to:', fallbackColumnId);
-        setTasks((prev) =>
-          prev.map((t) =>
-            t.id === taskId ? { ...t, columnId: fallbackColumnId, status: fallbackColumnId } : t
-          )
-        );
-        const error = await response.json();
-        console.error('Failed to persist task column:', error);
-        return;
-      }
-
-      // Success - UI already updated by dragOver, just log confirmation
-      const { task: updatedTask } = await response.json();
-      console.log('✅ Server confirmed task update. columnId:', updatedTask.columnId, 'status:', updatedTask.status);
-
-      // Don't update state here - dragOver already did it and we don't want to trigger re-render
-      // The task should stay in the position dragOver put it in
-    } catch (error) {
-      // Rollback on error
-      console.error('Exception during persist, rolling back:', error);
-      setTasks((prev) =>
-        prev.map((t) =>
-          t.id === taskId ? { ...t, columnId: fallbackColumnId, status: fallbackColumnId } : t
-        )
-      );
-      console.error('Failed to persist task column:', error);
-    }
-  };
-
-
-  const toggleColumnVisibility = (columnId: string) => {
+  const toggleColumnVisibility = useCallback((columnId: string) => {
     setColumnVisibility((prev) => ({
       ...prev,
       [columnId]: !prev[columnId as keyof typeof prev],
     }));
-  };
+  }, []);
 
-  const shiftTask = (taskId: string, direction: 'left' | 'right') => {
+  const shiftTask = useCallback((taskId: string, direction: 'left' | 'right') => {
     const task = tasks.find((t) => t.id === taskId);
     if (!task) return;
 
@@ -408,15 +461,18 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
     const newColumnId = COLUMNS[newIndex].id;
     // Don't await - optimistic update handles it
     updateTaskColumn(taskId, newColumnId);
-  };
+  }, [tasks, updateTaskColumn]);
 
-  // Mobile Layout with Tabs
-  const MobileLayout = () => (
+  // Mobile Layout with Tabs (memoized to prevent search input losing focus)
+  const MobileLayout = useMemo(() => (
     <div className="h-full p-4">
       <Tabs defaultValue="board" className="h-full flex flex-col">
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-2xl font-bold">Tasks</h1>
-          <NewTaskDialog parses={parses} />
+          <div className="flex gap-2">
+            <AddFromTemplateDialog parses={parses} onTasksAdded={handleRefresh} />
+            <NewTaskDialog parses={parses} />
+          </div>
         </div>
 
         <TabsList className="grid w-full grid-cols-2 mb-4">
@@ -470,10 +526,10 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
         </TabsContent>
       </Tabs>
     </div>
-  );
+  ), [tasksByColumn, columnVisibility, taskCounts, parses, tasks, shiftTask]);
 
-  // Desktop Layout with Sidebar
-  const DesktopLayout = () => (
+  // Desktop Layout with Sidebar (memoized to prevent search input losing focus)
+  const DesktopLayout = useMemo(() => (
     <div className="flex gap-0.5 h-full">
       {/* Main Content */}
       <div className="flex-1 p-6 space-y-6 overflow-auto">
@@ -485,23 +541,54 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
               Manage your transaction tasks and deadlines
             </p>
           </div>
-          <NewTaskDialog parses={parses} />
+          <div className="flex gap-2">
+            <AddFromTemplateDialog parses={parses} onTasksAdded={handleRefresh} />
+            <NewTaskDialog parses={parses} />
+          </div>
         </div>
 
-        {/* Column Visibility Toggles */}
-        <div className="flex items-center gap-2">
-          <Filter className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm text-muted-foreground mr-2">Show:</span>
-          {COLUMNS.map((column) => (
-            <Badge
-              key={column.id}
-              variant={columnVisibility[column.id] ? "default" : "outline"}
-              className="cursor-pointer"
-              onClick={() => toggleColumnVisibility(column.id)}
-            >
-              {column.title} ({taskCounts[column.id]})
-            </Badge>
-          ))}
+        {/* Filter and Search Bar */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          {/* Column Visibility Toggles */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <Filter className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm text-muted-foreground mr-2">Show:</span>
+
+            {/* Overdue Filter - Only show when there are overdue tasks */}
+            {overdueCount > 0 && (
+              <Badge
+                variant={showOverdueOnly ? "default" : "outline"}
+                className="cursor-pointer bg-red-500 hover:bg-red-600 text-white border-red-500"
+                onClick={() => setShowOverdueOnly(!showOverdueOnly)}
+              >
+                Overdue ({overdueCount})
+              </Badge>
+            )}
+
+            {COLUMNS.map((column) => (
+              <Badge
+                key={column.id}
+                variant={columnVisibility[column.id] ? "default" : "outline"}
+                className="cursor-pointer"
+                onClick={() => toggleColumnVisibility(column.id)}
+              >
+                {column.title} ({taskCounts[column.id]})
+              </Badge>
+            ))}
+          </div>
+
+          {/* Search Bar */}
+          <div className="relative w-full sm:w-80">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              ref={searchInputRef}
+              type="text"
+              placeholder="Search tasks..."
+              value={searchQuery}
+              onChange={handleSearchChange}
+              className="pl-10"
+            />
+          </div>
         </div>
 
         {/* Task Board */}
@@ -570,8 +657,25 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
         <TaskOverview tasks={tasks} />
       </div>
     </div>
-  );
+  ), [
+    tasksByColumn,
+    columnVisibility,
+    taskCounts,
+    parses,
+    tasks,
+    sensors,
+    handleDragStart,
+    handleDragOver,
+    handleDragEnd,
+    activeTask,
+    overdueCount,
+    showOverdueOnly,
+    searchQuery,
+    handleSearchChange,
+    toggleColumnVisibility,
+    shiftTask,
+  ]);
 
   // Conditionally render only one layout to avoid duplicate DOM elements
-  return isMobile ? <MobileLayout /> : <DesktopLayout />;
+  return isMobile ? MobileLayout : DesktopLayout;
 }

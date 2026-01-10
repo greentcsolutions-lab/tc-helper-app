@@ -97,6 +97,8 @@ export function mapExtractionToParseResult({
     earnestMoneyHolder: universal.earnestMoneyDeposit?.holder ?? null,
     closingDate: universal.closeOfEscrowDate || null, // ← Use calculated COE
     effectiveDate: universal.effectiveDate || null,
+    initialDepositDueDate: universal.initialDepositDueDate || null,
+    sellerDeliveryOfDisclosuresDate: universal.sellerDeliveryOfDisclosuresDate || null,
 
     isAllCash: universal.financing?.isAllCash ?? null,
     loanType: universal.financing?.loanType ?? null,

@@ -27,7 +27,7 @@ export async function PATCH(
 
     const { id } = await params;
     const body = await req.json();
-    const { name, description, fileType, tasks } = body;
+    const { name, description, fileType, isDefaultForNewFiles, tasks } = body;
 
     // Verify ownership
     const template = await db.userTaskTemplate.findFirst({
@@ -52,6 +52,7 @@ export async function PATCH(
         name,
         description: description || null,
         fileType,
+        isDefaultForNewFiles: isDefaultForNewFiles ?? false,
         tasks,
       },
     });

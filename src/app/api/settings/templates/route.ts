@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { name, description, fileType, tasks } = body;
+    const { name, description, fileType, isDefaultForNewFiles, tasks } = body;
 
     // Validate input
     if (!name || !fileType || !tasks || !Array.isArray(tasks) || tasks.length === 0) {
@@ -84,6 +84,7 @@ export async function POST(req: NextRequest) {
           name,
           description: description || null,
           fileType,
+          isDefaultForNewFiles: isDefaultForNewFiles || false,
           tasks,
         },
       }),

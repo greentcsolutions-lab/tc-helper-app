@@ -3,7 +3,7 @@
 
 import { calendar_v3 } from 'googleapis';
 import { getGoogleCalendarClient } from './client';
-import prisma from '@/lib/prisma';
+import { db as prisma } from '@/lib/prisma';
 import { CALENDAR_COLORS } from '@/types/calendar';
 
 /**

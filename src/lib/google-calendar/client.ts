@@ -3,7 +3,7 @@
 
 import { google, calendar_v3 } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
-import prisma from '@/lib/prisma';
+import { db as prisma } from '@/lib/prisma';
 
 /**
  * Creates and configures a Google Calendar client for a user

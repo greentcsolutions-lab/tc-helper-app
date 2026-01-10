@@ -7,10 +7,17 @@
  * - Plan management and user updates
  */
 
-// Whop Product IDs
+// Whop Plan IDs - Direct from Whop dashboard
+export const WHOP_PLANS = {
+  BASIC_MONTHLY: 'plan_jiXiD1lGMTEy6',   // $15/month Basic plan
+  BASIC_YEARLY: 'plan_z80DjYcElspeg',    // $150/year Basic plan
+  CREDIT_PACK: 'plan_aNk5dVMU4VTtf',     // $10 for 5 credits
+} as const;
+
+// Legacy naming for backwards compatibility (defaults to monthly)
 export const WHOP_PRODUCTS = {
-  BASIC_PLAN: 'basic-5f-dce8',      // $15/mo or $150/yr
-  CREDIT_PACK: 'credit-refill-53',     // $10 for 5 credits
+  BASIC_PLAN: WHOP_PLANS.BASIC_MONTHLY,
+  CREDIT_PACK: WHOP_PLANS.CREDIT_PACK,
 } as const;
 
 // Plan Types
@@ -78,67 +85,50 @@ export function getWhopWebhookSecret(): string {
 
 /**
  * Create a checkout session for the Basic plan
+ * Uses direct Whop checkout URLs (no API call needed)
  */
 export async function createBasicPlanCheckout(userId: string, email: string): Promise<{ url: string }> {
-  const apiKey = getWhopApiKey();
+  const planId = WHOP_PRODUCTS.BASIC_PLAN; // Defaults to monthly plan
 
-  const response = await fetch('https://api.whop.com/api/v2/checkout/sessions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      product_id: WHOP_PRODUCTS.BASIC_PLAN,
-      customer_email: email,
-      metadata: {
-        userId,
-      },
-      success_url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard/billing?success=true`,
-      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard/billing?canceled=true`,
-    }),
+  console.log('[Whop] Creating checkout URL for Basic plan:', {
+    plan_id: planId,
+    userId,
   });
 
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Failed to create checkout session: ${error}`);
-  }
+  // Build direct checkout URL with metadata
+  const redirectUrl = encodeURIComponent(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard/billing?success=true`);
+  const checkoutUrl = `https://whop.com/checkout/${planId}?redirect_url=${redirectUrl}&d[userId]=${userId}&d[email]=${email}`;
 
-  const data = await response.json();
-  return { url: data.checkout_url };
+  console.log('[Whop] Checkout URL created:', {
+    plan_id: planId,
+    checkout_url: checkoutUrl,
+  });
+
+  return { url: checkoutUrl };
 }
 
 /**
  * Create a checkout session for credit purchase
+ * Uses direct Whop checkout URLs (no API call needed)
  */
 export async function createCreditCheckout(userId: string, email: string): Promise<{ url: string }> {
-  const apiKey = getWhopApiKey();
+  const planId = WHOP_PRODUCTS.CREDIT_PACK;
 
-  const response = await fetch('https://api.whop.com/api/v2/checkout/sessions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      product_id: WHOP_PRODUCTS.CREDIT_PACK,
-      customer_email: email,
-      metadata: {
-        userId,
-        type: 'credit_purchase',
-      },
-      success_url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard/billing?credits=true`,
-      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard/billing?canceled=true`,
-    }),
+  console.log('[Whop] Creating checkout URL for credit pack:', {
+    plan_id: planId,
+    userId,
   });
 
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Failed to create credit checkout session: ${error}`);
-  }
+  // Build direct checkout URL with metadata
+  const redirectUrl = encodeURIComponent(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard/billing?credits=true`);
+  const checkoutUrl = `https://whop.com/checkout/${planId}?redirect_url=${redirectUrl}&d[userId]=${userId}&d[email]=${email}&d[type]=credit_purchase`;
 
-  const data = await response.json();
-  return { url: data.checkout_url };
+  console.log('[Whop] Checkout URL created:', {
+    plan_id: planId,
+    checkout_url: checkoutUrl,
+  });
+
+  return { url: checkoutUrl };
 }
 
 /**

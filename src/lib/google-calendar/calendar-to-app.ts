@@ -3,7 +3,7 @@
 
 import { calendar_v3 } from 'googleapis';
 import { getGoogleCalendarClient } from './client';
-import prisma from '@/lib/prisma';
+import { db as prisma } from '@/lib/prisma';
 import { matchPropertyAddress } from './property-matcher';
 import { inferTaskTypes } from './ai-inference';
 import { TASK_STATUS } from '@/types/task';

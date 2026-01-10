@@ -6,7 +6,7 @@ import { auth } from '@clerk/nextjs/server';
 import { revokeAccess } from '@/lib/google-calendar/client';
 import { stopWebhook } from '@/lib/google-calendar/webhook';
 import { deleteCalendars } from '@/lib/google-calendar/calendar-init';
-import prisma from '@/lib/prisma';
+import { db as prisma } from '@/lib/prisma';
 
 export async function POST(request: NextRequest) {
   try {
