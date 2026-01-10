@@ -92,23 +92,31 @@ export interface Task {
 // TASK TEMPLATE INTERFACE
 // ============================================================================
 
+export const FILE_TYPES = {
+  LISTING: 'listing',
+  ESCROW: 'escrow',
+} as const;
+
+export type FileType = typeof FILE_TYPES[keyof typeof FILE_TYPES];
+
+export interface TemplateTask {
+  title: string;
+  description?: string;
+  dueDateType: 'days_after_acceptance' | 'days_from_close';
+  dueDateValue: number;
+}
+
 export interface UserTaskTemplate {
   id: string;
   userId: string;
 
   // Template Details
-  title: string;
+  name: string;
   description: string | null;
-  taskTypes: TaskType[]; // Can have multiple categories
+  fileType: FileType; // "listing" or "escrow"
 
-  // Default Application Rules
-  isDefaultForAll: boolean;
-  isDefaultForListings: boolean;
-  isDefaultForBuyerSide: boolean;
-
-  // Scheduling Template
-  dueDateType: DueDateType;
-  dueDateValue: number | null;
+  // Task Collection
+  tasks: TemplateTask[];
 
   createdAt: Date;
   updatedAt: Date;
