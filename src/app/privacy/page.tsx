@@ -1,5 +1,6 @@
 // src/app/privacy/page.tsx
 // version 1.2.0 01/09/2026
+
 import Link from "next/link";
 
 export const metadata = {
