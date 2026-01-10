@@ -6,7 +6,8 @@ import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Calendar, CheckCircle2, XCircle, RefreshCw, Loader2, CalendarCheck } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Calendar, CheckCircle2, XCircle, RefreshCw, Loader2, CalendarCheck, Lock } from "lucide-react";
 import { toast } from "sonner";
 
 interface CalendarSettings {
@@ -159,7 +160,30 @@ export default function CalendarSyncSettings() {
   }
 
   return (
-    <Card>
+    <Card className="relative">
+      {/* Coming Soon Overlay */}
+      <div className="absolute inset-0 bg-background/80 backdrop-blur-sm z-10 flex flex-col items-center justify-center rounded-lg">
+        <div className="text-center space-y-3">
+          <div className="flex items-center justify-center">
+            <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
+              <Lock className="h-8 w-8 text-primary" />
+            </div>
+          </div>
+          <div>
+            <Badge variant="secondary" className="text-base px-4 py-1.5">
+              Coming Soon
+            </Badge>
+          </div>
+          <div className="max-w-md px-4">
+            <h3 className="text-lg font-semibold mb-2">Google Calendar Integration</h3>
+            <p className="text-sm text-muted-foreground">
+              We're currently verifying our app with Google to enable Calendar sync.
+              This feature will be available soon!
+            </p>
+          </div>
+        </div>
+      </div>
+
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Calendar className="h-5 w-5" />
