@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
 import { PLAN_CONFIGS } from "@/lib/whop";
+import { ensureAITasksTemplate } from "@/lib/tasks/ai-tasks-template";
 
 export const dynamic = "force-dynamic";
 
@@ -23,9 +24,15 @@ export async function GET() {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
+    // Ensure AI Tasks template exists for this user
+    await ensureAITasksTemplate(user.id);
+
     const templates = await db.userTaskTemplate.findMany({
       where: { userId: user.id },
-      orderBy: { createdAt: "desc" },
+      orderBy: [
+        { isSystemTemplate: "desc" }, // System templates first
+        { createdAt: "desc" },
+      ],
     });
 
     return NextResponse.json(templates);
@@ -56,17 +63,32 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    // Check template limit
+    const body = await req.json();
+    const { name, description, fileType, isDefaultForNewFiles, tasks, isSystemTemplate } = body;
+
+    // Prevent manual creation of system templates
+    if (isSystemTemplate) {
+      return NextResponse.json(
+        { error: "Cannot create system templates manually" },
+        { status: 403 }
+      );
+    }
+
+    // Check template limit (excluding system templates)
+    const userTemplateCount = await db.userTaskTemplate.count({
+      where: {
+        userId: user.id,
+        isSystemTemplate: false,
+      },
+    });
+
     const planConfig = PLAN_CONFIGS[user.planType as 'FREE' | 'BASIC'];
-    if (user.templateCount >= planConfig.templateLimit) {
+    if (userTemplateCount >= planConfig.templateLimit) {
       return NextResponse.json(
         { error: `Template limit reached (${planConfig.templateLimit} templates)` },
         { status: 403 }
       );
     }
-
-    const body = await req.json();
-    const { name, description, fileType, isDefaultForNewFiles, tasks } = body;
 
     // Validate input
     if (!name || !fileType || !tasks || !Array.isArray(tasks) || tasks.length === 0) {

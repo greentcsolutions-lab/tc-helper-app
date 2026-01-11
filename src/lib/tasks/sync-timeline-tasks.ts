@@ -4,6 +4,7 @@
 import { db } from '@/lib/prisma';
 import { extractTimelineEvents, TimelineEvent } from '@/lib/dates/extract-timeline-events';
 import { TASK_TYPES, TASK_STATUS, mapTimelineStatusToTaskStatus } from '@/types/task';
+import { areAITasksEnabled } from '@/lib/tasks/ai-tasks-template';
 
 /**
  * Syncs timeline events from a parse to Task records
@@ -13,6 +14,12 @@ import { TASK_TYPES, TASK_STATUS, mapTimelineStatusToTaskStatus } from '@/types/
  * @param userId - The user ID who owns this parse
  */
 export async function syncTimelineTasks(parseId: string, userId: string): Promise<void> {
+  // Check if AI tasks are enabled for this user
+  const aiTasksEnabled = await areAITasksEnabled(userId);
+  if (!aiTasksEnabled) {
+    // If AI tasks are disabled, don't generate any tasks
+    return;
+  }
   // Fetch the parse with necessary fields
   const parse = await db.parse.findUnique({
     where: { id: parseId },
@@ -167,7 +174,7 @@ async function syncDefaultTasks(parseId: string, userId: string, parse: any): Pr
     const escrowTaskData = {
       userId,
       parseId,
-      taskTypes: [TASK_TYPES.ESCROW],
+      taskTypes: [TASK_TYPES.ESCROW, TASK_TYPES.AI],
       timelineEventId: escrowOpenedEventId,
       title: 'Escrow Opened',
       description: 'Escrow should be opened within 1 business day of acceptance',
@@ -211,7 +218,7 @@ async function syncDefaultTasks(parseId: string, userId: string, parse: any): Pr
     const brokerTaskData = {
       userId,
       parseId,
-      taskTypes: [TASK_TYPES.BROKER],
+      taskTypes: [TASK_TYPES.BROKER, TASK_TYPES.AI],
       timelineEventId: brokerFileEventId,
       title: 'Broker file approved',
       description: 'Broker file should be approved at least 7 days before closing',
@@ -262,7 +269,7 @@ export async function syncAllTimelineTasks(userId: string): Promise<void> {
  * Some events belong to multiple categories
  */
 function getEventTaskTypes(event: TimelineEvent): string[] {
-  const types = [TASK_TYPES.TIMELINE]; // All timeline events have TIMELINE category
+  const types = [TASK_TYPES.TIMELINE, TASK_TYPES.AI]; // All timeline events have TIMELINE and AI categories
 
   // Add additional categories based on event type/title
   if (event.type === 'contingency') {

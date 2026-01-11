@@ -157,9 +157,19 @@ export default function CreateTemplateDialog({
   const dialogContent = (
     <>
       <DialogHeader>
-        <DialogTitle>{template ? "Edit Template" : "Create Template"}</DialogTitle>
+        <DialogTitle>
+          {template ? "Edit Template" : "Create Template"}
+          {template?.isSystemTemplate && (
+            <span className="ml-2 text-sm font-normal text-blue-500">(System Default)</span>
+          )}
+        </DialogTitle>
         <DialogDescription>
           Templates are collections of tasks that will be created for new transactions.
+          {template?.isSystemTemplate && (
+            <span className="block mt-1 text-blue-600 dark:text-blue-400">
+              This is a system template. You can customize the tasks but cannot delete it.
+            </span>
+          )}
         </DialogDescription>
       </DialogHeader>
 
@@ -198,24 +208,26 @@ export default function CreateTemplateDialog({
           </Select>
         </div>
 
-        <div className="flex items-center space-x-2 rounded-lg border p-4">
-          <Checkbox
-            id="isDefaultForNewFiles"
-            checked={isDefaultForNewFiles}
-            onCheckedChange={(checked) => setIsDefaultForNewFiles(checked as boolean)}
-          />
-          <div className="flex-1">
-            <label
-              htmlFor="isDefaultForNewFiles"
-              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-            >
-              Auto-generate on new files
-            </label>
-            <p className="text-sm text-muted-foreground mt-1">
-              Automatically create tasks from this template when a new file is uploaded
-            </p>
+        {!template?.isSystemTemplate && (
+          <div className="flex items-center space-x-2 rounded-lg border p-4">
+            <Checkbox
+              id="isDefaultForNewFiles"
+              checked={isDefaultForNewFiles}
+              onCheckedChange={(checked) => setIsDefaultForNewFiles(checked as boolean)}
+            />
+            <div className="flex-1">
+              <label
+                htmlFor="isDefaultForNewFiles"
+                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+              >
+                Auto-generate on new files
+              </label>
+              <p className="text-sm text-muted-foreground mt-1">
+                Automatically create tasks from this template when a new file is uploaded
+              </p>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Tasks */}
         <div className="space-y-3">
@@ -249,7 +261,7 @@ export default function CreateTemplateDialog({
                       />
                       <div className="space-y-2">
                         <Label className="text-sm">Categories *</Label>
-                        <div className="flex gap-4">
+                        <div className="flex flex-wrap gap-4">
                           <div className="flex items-center space-x-2">
                             <Checkbox
                               id={`task-${index}-broker`}
@@ -258,7 +270,7 @@ export default function CreateTemplateDialog({
                             />
                             <label
                               htmlFor={`task-${index}-broker`}
-                              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
                             >
                               Broker
                             </label>
@@ -271,7 +283,7 @@ export default function CreateTemplateDialog({
                             />
                             <label
                               htmlFor={`task-${index}-escrow`}
-                              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
                             >
                               Escrow
                             </label>
@@ -284,9 +296,22 @@ export default function CreateTemplateDialog({
                             />
                             <label
                               htmlFor={`task-${index}-lender`}
-                              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
                             >
                               Lender
+                            </label>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <Checkbox
+                              id={`task-${index}-ai`}
+                              checked={task.taskTypes.includes(TASK_TYPES.AI)}
+                              onCheckedChange={() => handleTaskTypeToggle(index, TASK_TYPES.AI)}
+                            />
+                            <label
+                              htmlFor={`task-${index}-ai`}
+                              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                            >
+                              AI
                             </label>
                           </div>
                         </div>

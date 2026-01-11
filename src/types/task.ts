@@ -10,6 +10,7 @@ export const TASK_TYPES = {
   BROKER: 'broker',
   ESCROW: 'escrow',
   LENDER: 'lender',
+  AI: 'ai',
 } as const;
 
 export type TaskType = typeof TASK_TYPES[keyof typeof TASK_TYPES];
@@ -116,6 +117,7 @@ export interface UserTaskTemplate {
   description: string | null;
   fileType: FileType; // "listing" or "escrow"
   isDefaultForNewFiles: boolean; // Auto-generate tasks from this template on new files
+  isSystemTemplate?: boolean; // System-provided template (doesn't count toward user's template limit)
 
   // Task Collection
   tasks: TemplateTask[];

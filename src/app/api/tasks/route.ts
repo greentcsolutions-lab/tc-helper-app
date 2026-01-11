@@ -133,7 +133,7 @@ export async function POST(request: NextRequest) {
 
     // Validate all taskTypes are valid
     const validTaskTypes = Object.values(TASK_TYPES);
-    const invalidTypes = taskTypes.filter((type: string) => !validTaskTypes.includes(type));
+    const invalidTypes = taskTypes.filter((type: string) => !validTaskTypes.includes(type as any));
     if (invalidTypes.length > 0) {
       return NextResponse.json(
         { error: `Invalid task types: ${invalidTypes.join(', ')}` },

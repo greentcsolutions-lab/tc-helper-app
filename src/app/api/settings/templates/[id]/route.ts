@@ -95,6 +95,14 @@ export async function DELETE(
       return NextResponse.json({ error: "Template not found" }, { status: 404 });
     }
 
+    // Prevent deletion of system templates
+    if (template.isSystemTemplate) {
+      return NextResponse.json(
+        { error: "Cannot delete system templates" },
+        { status: 403 }
+      );
+    }
+
     // Delete template and decrement count
     await db.$transaction([
       db.userTaskTemplate.delete({

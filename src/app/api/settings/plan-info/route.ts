@@ -17,6 +17,7 @@ export async function GET() {
     const user = await db.user.findUnique({
       where: { clerkId: userId },
       select: {
+        id: true,
         planType: true,
         templateCount: true,
         customTaskCount: true,
@@ -27,12 +28,20 @@ export async function GET() {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
+    // Count only user-created templates (excluding system templates)
+    const userTemplateCount = await db.userTaskTemplate.count({
+      where: {
+        userId: user.id,
+        isSystemTemplate: false,
+      },
+    });
+
     const planConfig = PLAN_CONFIGS[user.planType as 'FREE' | 'BASIC'];
 
     return NextResponse.json({
       planType: user.planType,
       templateLimit: planConfig.templateLimit,
-      templateCount: user.templateCount,
+      templateCount: userTemplateCount,
       customTaskLimit: planConfig.customTaskLimit,
       customTaskCount: user.customTaskCount,
     });

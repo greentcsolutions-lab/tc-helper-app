@@ -6,9 +6,11 @@ import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Plus, Trash2, Edit2, FileText } from "lucide-react";
+import { Plus, Trash2, Edit2, FileText, Sparkles } from "lucide-react";
 import { UserTaskTemplate } from "@/types/task";
 import CreateTemplateDialog from "./CreateTemplateDialog";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 
 export default function TaskTemplatesSettings() {
   const [isLoading, setIsLoading] = useState(true);
@@ -16,10 +18,12 @@ export default function TaskTemplatesSettings() {
   const [planInfo, setPlanInfo] = useState<{ planType: string; templateLimit: number; templateCount: number } | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<UserTaskTemplate | null>(null);
+  const [aiTasksEnabled, setAiTasksEnabled] = useState(true);
 
   useEffect(() => {
     fetchTemplates();
     fetchPlanInfo();
+    fetchAITasksStatus();
   }, []);
 
   const fetchTemplates = async () => {
@@ -46,7 +50,38 @@ export default function TaskTemplatesSettings() {
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const fetchAITasksStatus = async () => {
+    try {
+      const response = await fetch("/api/settings/ai-tasks");
+      if (!response.ok) throw new Error("Failed to fetch AI tasks status");
+      const data = await response.json();
+      setAiTasksEnabled(data.enabled);
+    } catch (error) {
+      console.error("Failed to load AI tasks status:", error);
+    }
+  };
+
+  const handleAITasksToggle = async (enabled: boolean) => {
+    try {
+      const response = await fetch("/api/settings/ai-tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled }),
+      });
+
+      if (!response.ok) throw new Error("Failed to update AI tasks setting");
+      setAiTasksEnabled(enabled);
+      toast.success(enabled ? "AI Tasks enabled" : "AI Tasks disabled");
+    } catch (error) {
+      toast.error("Failed to update AI tasks setting");
+    }
+  };
+
+  const handleDelete = async (id: string, isSystemTemplate: boolean) => {
+    if (isSystemTemplate) {
+      toast.error("Cannot delete system templates");
+      return;
+    }
     if (!confirm("Are you sure you want to delete this template?")) return;
 
     try {
@@ -133,13 +168,23 @@ export default function TaskTemplatesSettings() {
               {templates.map((template) => (
                 <div
                   key={template.id}
-                  className="border rounded-lg p-4 hover:bg-muted/50 transition-colors"
+                  className={`border rounded-lg p-4 hover:bg-muted/50 transition-colors ${
+                    template.isSystemTemplate ? "bg-gradient-to-br from-blue-50/50 to-purple-50/50 dark:from-blue-950/20 dark:to-purple-950/20 border-blue-200 dark:border-blue-800" : ""
+                  }`}
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
+                        {template.isSystemTemplate && (
+                          <Sparkles className="h-4 w-4 text-blue-500" />
+                        )}
                         <h3 className="font-semibold">{template.name}</h3>
                         <Badge variant="outline">{template.fileType}</Badge>
+                        {template.isSystemTemplate && (
+                          <Badge variant="secondary" className="bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
+                            Default
+                          </Badge>
+                        )}
                       </div>
                       {template.description && (
                         <p className="text-sm text-muted-foreground mb-2">
@@ -149,6 +194,18 @@ export default function TaskTemplatesSettings() {
                       <p className="text-sm text-muted-foreground">
                         {template.tasks.length} {template.tasks.length === 1 ? "task" : "tasks"}
                       </p>
+                      {template.isSystemTemplate && (
+                        <div className="mt-3 flex items-center gap-2">
+                          <Switch
+                            id={`ai-toggle-${template.id}`}
+                            checked={aiTasksEnabled}
+                            onCheckedChange={handleAITasksToggle}
+                          />
+                          <Label htmlFor={`ai-toggle-${template.id}`} className="text-sm">
+                            Auto-generate on new files
+                          </Label>
+                        </div>
+                      )}
                     </div>
                     <div className="flex gap-2">
                       <Button
@@ -161,7 +218,8 @@ export default function TaskTemplatesSettings() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => handleDelete(template.id)}
+                        onClick={() => handleDelete(template.id, template.isSystemTemplate || false)}
+                        disabled={template.isSystemTemplate}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
