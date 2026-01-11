@@ -10,6 +10,7 @@ import {
   MessageSquare,
   Calendar,
   Home,
+  BarChart3,
   Heart
 } from "lucide-react";
 import { SignUpButton, SignedOut } from "@clerk/nextjs";
@@ -230,6 +231,10 @@ export default function PlansPage() {
                   <span><strong>Listing workflows</strong></span>
                 </li>
                 <li className="flex items-start gap-2">
+                  <BarChart3 className="h-5 w-5 text-purple-600 shrink-0 mt-0.5" />
+                  <span><strong>Analytics dashboards & reporting</strong></span>
+                </li>
+                <li className="flex items-start gap-2">
                   <Check className="h-5 w-5 text-purple-600 shrink-0 mt-0.5" />
                   <span>Dedicated priority support</span>
                 </li>
@@ -286,6 +291,10 @@ export default function PlansPage() {
                 <li className="flex items-start gap-2">
                   <Home className="h-5 w-5 text-pink-600 shrink-0 mt-0.5" />
                   <span><strong>Listing workflows</strong></span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <BarChart3 className="h-5 w-5 text-pink-600 shrink-0 mt-0.5" />
+                  <span><strong>Analytics dashboards & reporting</strong></span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Check className="h-5 w-5 text-pink-600 shrink-0 mt-0.5" />
@@ -367,6 +376,10 @@ export default function PlansPage() {
             <Badge variant="secondary" className="text-base px-4 py-2">
               <Home className="h-4 w-4 mr-2" />
               Listing Workflows
+            </Badge>
+            <Badge variant="secondary" className="text-base px-4 py-2">
+              <BarChart3 className="h-4 w-4 mr-2" />
+              Analytics & Reporting
             </Badge>
           </div>
         </div>
