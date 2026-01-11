@@ -429,7 +429,7 @@ export default function Home() {
           </div>
 
           <p className="text-center text-muted-foreground mt-8">
-            <Link href="/billing" className="underline underline-offset-4 hover:text-foreground transition-colors">
+            <Link href="/plans" className="underline underline-offset-4 hover:text-foreground transition-colors">
               View full pricing details
             </Link>
           </p>
