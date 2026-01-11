@@ -118,7 +118,7 @@ export default function Home() {
                 step: "01",
                 icon: Upload,
                 title: "Upload Contract",
-                description: "Drag and drop your PDF — even handwritten or complex addenda",
+                description: "Drag and drop PDFs up to 100 pages — even handwritten or complex addenda",
                 color: "from-cyan-500 to-cyan-600"
               },
               {
@@ -186,6 +186,10 @@ export default function Home() {
                 </div>
               </div>
               <ul className="space-y-3 mb-6">
+                <li className="flex items-start gap-2">
+                  <Check className="h-5 w-5 text-cyan-600 shrink-0 mt-0.5" />
+                  <span className="text-muted-foreground">Handles PDFs up to 100 pages — perfect for real-world contracts</span>
+                </li>
                 <li className="flex items-start gap-2">
                   <Check className="h-5 w-5 text-cyan-600 shrink-0 mt-0.5" />
                   <span className="text-muted-foreground">95% accuracy on handwriting, counters, and complex addenda</span>
