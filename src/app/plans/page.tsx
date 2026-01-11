@@ -223,7 +223,7 @@ export default function PlansPage() {
                 </li>
                 <li className="flex items-start gap-2">
                   <Calendar className="h-5 w-5 text-purple-600 shrink-0 mt-0.5" />
-                  <span><strong>Google Calendar integration</strong></span>
+                  <span><strong>Advanced calendar features</strong></span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Home className="h-5 w-5 text-purple-600 shrink-0 mt-0.5" />
@@ -281,7 +281,7 @@ export default function PlansPage() {
                 </li>
                 <li className="flex items-start gap-2">
                   <Calendar className="h-5 w-5 text-pink-600 shrink-0 mt-0.5" />
-                  <span><strong>Google Calendar integration</strong></span>
+                  <span><strong>Most advanced calendar features</strong></span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Home className="h-5 w-5 text-pink-600 shrink-0 mt-0.5" />
