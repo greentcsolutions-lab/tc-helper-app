@@ -19,8 +19,7 @@ import {
   ArrowRight,
   Users,
   MessageSquare,
-  Check,
-  AlertCircle
+  Check
 } from "lucide-react";
 import { SignUpButton, SignedOut } from "@clerk/nextjs";
 import Link from "next/link";
@@ -83,13 +82,6 @@ export default function Home() {
             </Button>
           </div>
           <p className="text-sm text-muted-foreground mt-4">No credit card required</p>
-
-          {/* Placeholder for Hero Visual */}
-          <div className="mt-16 rounded-2xl border-2 border-dashed border-muted-foreground/20 bg-muted/10 p-12">
-            <p className="text-muted-foreground italic">
-              [Screenshot/Video: Upload → Task Board Flow]
-            </p>
-          </div>
         </div>
       </section>
 
@@ -163,10 +155,6 @@ export default function Home() {
                   <h3 className="text-xl font-semibold mb-3">{item.title}</h3>
                   <p className="text-muted-foreground text-sm leading-relaxed">{item.description}</p>
                 </Card>
-                {/* Placeholder for screenshot */}
-                <div className="mt-4 rounded-lg border border-dashed border-muted-foreground/20 bg-muted/5 p-6 text-center">
-                  <p className="text-xs text-muted-foreground italic">[UI Screenshot]</p>
-                </div>
               </div>
             ))}
           </div>
@@ -211,9 +199,6 @@ export default function Home() {
                   <span className="text-muted-foreground">Save 20+ minutes per transaction on data entry</span>
                 </li>
               </ul>
-              <div className="rounded-lg border border-dashed border-muted-foreground/20 bg-muted/10 p-8 text-center">
-                <p className="text-sm text-muted-foreground italic">[Screenshot: Extraction Results]</p>
-              </div>
             </Card>
 
             {/* Smart Task Management */}
@@ -241,9 +226,6 @@ export default function Home() {
                   <span className="text-muted-foreground">Create custom tasks and reusable templates</span>
                 </li>
               </ul>
-              <div className="rounded-lg border border-dashed border-muted-foreground/20 bg-muted/10 p-8 text-center">
-                <p className="text-sm text-muted-foreground italic">[Screenshot: Task Board with Actual Tasks]</p>
-              </div>
             </Card>
 
             {/* Visual Timeline */}
@@ -271,9 +253,6 @@ export default function Home() {
                   <span className="text-muted-foreground">Spot overdue items instantly with smart alerts</span>
                 </li>
               </ul>
-              <div className="rounded-lg border border-dashed border-muted-foreground/20 bg-muted/10 p-8 text-center">
-                <p className="text-sm text-muted-foreground italic">[Screenshot: Calendar View]</p>
-              </div>
             </Card>
 
             {/* Workflow Templates */}
@@ -301,9 +280,6 @@ export default function Home() {
                   <span className="text-muted-foreground">Customize for different transaction types</span>
                 </li>
               </ul>
-              <div className="rounded-lg border border-dashed border-muted-foreground/20 bg-muted/10 p-8 text-center">
-                <p className="text-sm text-muted-foreground italic">[Screenshot: Templates in Action]</p>
-              </div>
             </Card>
           </div>
         </div>
@@ -572,28 +548,6 @@ export default function Home() {
               1 free credit included • Set up in under 2 minutes
             </p>
           </Card>
-
-          {/* Before/After Visual Placeholder */}
-          <div className="mt-12 grid md:grid-cols-2 gap-8">
-            <div className="rounded-xl border-2 border-dashed border-red-500/30 bg-red-500/5 p-8">
-              <div className="flex items-center gap-2 mb-4 text-red-600">
-                <AlertCircle className="h-5 w-5" />
-                <span className="font-semibold">Before</span>
-              </div>
-              <p className="text-sm text-muted-foreground italic">
-                [Screenshot: Messy Spreadsheet / Manual Checklist]
-              </p>
-            </div>
-            <div className="rounded-xl border-2 border-dashed border-green-500/30 bg-green-500/5 p-8">
-              <div className="flex items-center gap-2 mb-4 text-green-600">
-                <Check className="h-5 w-5" />
-                <span className="font-semibold">After</span>
-              </div>
-              <p className="text-sm text-muted-foreground italic">
-                [Screenshot: Clean TC Helper Dashboard]
-              </p>
-            </div>
-          </div>
         </div>
       </section>
 
