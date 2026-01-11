@@ -16,6 +16,7 @@ const isPublicRoute = createRouteMatcher([
   "/sign-up(.*)",
   "/api(.*)",
   "/privacy",
+  "/plans",            // public pricing page
   "/onboarding(.*)",   // onboarding is public
 ]);
 
