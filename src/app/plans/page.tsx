@@ -8,7 +8,8 @@ import {
   Sparkles,
   Users,
   MessageSquare,
-  Zap,
+  Calendar,
+  Home,
   Heart
 } from "lucide-react";
 import { SignUpButton, SignedOut } from "@clerk/nextjs";
@@ -167,6 +168,14 @@ export default function PlansPage() {
                   <span><strong>Communications Center unlocked</strong></span>
                 </li>
                 <li className="flex items-start gap-2">
+                  <Calendar className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
+                  <span><strong>Google Calendar integration</strong></span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Home className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
+                  <span><strong>Listing workflows</strong></span>
+                </li>
+                <li className="flex items-start gap-2">
                   <Check className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
                   <span>Priority support</span>
                 </li>
@@ -213,8 +222,12 @@ export default function PlansPage() {
                   <span><strong>Advanced Communications unlocked</strong></span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <Zap className="h-5 w-5 text-purple-600 shrink-0 mt-0.5" />
-                  <span>API access (coming soon)</span>
+                  <Calendar className="h-5 w-5 text-purple-600 shrink-0 mt-0.5" />
+                  <span><strong>Google Calendar integration</strong></span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Home className="h-5 w-5 text-purple-600 shrink-0 mt-0.5" />
+                  <span><strong>Listing workflows</strong></span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Check className="h-5 w-5 text-purple-600 shrink-0 mt-0.5" />
@@ -265,6 +278,14 @@ export default function PlansPage() {
                 <li className="flex items-start gap-2">
                   <MessageSquare className="h-5 w-5 text-pink-600 shrink-0 mt-0.5" />
                   <span>Team Communications Center</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Calendar className="h-5 w-5 text-pink-600 shrink-0 mt-0.5" />
+                  <span><strong>Google Calendar integration</strong></span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Home className="h-5 w-5 text-pink-600 shrink-0 mt-0.5" />
+                  <span><strong>Listing workflows</strong></span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Check className="h-5 w-5 text-pink-600 shrink-0 mt-0.5" />
@@ -340,8 +361,12 @@ export default function PlansPage() {
               Team Collaboration
             </Badge>
             <Badge variant="secondary" className="text-base px-4 py-2">
-              <Zap className="h-4 w-4 mr-2" />
-              API Access
+              <Calendar className="h-4 w-4 mr-2" />
+              Google Calendar
+            </Badge>
+            <Badge variant="secondary" className="text-base px-4 py-2">
+              <Home className="h-4 w-4 mr-2" />
+              Listing Workflows
             </Badge>
           </div>
         </div>
