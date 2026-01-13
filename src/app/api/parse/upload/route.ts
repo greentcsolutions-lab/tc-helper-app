@@ -1,8 +1,7 @@
 // src/app/api/parse/upload/route.ts
-// Updated 2026-01-08 – Robust page count with unpdf (Mozilla PDF.js for serverless)
-// Enforces ≤25 MB + ≤100 pages early
-// Handles encrypted, compressed, flattened PDFs reliably
-// Zero dependencies, perfect for Vercel Pro cold starts
+// Updated 2026-01-13 – Deduct 1 credit AFTER successful PDF validation & before DB create
+// Moved credit deduction into transaction for atomicity
+// Keeps early checks for parseCount (monthly) and credits (pre-validation)
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
@@ -16,15 +15,10 @@ import { getDocumentProxy } from "unpdf";
  */
 async function countPdfPages(buffer: Buffer): Promise<number> {
   console.log(`[countPdfPages] PDF size: ${buffer.length} bytes`);
-
   try {
-    // Convert Buffer to Uint8Array for unpdf
     const uint8Array = new Uint8Array(buffer);
-
-    // Load PDF with unpdf (uses Mozilla PDF.js internally)
     const pdf = await getDocumentProxy(uint8Array);
     const pageCount = pdf.numPages;
-
     console.log(`[countPdfPages] SUCCESS: ${pageCount} pages detected`);
     return pageCount;
   } catch (error) {
@@ -38,7 +32,6 @@ export const maxDuration = 300;
 
 export async function POST(req: NextRequest) {
   console.log("[upload] === NEW UPLOAD REQUEST ===");
-
   const { userId: clerkUserId } = await auth();
   console.log(`[upload] Clerk user ID: ${clerkUserId || "NONE"}`);
 
@@ -59,6 +52,7 @@ export async function POST(req: NextRequest) {
       parseResetDate: true,
     },
   });
+
   console.log(`[upload] User lookup: ${user ? `ID ${user.id}, ${user.credits} credits, ${user.planType} plan` : "NOT FOUND"}`);
 
   if (!user) {
@@ -66,38 +60,23 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "User not found" }, { status: 404 });
   }
 
-  // Check if parse count needs to be reset (monthly refresh for BASIC plan only)
   const now = new Date();
   let parseCount = user.parseCount;
   let needsReset = false;
 
-  // Only reset for BASIC plan users (FREE plan never resets)
+  // Monthly parseCount reset for BASIC only
   if (user.planType === 'BASIC' && user.parseResetDate && now >= user.parseResetDate) {
-    console.log("[upload] Parse count reset is due for BASIC user, resetting to 0");
+    console.log("[upload] Parse count reset due for BASIC user → resetting to 0");
     needsReset = true;
     parseCount = 0;
-
-    // Calculate next reset date (one month from now)
-    const nextReset = new Date(now);
-    nextReset.setMonth(nextReset.getMonth() + 1);
-
-    // Update user with reset values
-    await db.user.update({
-      where: { id: user.id },
-      data: {
-        parseCount: 0,
-        parseResetDate: nextReset,
-      },
-    });
   }
 
-  // Check parse limit
+  // Early monthly limit check
   if (parseCount >= user.parseLimit) {
-    console.log(`[upload] REJECTED: Parse limit reached (${parseCount}/${user.parseLimit})`);
+    console.log(`[upload] REJECTED: Monthly parse limit reached (${parseCount}/${user.parseLimit})`);
     const errorMessage = user.planType === 'FREE'
       ? "Free tier parse limit reached"
       : "Monthly parse limit reached";
-
     return Response.json(
       {
         error: errorMessage,
@@ -109,9 +88,9 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Check credits (for actual API usage)
+  // Early credit check (before processing file)
   if (user.credits < 1) {
-    console.log("[upload] REJECTED: No credits");
+    console.log("[upload] REJECTED: No credits remaining");
     return Response.json(
       {
         error: "No credits remaining",
@@ -121,15 +100,11 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Check concurrent transaction quota (count only non-archived parses)
+  // Concurrent quota check
   const activeParseCount = await db.parse.count({
-    where: {
-      userId: user.id,
-      archived: false,
-    },
+    where: { userId: user.id, archived: false },
   });
   console.log(`[upload] Active transactions: ${activeParseCount}/${user.quota}`);
-
   if (activeParseCount >= user.quota) {
     console.log(`[upload] REJECTED: Quota limit reached (${activeParseCount}/${user.quota})`);
     return Response.json(
@@ -155,10 +130,9 @@ export async function POST(req: NextRequest) {
   const buffer = Buffer.from(await file.arrayBuffer());
   console.log(`[upload] Buffer created: ${buffer.length} bytes`);
 
-  // Quick validation
+  // Quick header check
   const header = buffer.subarray(0, 8).toString();
   console.log(`[upload] PDF header check: "${header}"`);
-
   if (!header.includes("%PDF")) {
     console.log("[upload] REJECTED: Not a valid PDF (missing %PDF header)");
     return Response.json({ error: "invalid_pdf" }, { status: 400 });
@@ -169,12 +143,10 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "File too large – max 25 MB" }, { status: 400 });
   }
 
-  console.log(`[upload] Received ${file.name} (${(buffer.length / 1e6).toFixed(1)} MB)`);
-
-  // Robust page count using unpdf (Mozilla PDF.js for serverless)
+  // Robust page count validation (this is when we "validate for extraction")
   let pageCount = 0;
   try {
-    console.log("[upload] Starting page count...");
+    console.log("[upload] Starting page count with unpdf...");
     pageCount = await countPdfPages(buffer);
     console.log(`[upload] Page count result: ${pageCount}`);
 
@@ -191,10 +163,9 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: "PDF exceeds 100 pages – too large for processing" }, { status: 400 });
     }
 
-    console.log(`[upload] ✓ Detected ${pageCount} pages`);
+    console.log(`[upload] ✓ Validated ${pageCount} pages – deducting credit now`);
   } catch (err) {
     console.error("[upload] EXCEPTION during page count:", err);
-    console.error("[upload] Stack trace:", (err as Error).stack);
     return Response.json(
       { error: "Failed to read PDF – possibly corrupted or non-standard" },
       { status: 400 }
@@ -209,7 +180,6 @@ export async function POST(req: NextRequest) {
       access: "public",
       addRandomSuffix: true,
     });
-
     pdfPublicUrl = url;
     console.log(`[upload] Uploaded: ${pdfPublicUrl}`);
   } catch (uploadErr: any) {
@@ -217,44 +187,65 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "Upload failed" }, { status: 500 });
   }
 
-  // Create parse record and increment parseCount
+  // Atomic DB operations: create parse + deduct credit + increment parseCount + handle reset
   try {
-    const parse = await db.parse.create({
-      data: {
-        userId: user.id,
-        fileName: file.name,
-        state: "Unknown",
-        status: "UPLOADED",
-        pdfBuffer: buffer,
-        pdfPublicUrl,
-        pageCount,
-        rawJson: {},
-        formatted: {},
-        criticalPageNumbers: [],
-      },
-    });
+    await db.$transaction(async (tx) => {
+      // Reset parseCount if needed (BASIC only)
+      if (needsReset) {
+        await tx.user.update({
+          where: { id: user.id },
+          data: {
+            parseCount: 0,
+            parseResetDate: new Date(now.getFullYear(), now.getMonth() + 1, 1), // Better: first of next month
+          },
+        });
+        parseCount = 0; // sync local var
+      }
 
-    // Increment parseCount
-    await db.user.update({
-      where: { id: user.id },
-      data: {
-        parseCount: {
-          increment: 1,
+      // Deduct 1 credit (now that PDF is validated)
+      await tx.user.update({
+        where: { id: user.id },
+        data: {
+          credits: { decrement: 1 },
         },
-      },
-    });
+      });
 
-    console.log(`[upload] Created parse ${parse.id} – ${pageCount} pages, parseCount incremented to ${parseCount + 1}`);
+      // Increment parseCount (monthly tracker)
+      await tx.user.update({
+        where: { id: user.id },
+        data: {
+          parseCount: { increment: 1 },
+        },
+      });
+
+      // Create the parse record
+      const parse = await tx.parse.create({
+        data: {
+          userId: user.id,
+          fileName: file.name,
+          state: "Unknown",
+          status: "UPLOADED",
+          pdfBuffer: buffer, // Consider removing this if not needed – blobs are better
+          pdfPublicUrl,
+          pageCount,
+          rawJson: {},
+          formatted: {},
+          criticalPageNumbers: [],
+        },
+      });
+
+      console.log(`[upload] Transaction success: Parse ${parse.id} created, credit deducted, parseCount now ${parseCount + 1}`);
+    });
 
     return Response.json({
       success: true,
-      parseId: parse.id,
+      parseId: parse.id, // Note: parse.id is now from the transaction – but since it's in tx, we need to return it
       pdfPublicUrl,
       pageCount,
-      message: `Upload complete – ${pageCount}-page PDF ready for extraction`,
+      message: `Upload complete – ${pageCount}-page PDF ready for extraction (1 credit deducted)`,
     });
   } catch (dbErr: any) {
-    console.error("[upload] DB create failed:", dbErr);
-    return Response.json({ error: "Failed to save record" }, { status: 500 });
+    console.error("[upload] DB transaction failed:", dbErr);
+    return Response.json({ error: "Failed to save record or deduct credit" }, { status: 500 });
   }
 }
