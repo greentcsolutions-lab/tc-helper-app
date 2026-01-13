@@ -1,5 +1,6 @@
 // src/app/api/parse/extract/[parseId]/route.ts
-// Version: 7.2.3 - Fixed try/catch structure - should now compile
+// Version: 7.2.4 - 2026-01-13
+// Fixed: proper single outer try/catch + inner fallback try/catch
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
@@ -17,13 +18,13 @@ const { logStep, logSuccess, logError, logWarn } = ParseLogger;
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-// Timeout helper
+// ── Timeout helper ──────────────────────────────────────────────────────────
 const timeoutPromise = (ms: number, label = "Operation") =>
   new Promise<never>((_, reject) =>
     setTimeout(() => reject(new Error(`${label} timeout`)), ms)
   );
 
-// Timeouts in ms
+// Timeouts (ms)
 const PING_TIMEOUT_MS = 4500;
 const CLAUDE_FULL_TIMEOUT_MS = 85000;
 const GEMINI_FALLBACK_TIMEOUT_MS = 110000;
@@ -38,7 +39,7 @@ export async function POST(
   const { parseId } = await params;
   console.log(`[extract] START parseId=${parseId} at ${new Date().toISOString()}`);
 
-  let parse;                    // declare here so it's available in catch blocks if needed
+  let parse;
   let extractionResult;
 
   const PRIMARY_MODEL = "claude-4-sonnet-20250514";
@@ -69,7 +70,7 @@ export async function POST(
     console.log(`[extract] Document: ${parse.pageCount} pages`);
     logSuccess("EXTRACT:1", `Loaded ${parse.pageCount}-page document`);
 
-    // ── 2. Try primary (Claude) path ──────────────────────────────────────
+    // ── 2. Primary path (Claude) ──────────────────────────────────────────
     logStep("EXTRACT:2", `Trying primary: ${PRIMARY_MODEL}`);
 
     console.log(`[claude-check] Quick availability ping (max ${PING_TIMEOUT_MS/1000}s)...`);
@@ -80,11 +81,11 @@ export async function POST(
     ]).catch(() => false);
 
     if (!isClaudeResponsive) {
-      console.warn(`[claude-check] Primary model not quickly available → early fallback`);
+      console.warn(`[claude-check] Primary not quickly available → early fallback`);
       throw new Error("Claude availability check failed");
     }
 
-    console.log(`[claude-check] Looks alive ✓ Proceeding with full extraction`);
+    console.log(`[claude-check] Looks alive ✓ Proceeding`);
 
     console.log(`[extract] Starting full extraction with ${PRIMARY_MODEL}...`);
 
@@ -95,36 +96,35 @@ export async function POST(
 
     console.log(`[extract] Primary (${PRIMARY_MODEL}) SUCCESS`);
   } catch (primaryError: any) {
-    // ── Primary failed → fallback to Gemini ───────────────────────────────
+    // ── Primary failed → fallback ─────────────────────────────────────────
     const isTimeout = primaryError.message?.includes("timeout");
     console.log(
-      `[extract] Primary path failed (${isTimeout ? "timeout" : "error"}): ${primaryError.message}`
+      `[extract] Primary failed (${isTimeout ? "timeout" : "error"}): ${primaryError.message}`
     );
 
     logWarn("EXTRACT:FALLBACK", `Falling back to ${FALLBACK_MODEL}`);
 
     try {
-      console.log(`[extract] Starting fallback extraction with ${FALLBACK_MODEL}...`);
+      console.log(`[extract] Starting fallback with ${FALLBACK_MODEL}...`);
 
       extractionResult = await Promise.race([
         extractWithGemini(parse.pdfPublicUrl, parse.pageCount, FALLBACK_MODEL),
-        timeoutPromise(GEMINI_FALLBACK_TIMEOUT_MS, "Gemini fallback extraction"),
+        timeoutPromise(GEMINI_FALLBACK_TIMEOUT_MS, "Gemini fallback"),
       ]);
 
       console.log(`[extract] Fallback (${FALLBACK_MODEL}) SUCCESS`);
       extractionResult = { ...extractionResult, fromFallback: true };
     } catch (fallbackError: any) {
-      console.error(`Fallback also failed: ${fallbackError.message}`);
-      throw fallbackError; // let outer catch handle final failure
+      console.error(`[extract] Fallback also failed: ${fallbackError.message}`);
+      throw fallbackError;
     }
   }
 
-  // ── If we reach here, we have (or should have) a result ────────────────
+  // ── We should have result by now, or we would have thrown ─────────────
   if (!extractionResult) {
-    throw new Error("No extraction result received from either provider");
+    throw new Error("No extraction result from either provider");
   }
 
-  // ── Process result & save to DB ───────────────────────────────────────
   const modelUsed =
     extractionResult.modelUsed ||
     (extractionResult.fromFallback ? FALLBACK_MODEL : PRIMARY_MODEL);
