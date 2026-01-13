@@ -124,28 +124,71 @@ const EXTRACTION_SCHEMA = {
 };
 
 // ── Extraction Prompt (unchanged) ───────────────────────────────────────────
-const EXTRACTION_PROMPT = `Extract JSON from this PDF matching this schema. Focus on ALL fields in the schema, especially:
-- Buyer/seller names, property address, purchase price
-- Final acceptance date (effective date)
+const EXTRACTION_PROMPT = `You will be extracting structured information from a Real Estate PDF document (typically a purchase contract) and outputting it as JSON that matches a specific schema. This task requires careful attention to detail, date calculations, and proper handling of amendments/counters that may override original contract terms.
+
+Here is the JSON schema that your output must match:
+
+<schema>
+${JSON.stringify(EXTRACTION_SCHEMA, null, 2)}
+</schema>
+
+Your task is to extract ALL fields specified in the schema with particular focus on:
+- Buyer and seller names
+- Property address
+- Purchase price
+- Final acceptance date (also called effective date)
 - Close of escrow date
-- Initial deposit amount AND due date (initial_deposit.due) - CALCULATE the actual date if given as "X days after acceptance"
-- Seller delivery of documents days (seller_delivery_of_documents_days) - extract as NUMBER of days
+- Initial deposit amount AND due date
+- Seller delivery of documents days (as a number)
 - Contingency periods (loan, appraisal, investigation)
 - Broker contact information
-Any counters or addenda override contract terms ONLY if explicitly mentioned. If no mention of specific terms in counters/addenda then the contract wins.
-Schema:
-${JSON.stringify(EXTRACTION_SCHEMA, null, 2)}
-Return ONLY valid JSON matching the schema above. Use your reasoning to:
-1. Merge terms from multiple pages (contract, counters, addenda)
-2. Apply override logic: counters/addenda only change explicitly mentioned fields
-3. Calculate dates accurately:
-   - If close of escrow says "30 days after acceptance", calculate the actual date
-   - If initial deposit says "within 3 business days", calculate the actual date (acceptance + 4-5 days)
-   - Return dates in MM/DD/YYYY format when possible
-4. Handle handwritten annotations and signatures
-5. Normalize formats (prices with $, dates as MM/DD/YYYY)
-6. For seller_delivery_of_documents_days: extract just the NUMBER (e.g., 7 not "7 days")
-7. For initial_deposit.due: prefer calculating the actual MM/DD/YYYY date over relative phrases`;
+
+Follow these extraction rules:
+
+**Override Logic for Counters and Addenda:**
+- Counters and addenda ONLY override contract terms if they explicitly mention those specific terms
+- If a counter or addendum does not mention a particular field, use the value from the original contract
+- When merging information from multiple pages, apply this override logic carefully
+
+**Date Calculation and Formatting:**
+- When dates are given as relative terms (e.g., "30 days after acceptance", "within 3 business days"), calculate the actual calendar date
+- For "X days after acceptance", add X calendar days to the final acceptance date
+- For "within X business days", add X business days (typically X+1 or X+2 calendar days to account for weekends)
+- Return all dates in MM/DD/YYYY format whenever possible
+- For the initial_deposit.due field: strongly prefer calculating the actual MM/DD/YYYY date over leaving it as a relative phrase
+- For close_of_escrow: calculate the actual date if given relatively
+
+**Field-Specific Instructions:**
+- seller_delivery_of_documents_days: Extract only the NUMBER (e.g., 7, not "7 days" or "seven days")
+- Prices: Include the dollar sign and format with commas (e.g., $500,000)
+- Handle handwritten annotations and signatures by interpreting them in context
+- Normalize all formats for consistency
+
+**Processing Approach:**
+Before providing your final JSON output, use the scratchpad to:
+1. Identify all relevant sections (original contract, counters, addenda)
+2. Extract values from each section
+3. Apply override logic to determine final values
+4. Calculate any relative dates to absolute dates
+5. Verify all required schema fields are populated
+
+<scratchpad>
+Use this space to:
+- Note which pages contain which information
+- Track which fields are mentioned in counters/addenda vs original contract
+- Show your date calculations step-by-step
+- Reason through any ambiguities or conflicts
+- Map extracted information to schema fields
+</scratchpad>
+
+Now provide your final output as valid JSON matching the schema. Your output must:
+- Be valid, parseable JSON
+- Match the exact structure of the provided schema
+- Include all fields from the schema
+- Use null for any fields that cannot be found in the document
+- Follow all formatting requirements specified above
+
+Your final response should contain ONLY the JSON output inside <json> tags, with no additional commentary or explanation outside those tags.`;
 
 export async function extractWithClaude(
   pdfUrl: string,
