@@ -1,6 +1,6 @@
 // src/lib/extraction/claude/extractPdf.ts
 // Version: 1.1.0 - 2026-01-13
-// Added quick availability check via minimal test call before full extraction
+// Added quick availability check + prompt caching
 
 import { coerceNumber, coerceString } from '@/lib/grok/type-coercion';
 import { normalizeDateString } from '@/lib/extraction/extract/universal/helpers/date-utils';
@@ -11,8 +11,9 @@ if (!ANTHROPIC_API_KEY) {
 }
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
-const ANTHROPIC_VERSION = '2023-06-01'; // You can update this if Anthropic releases a newer version
+const ANTHROPIC_VERSION = '2023-06-01'; // Update if Anthropic releases a newer version
 
+// ── Static system prompt with embedded schema (cached) ───────────────────────
 const STATIC_SYSTEM_BLOCKS = [
   {
     type: 'text',
@@ -20,12 +21,12 @@ const STATIC_SYSTEM_BLOCKS = [
       '${JSON.stringify(EXTRACTION_SCHEMA, null, 2)}',
       JSON.stringify(EXTRACTION_SCHEMA, null, 2)
     ),
-    cache_control: { type: 'ephemeral' }  // 5-minute TTL, auto-refreshes on hits
-    // For 1-hour TTL (if gaps >5 min between calls): { type: 'ephemeral', ttl: '1h' }
+    cache_control: { type: 'ephemeral' } // 5-minute TTL, auto-refreshes on hits
+    // For 1-hour TTL (longer gaps): { type: 'ephemeral', ttl: '1h' }
   }
 ];
 
-// ── Quick availability check (fast ping to see if Claude is responding) ─────
+// ── Quick availability check ─────────────────────────────────────────────────
 async function checkClaudeAvailability(modelName: string, timeoutMs = 5000): Promise<boolean> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -40,12 +41,12 @@ async function checkClaudeAvailability(modelName: string, timeoutMs = 5000): Pro
       },
       body: JSON.stringify({
         model: modelName,
-        max_tokens: 1,           // We only need a tiny response
+        max_tokens: 1,
         temperature: 0,
         messages: [
           {
             role: 'user',
-            content: 'Ping',       // Shortest possible meaningful prompt
+            content: 'Ping',
           },
         ],
       }),
@@ -63,7 +64,7 @@ async function checkClaudeAvailability(modelName: string, timeoutMs = 5000): Pro
   } catch (err: any) {
     clearTimeout(timeoutId);
     console.warn(`[claude-check] Availability check failed: ${err.message}`);
-    throw err; // We'll catch this in the main function to allow fallback
+    throw err;
   }
 }
 
