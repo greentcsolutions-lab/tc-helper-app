@@ -1,6 +1,6 @@
 // src/lib/extraction/claude/extractPdf.ts
-// Version: 1.1.0 - 2026-01-13
-// Added quick availability check + prompt caching
+// Version: 1.1.1 - 2026-01-13
+// Fixed build error by moving schema + prompt inside function to avoid top-level evaluation issues
 
 import { coerceNumber, coerceString } from '@/lib/grok/type-coercion';
 import { normalizeDateString } from '@/lib/extraction/extract/universal/helpers/date-utils';
@@ -12,19 +12,6 @@ if (!ANTHROPIC_API_KEY) {
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_VERSION = '2023-06-01'; // Update if Anthropic releases a newer version
-
-// ── Static system prompt with embedded schema (cached) ───────────────────────
-const STATIC_SYSTEM_BLOCKS = [
-  {
-    type: 'text',
-    text: EXTRACTION_PROMPT.replace(
-      '${JSON.stringify(EXTRACTION_SCHEMA, null, 2)}',
-      JSON.stringify(EXTRACTION_SCHEMA, null, 2)
-    ),
-    cache_control: { type: 'ephemeral' } // 5-minute TTL, auto-refreshes on hits
-    // For 1-hour TTL (longer gaps): { type: 'ephemeral', ttl: '1h' }
-  }
-];
 
 // ── Quick availability check ─────────────────────────────────────────────────
 async function checkClaudeAvailability(modelName: string, timeoutMs = 5000): Promise<boolean> {
@@ -83,237 +70,119 @@ export async function extractWithClaude(
   console.log(`[claude-extract] Starting extraction for ${totalPages}-page document using model: ${modelName}`);
   console.log(`[claude-extract] PDF URL: ${pdfUrl}`);
 
-  try {
-    // Step 1: Quick availability check
-    console.log(`[claude-extract] Quick availability check (max 5s)...`);
-    await checkClaudeAvailability(modelName, 5000);
-    console.log(`[claude-extract] Claude is responding ✓ Proceeding`);
-
-    // Step 2: Fetch PDF
-    console.log(`[claude-extract] Fetching PDF from URL...`);
-    const pdfResponse = await fetch(pdfUrl);
-    if (!pdfResponse.ok) {
-      throw new Error(`Failed to fetch PDF: ${pdfResponse.status} ${pdfResponse.statusText}`);
-    }
-    const pdfBuffer = await pdfResponse.arrayBuffer();
-    const pdfBase64 = Buffer.from(pdfBuffer).toString('base64');
-    console.log(`[claude-extract] PDF fetched: ${(pdfBuffer.byteLength / 1024 / 1024).toFixed(2)} MB`);
-
-    console.log(`[claude-extract] Sending request with cached prompt to ${modelName}...`);
-
-    const startTime = Date.now();
-
-    const response = await fetch(ANTHROPIC_API_URL, {
-      method: 'POST',
-      headers: {
-        'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': ANTHROPIC_VERSION,
-        'content-type': 'application/json',
+  // Define schema and prompt INSIDE the function to avoid top-level evaluation issues
+  const EXTRACTION_SCHEMA = {
+    type: "object",
+    properties: {
+      extracted: {
+        type: "object",
+        properties: {
+          buyer_names: { type: "array", items: { type: "string" }, minItems: 1 },
+          property_address: {
+            type: "object",
+            properties: { full: { type: "string" } },
+            required: ["full"]
+          },
+          purchase_price: {
+            type: "string",
+            pattern: "^\\$$   \\d{1,3}(,\\d{3})*(\\.\\d{2})?   $$"
+          },
+          all_cash: { type: "boolean" },
+          close_of_escrow: { type: "string" },
+          initial_deposit: {
+            type: "object",
+            properties: { amount: { type: "string" }, due: { type: "string" } },
+            required: ["amount", "due"]
+          },
+          loan_type: { type: ["string", "null"] },
+          loan_type_note: { type: ["string", "null"] },
+          seller_credit_to_buyer: { type: ["string", "null"] },
+          contingencies: {
+            type: "object",
+            properties: {
+              loan_days: { type: "integer", minimum: 0 },
+              appraisal_days: { type: "integer", minimum: 0 },
+              investigation_days: { type: "integer", minimum: 0 },
+              crb_attached_and_signed: { type: "boolean" }
+            },
+            required: ["loan_days", "appraisal_days", "investigation_days", "crb_attached_and_signed"]
+          },
+          cop_contingency: { type: "boolean" },
+          seller_delivery_of_documents_days: { type: "integer", minimum: 0 },
+          home_warranty: {
+            type: "object",
+            properties: {
+              ordered_by: { type: ["string", "null"], enum: ["Buyer", "Seller", "Both", "Waived", null] },
+              seller_max_cost: { type: ["string", "null"] },
+              provider: { type: ["string", "null"] }
+            }
+          },
+          final_acceptance_date: {
+            type: "string",
+            pattern: "^\\d{2}/\\d{2}/\\d{4}$"
+          },
+          counters: {
+            type: "object",
+            properties: {
+              has_counter_or_addendum: { type: "boolean" },
+              counter_chain: { type: "array", items: { type: "string" } },
+              final_version_page: { type: ["integer", "null"] },
+              summary: { type: "string" }
+            },
+            required: ["has_counter_or_addendum", "counter_chain", "summary"]
+          },
+          buyers_broker: {
+            type: "object",
+            properties: {
+              brokerage_name: { type: ["string", "null"] },
+              agent_name: { type: ["string", "null"] },
+              email: { type: ["string", "null"] },
+              phone: { type: ["string", "null"] }
+            }
+          },
+          sellers_broker: {
+            type: "object",
+            properties: {
+              brokerage_name: { type: ["string", "null"] },
+              agent_name: { type: ["string", "null"] },
+              email: { type: ["string", "null"] },
+              phone: { type: ["string", "null"] }
+            }
+          }
+        },
+        required: [
+          "buyer_names", "property_address", "purchase_price", "all_cash",
+          "close_of_escrow", "initial_deposit", "contingencies", "cop_contingency",
+          "seller_delivery_of_documents_days", "home_warranty", "final_acceptance_date",
+          "counters", "buyers_broker", "sellers_broker"
+        ]
       },
-      body: JSON.stringify({
-        model: modelName,
-        max_tokens: 4096,
-        temperature: 0.1,
-        system: STATIC_SYSTEM_BLOCKS, // ← Cached static prompt + schema
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'document',
-                source: {
-                  type: 'base64',
-                  media_type: 'application/pdf',
-                  data: pdfBase64,
-                },
-              },
-              {
-                type: 'text',
-                text: 'Extract structured data from this PDF according to the schema and rules. Use scratchpad for reasoning, then output ONLY the JSON inside <json> tags with no additional text.',
-              },
-            ],
-          },
-        ],
-      }),
-    });
-
-    if (!response.ok) {
-      const errorBody = await response.text();
-      throw new Error(`Claude API error: ${response.status} - ${errorBody}`);
-    }
-
-    const result = await response.json();
-    const durationMs = Date.now() - startTime;
-    console.log(`[claude-extract] Response received after ${durationMs}ms`);
-
-    // Log cache usage (very useful for debugging)
-    console.log('[claude-extract] Usage stats:', JSON.stringify(result.usage, null, 2));
-
-    const text = result.content[0].text;
-    console.log(`[claude-extract] Received response (${text.length} chars)`);
-
-    // ── JSON extraction ──────────────────────────────────────────────────────
-    let extractedData;
-    try {
-      const jsonMatch = text.match(/<json>([\s\S]*?)<\/json>/);
-      if (!jsonMatch || !jsonMatch[1]) {
-        throw new Error("No <json> block found in Claude response");
-      }
-
-      const jsonText = jsonMatch[1].trim();
-      extractedData = JSON.parse(jsonText);
-
-      console.log(`[claude-extract] Successfully extracted JSON`);
-    } catch (parseError: any) {
-      console.error(`[claude-extract] JSON extraction failed:`, parseError);
-      console.error(`[claude-extract] Raw response preview:`, text.substring(0, 1200));
-      throw new Error(`Failed to parse JSON: ${parseError.message}`);
-    }
-
-    console.log(`[claude-extract] Overall confidence: ${extractedData.confidence?.overall_confidence}%`);
-
-    const finalTerms = transformToUniversal(extractedData);
-
-    const needsReview =
-      extractedData.confidence?.overall_confidence < 80 ||
-      !extractedData.extracted?.buyer_names?.length ||
-      !extractedData.extracted?.property_address?.full ||
-      !extractedData.extracted?.purchase_price;
-
-    console.log(`[claude-extract] Extraction complete - needsReview: ${needsReview}`);
-
-    return {
-      finalTerms,
-      needsReview,
-      criticalPages: ['1-' + totalPages],
-      allExtractions: [extractedData],
-      modelUsed: modelName,
-    };
-  } catch (error: any) {
-    console.error(`[claude-extract] Error with ${modelName}:`, error);
-
-    if (error.message.includes('Ping failed') || error.message.includes('AbortError')) {
-      throw new Error(`Claude appears to be down or not responding right now`);
-    }
-
-    throw new Error(`Claude extraction failed (${modelName}): ${error.message}`);
-  }
-}
-
-// ── JSON Schema (unchanged) ─────────────────────────────────────────────────
-const EXTRACTION_SCHEMA = {
-  type: "object",
-  properties: {
-    extracted: {
-      type: "object",
-      properties: {
-        buyer_names: { type: "array", items: { type: "string" }, minItems: 1 },
-        property_address: {
-          type: "object",
-          properties: { full: { type: "string" } },
-          required: ["full"]
+      confidence: {
+        type: "object",
+        properties: {
+          overall_confidence: { type: "integer", minimum: 0, maximum: 100 },
+          purchase_price: { type: "integer", minimum: 0, maximum: 100 },
+          property_address: { type: "integer", minimum: 0, maximum: 100 },
+          buyer_names: { type: "integer", minimum: 0, maximum: 100 },
+          close_of_escrow: { type: "integer", minimum: 0, maximum: 100 },
+          final_acceptance_date: { type: "integer", minimum: 0, maximum: 100 },
+          contingencies: { type: "integer", minimum: 0, maximum: 100 },
+          home_warranty: { type: "integer", minimum: 0, maximum: 100 },
+          brokerage_info: { type: "integer", minimum: 0, maximum: 100 },
+          loan_type: { type: "integer", minimum: 0, maximum: 100 }
         },
-        purchase_price: {
-          type: "string",
-          pattern: "^\\$$   \\d{1,3}(,\\d{3})*(\\.\\d{2})?   $$"
-        },
-        all_cash: { type: "boolean" },
-        close_of_escrow: { type: "string" },
-        initial_deposit: {
-          type: "object",
-          properties: { amount: { type: "string" }, due: { type: "string" } },
-          required: ["amount", "due"]
-        },
-        loan_type: { type: ["string", "null"] },
-        loan_type_note: { type: ["string", "null"] },
-        seller_credit_to_buyer: { type: ["string", "null"] },
-        contingencies: {
-          type: "object",
-          properties: {
-            loan_days: { type: "integer", minimum: 0 },
-            appraisal_days: { type: "integer", minimum: 0 },
-            investigation_days: { type: "integer", minimum: 0 },
-            crb_attached_and_signed: { type: "boolean" }
-          },
-          required: ["loan_days", "appraisal_days", "investigation_days", "crb_attached_and_signed"]
-        },
-        cop_contingency: { type: "boolean" },
-        seller_delivery_of_documents_days: { type: "integer", minimum: 0 },
-        home_warranty: {
-          type: "object",
-          properties: {
-            ordered_by: { type: ["string", "null"], enum: ["Buyer", "Seller", "Both", "Waived", null] },
-            seller_max_cost: { type: ["string", "null"] },
-            provider: { type: ["string", "null"] }
-          }
-        },
-        final_acceptance_date: {
-          type: "string",
-          pattern: "^\\d{2}/\\d{2}/\\d{4}$"
-        },
-        counters: {
-          type: "object",
-          properties: {
-            has_counter_or_addendum: { type: "boolean" },
-            counter_chain: { type: "array", items: { type: "string" } },
-            final_version_page: { type: ["integer", "null"] },
-            summary: { type: "string" }
-          },
-          required: ["has_counter_or_addendum", "counter_chain", "summary"]
-        },
-        buyers_broker: {
-          type: "object",
-          properties: {
-            brokerage_name: { type: ["string", "null"] },
-            agent_name: { type: ["string", "null"] },
-            email: { type: ["string", "null"] },
-            phone: { type: ["string", "null"] }
-          }
-        },
-        sellers_broker: {
-          type: "object",
-          properties: {
-            brokerage_name: { type: ["string", "null"] },
-            agent_name: { type: ["string", "null"] },
-            email: { type: ["string", "null"] },
-            phone: { type: ["string", "null"] }
-          }
-        }
+        required: [
+          "overall_confidence", "purchase_price", "property_address", "buyer_names",
+          "close_of_escrow", "final_acceptance_date", "contingencies", "home_warranty",
+          "brokerage_info", "loan_type"
+        ]
       },
-      required: [
-        "buyer_names", "property_address", "purchase_price", "all_cash",
-        "close_of_escrow", "initial_deposit", "contingencies", "cop_contingency",
-        "seller_delivery_of_documents_days", "home_warranty", "final_acceptance_date",
-        "counters", "buyers_broker", "sellers_broker"
-      ]
+      handwriting_detected: { type: "boolean" }
     },
-    confidence: {
-      type: "object",
-      properties: {
-        overall_confidence: { type: "integer", minimum: 0, maximum: 100 },
-        purchase_price: { type: "integer", minimum: 0, maximum: 100 },
-        property_address: { type: "integer", minimum: 0, maximum: 100 },
-        buyer_names: { type: "integer", minimum: 0, maximum: 100 },
-        close_of_escrow: { type: "integer", minimum: 0, maximum: 100 },
-        final_acceptance_date: { type: "integer", minimum: 0, maximum: 100 },
-        contingencies: { type: "integer", minimum: 0, maximum: 100 },
-        home_warranty: { type: "integer", minimum: 0, maximum: 100 },
-        brokerage_info: { type: "integer", minimum: 0, maximum: 100 },
-        loan_type: { type: "integer", minimum: 0, maximum: 100 }
-      },
-      required: [
-        "overall_confidence", "purchase_price", "property_address", "buyer_names",
-        "close_of_escrow", "final_acceptance_date", "contingencies", "home_warranty",
-        "brokerage_info", "loan_type"
-      ]
-    },
-    handwriting_detected: { type: "boolean" }
-  },
-  required: ["extracted", "confidence", "handwriting_detected"]
-};
+    required: ["extracted", "confidence", "handwriting_detected"]
+  };
 
-// ── Extraction Prompt (unchanged) ───────────────────────────────────────────
-const EXTRACTION_PROMPT = `You will be extracting structured information from a Real Estate PDF document (typically a purchase contract) and outputting it as JSON that matches a specific schema. This task requires careful attention to detail, date calculations, and proper handling of amendments/counters that may override original contract terms.
+  const EXTRACTION_PROMPT = `You will be extracting structured information from a Real Estate PDF document (typically a purchase contract) and outputting it as JSON that matches a specific schema. This task requires careful attention to detail, date calculations, and proper handling of amendments/counters that may override original contract terms.
 
 Here is the JSON schema that your output must match:
 
@@ -378,6 +247,133 @@ Now provide your final output as valid JSON matching the schema. Your output mus
 - Follow all formatting requirements specified above
 
 Your final response should contain ONLY the JSON output inside <json> tags, with no additional commentary or explanation outside those tags.`;
+
+  // Now define the cached system block using the local variables
+  const STATIC_SYSTEM_BLOCKS = [
+    {
+      type: 'text',
+      text: EXTRACTION_PROMPT,
+      cache_control: { type: 'ephemeral' } // 5-minute TTL, auto-refreshes on hits
+      // For 1-hour TTL: { type: 'ephemeral', ttl: '1h' }
+    }
+  ];
+
+  try {
+    // Step 1: Quick availability check
+    console.log(`[claude-extract] Quick availability check (max 5s)...`);
+    await checkClaudeAvailability(modelName, 5000);
+    console.log(`[claude-extract] Claude is responding ✓ Proceeding`);
+
+    // Step 2: Fetch PDF
+    console.log(`[claude-extract] Fetching PDF from URL...`);
+    const pdfResponse = await fetch(pdfUrl);
+    if (!pdfResponse.ok) {
+      throw new Error(`Failed to fetch PDF: ${pdfResponse.status} ${pdfResponse.statusText}`);
+    }
+    const pdfBuffer = await pdfResponse.arrayBuffer();
+    const pdfBase64 = Buffer.from(pdfBuffer).toString('base64');
+    console.log(`[claude-extract] PDF fetched: ${(pdfBuffer.byteLength / 1024 / 1024).toFixed(2)} MB`);
+
+    console.log(`[claude-extract] Sending request with cached prompt to ${modelName}...`);
+
+    const startTime = Date.now();
+
+    const response = await fetch(ANTHROPIC_API_URL, {
+      method: 'POST',
+      headers: {
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': ANTHROPIC_VERSION,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: modelName,
+        max_tokens: 4096,
+        temperature: 0.1,
+        system: STATIC_SYSTEM_BLOCKS,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'document',
+                source: {
+                  type: 'base64',
+                  media_type: 'application/pdf',
+                  data: pdfBase64,
+                },
+              },
+              {
+                type: 'text',
+                text: 'Extract structured data from this PDF according to the schema and rules. Use scratchpad for reasoning, then output ONLY the JSON inside <json> tags with no additional text.',
+              },
+            ],
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      throw new Error(`Claude API error: ${response.status} - ${errorBody}`);
+    }
+
+    const result = await response.json();
+    const durationMs = Date.now() - startTime;
+    console.log(`[claude-extract] Response received after ${durationMs}ms`);
+
+    // Log cache usage
+    console.log('[claude-extract] Usage stats:', JSON.stringify(result.usage, null, 2));
+
+    const text = result.content[0].text;
+    console.log(`[claude-extract] Received response (${text.length} chars)`);
+
+    // ── JSON extraction ──────────────────────────────────────────────────────
+    let extractedData;
+    try {
+      const jsonMatch = text.match(/<json>([\s\S]*?)<\/json>/);
+      if (!jsonMatch || !jsonMatch[1]) {
+        throw new Error("No <json> block found in Claude response");
+      }
+
+      const jsonText = jsonMatch[1].trim();
+      extractedData = JSON.parse(jsonText);
+
+      console.log(`[claude-extract] Successfully extracted JSON`);
+    } catch (parseError: any) {
+      console.error(`[claude-extract] JSON extraction failed:`, parseError);
+      console.error(`[claude-extract] Raw response preview:`, text.substring(0, 1200));
+      throw new Error(`Failed to parse JSON: ${parseError.message}`);
+    }
+
+    console.log(`[claude-extract] Overall confidence: ${extractedData.confidence?.overall_confidence}%`);
+
+    const finalTerms = transformToUniversal(extractedData);
+
+    const needsReview =
+      extractedData.confidence?.overall_confidence < 80 ||
+      !extractedData.extracted?.buyer_names?.length ||
+      !extractedData.extracted?.property_address?.full ||
+      !extractedData.extracted?.purchase_price;
+
+    console.log(`[claude-extract] Extraction complete - needsReview: ${needsReview}`);
+
+    return {
+      finalTerms,
+      needsReview,
+      criticalPages: ['1-' + totalPages],
+      allExtractions: [extractedData],
+      modelUsed: modelName,
+    };
+  } catch (error: any) {
+    console.error(`[claude-extract] Error with ${modelName}:`, error);
+
+    if (error.message.includes('Ping failed') || error.message.includes('AbortError')) {
+      throw new Error(`Claude appears to be down or not responding right now`);
+    }
+
+    throw new Error(`Claude extraction failed (${modelName}): ${error.message}`);
+  }
+}
 
 // ── Date calculation helper (unchanged) ─────────────────────────────────────
 function calculateDateFromRelative(dateStr: string | null, effectiveDate: string | null): string | null {
