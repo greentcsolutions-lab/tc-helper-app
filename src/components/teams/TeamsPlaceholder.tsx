@@ -67,7 +67,7 @@ export function TeamsPlaceholder() {
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li className="flex items-start gap-2">
                 <span className="text-primary mt-1">•</span>
-                <span>Collaborate on up to 10 concurrent transactions</span>
+                <span>Collaborate on <strong>all</strong> of your Team transactions</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-primary mt-1">•</span>
@@ -128,7 +128,7 @@ export function TeamsPlaceholder() {
               </h4>
               <ul className="space-y-1 text-sm text-muted-foreground">
                 <li>• Up to 5 team members (1 owner + 4 members)</li>
-                <li>• 10 concurrent transactions</li>
+                <li>• Unlimited transactions</li>
                 <li>• Shared AI parse credits</li>
                 <li>• Team templates and workflows</li>
                 <li>• Task assignment and tracking</li>
@@ -139,7 +139,7 @@ export function TeamsPlaceholder() {
               <ul className="space-y-1 text-sm text-muted-foreground">
                 <li>• Team leader manages billing</li>
                 <li>• All members can collaborate on files</li>
-                <li>• Read-only mode for now (no client access)</li>
+                <li>• Client portal being developed</li>
                 <li>• Assign tasks to team members or 3rd party roles</li>
               </ul>
             </div>
