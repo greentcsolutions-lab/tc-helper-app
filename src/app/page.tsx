@@ -1,5 +1,4 @@
 // src/app/page.tsx
-// version 2.0.0 - Targeting Solo TCs looking to offload their manual entry
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -20,12 +19,11 @@ import {
   ArrowRight,
   Users,
   MessageSquare,
-  Check,
-  FileText
+  Check
 } from "lucide-react";
 import { SignUpButton, SignedOut } from "@clerk/nextjs";
 import Link from "next/link";
-import Image from "next/image"; // Added for optimized image loading
+import Image from "next/image";
 
 export default function Home() {
   return (
@@ -67,36 +65,38 @@ export default function Home() {
             </Button>
           </div>
 
-          {/* New Side-by-Side Visual Comparison */}
+          {/* Side-by-Side Comparison */}
           <div className="relative max-w-5xl mx-auto mt-12 rounded-2xl overflow-hidden border shadow-2xl bg-card">
-  <div className="grid md:grid-cols-2 gap-0">
-    {/* Left Side: The PDF */}
-    <div className="p-4 bg-muted/50 border-r">
-      <p className="text-xs font-bold text-muted-foreground uppercase mb-4 text-left">The Messy PDF</p>
-      {/* Standard img tag ignores Next.js container constraints */}
-      <img 
-        src="/Messy Contract Extraction.png" 
-        alt="Messy Real Estate Contract Extraction" 
-        className="w-full h-auto rounded-lg opacity-80 grayscale-[30%] shadow-sm"
-      />
-    </div>
-    
-    {/* Right Side: The AI Output */}
-    <div className="p-4 bg-background relative flex flex-col justify-center">
-      <div className="absolute inset-0 bg-blue-500/5 animate-pulse pointer-events-none" />
-      <p className="text-xs font-bold text-blue-600 uppercase mb-4 flex items-center gap-1 text-left">
-        <Brain className="h-3 w-3" /> TCHelper AI Output
-      </p>
-      <div className="space-y-4">
-        <div className="h-8 bg-muted rounded animate-pulse w-3/4" />
-        <div className="h-8 bg-muted rounded animate-pulse w-full" />
-        <div className="h-32 border-2 border-dashed border-blue-200 rounded-xl flex items-center justify-center text-blue-500 text-sm font-medium italic bg-blue-50/30">
-          Extracting Dates, Parties, and Contingencies...
+            <div className="grid md:grid-cols-2 gap-0">
+              <div className="p-4 bg-muted/50 border-r">
+                <p className="text-xs font-bold text-muted-foreground uppercase mb-4 text-left">The Messy PDF</p>
+                <div className="relative w-full">
+                  <Image 
+                    src="/Messy Contract Extraction.png" 
+                    alt="Messy Real Estate Contract Extraction" 
+                    width={1920}
+                    height={1080}
+                    priority
+                    className="rounded-lg opacity-80 grayscale-[30%] w-full h-auto"
+                  />
+                </div>
+              </div>
+              <div className="p-4 bg-background relative flex flex-col justify-center">
+                <div className="absolute inset-0 bg-blue-500/5 animate-pulse pointer-events-none" />
+                <p className="text-xs font-bold text-blue-600 uppercase mb-4 flex items-center gap-1 text-left">
+                  <Brain className="h-3 w-3" /> TCHelper AI Output
+                </p>
+                <div className="space-y-4">
+                  <div className="h-8 bg-muted rounded animate-pulse w-3/4" />
+                  <div className="h-8 bg-muted rounded animate-pulse w-full" />
+                  <div className="h-32 border-2 border-dashed border-blue-200 rounded-xl flex items-center justify-center text-blue-500 text-sm font-medium italic bg-blue-50/30">
+                    Extracting Dates, Parties, and Contingencies...
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
-  </div>
-</div>
       </section>
 
       {/* The Problem */}
@@ -126,14 +126,13 @@ export default function Home() {
             </p>
           </div>
 
-          {/* App Screenshot Integration */}
-          <div className="mb-20 max-w-5xl mx-auto rounded-xl border shadow-lg overflow-hidden">
-             <Image 
-                src="/tc-helper-transactions-page.png" 
-                alt="TC Helper Dashboard and Transactions Page" 
-                width={1200} 
-                height={800}
-                className="w-full"
+          <div className="mb-20 max-w-5xl mx-auto rounded-xl border shadow-2xl overflow-hidden bg-white">
+            <Image 
+              src="/TC Helper Transactions Page.png" 
+              alt="TC Helper Dashboard" 
+              width={1920}
+              height={1080}
+              className="w-full h-auto"
             />
           </div>
 
@@ -185,7 +184,7 @@ export default function Home() {
           </div>
         </div>
       </section>
-
+      
       {/* Feature Showcase */}
       <section className="py-20 px-4 bg-muted/30">
         <div className="max-w-7xl mx-auto">
