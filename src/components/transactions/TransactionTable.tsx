@@ -1,3 +1,6 @@
+// src/components/transactions/TransactionTable.tsx
+// Version 3.0.0 MAJOR UI UPDATE - F shape layout 
+
 "use client";
 
 import { useState, useEffect } from "react";
