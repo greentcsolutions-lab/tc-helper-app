@@ -68,35 +68,35 @@ export default function Home() {
           </div>
 
           {/* New Side-by-Side Visual Comparison */}
-          <div className="relative max-w-5xl mx-auto mt-8 rounded-2xl overflow-hidden border shadow-2xl bg-card">
-            <div className="grid md:grid-cols-2 gap-0">
-                <div className="p-4 bg-muted/50 border-r">
-                    <p className="text-xs font-bold text-muted-foreground uppercase mb-2">The Messy PDF</p>
-                    <Image 
-                        src="/messy-contract-extraction.png" 
-                        alt="Messy Real Estate Contract Extraction" 
-                        width={600} 
-                        height={400}
-                        className="rounded-lg opacity-80 grayscale-[30%]"
-                    />
-                </div>
-                <div className="p-4 bg-background relative">
-                    <div className="absolute inset-0 bg-blue-500/5 animate-pulse pointer-events-none" />
-                    <p className="text-xs font-bold text-blue-600 uppercase mb-2 flex items-center gap-1">
-                        <Brain className="h-3 w-3" /> TCHelper AI Output
-                    </p>
-                    <div className="space-y-2">
-                        <div className="h-8 bg-muted rounded animate-pulse w-3/4" />
-                        <div className="h-8 bg-muted rounded animate-pulse w-full" />
-                        <div className="h-8 bg-muted rounded animate-pulse w-1/2" />
-                        <div className="h-24 border-2 border-dashed border-blue-200 rounded flex items-center justify-center text-blue-400 text-sm italic">
-                            Dates and Tasks Generated Instantly...
-                        </div>
-                    </div>
-                </div>
-            </div>
-          </div>
+          <div className="relative max-w-5xl mx-auto mt-12 rounded-2xl overflow-hidden border shadow-2xl bg-card">
+  <div className="grid md:grid-cols-2 gap-0">
+    {/* Left Side: The PDF */}
+    <div className="p-4 bg-muted/50 border-r">
+      <p className="text-xs font-bold text-muted-foreground uppercase mb-4 text-left">The Messy PDF</p>
+      {/* Standard img tag ignores Next.js container constraints */}
+      <img 
+        src="/Messy Contract Extraction.png" 
+        alt="Messy Real Estate Contract Extraction" 
+        className="w-full h-auto rounded-lg opacity-80 grayscale-[30%] shadow-sm"
+      />
+    </div>
+    
+    {/* Right Side: The AI Output */}
+    <div className="p-4 bg-background relative flex flex-col justify-center">
+      <div className="absolute inset-0 bg-blue-500/5 animate-pulse pointer-events-none" />
+      <p className="text-xs font-bold text-blue-600 uppercase mb-4 flex items-center gap-1 text-left">
+        <Brain className="h-3 w-3" /> TCHelper AI Output
+      </p>
+      <div className="space-y-4">
+        <div className="h-8 bg-muted rounded animate-pulse w-3/4" />
+        <div className="h-8 bg-muted rounded animate-pulse w-full" />
+        <div className="h-32 border-2 border-dashed border-blue-200 rounded-xl flex items-center justify-center text-blue-500 text-sm font-medium italic bg-blue-50/30">
+          Extracting Dates, Parties, and Contingencies...
         </div>
+      </div>
+    </div>
+  </div>
+</div>
       </section>
 
       {/* The Problem */}
