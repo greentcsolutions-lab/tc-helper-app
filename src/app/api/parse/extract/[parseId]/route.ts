@@ -11,7 +11,7 @@ import * as ParseLogger from "@/lib/debug/parse-logger";
 
 // Importing LLM Processes
 import { extractWithGemini } from "@/lib/extraction/gemini/extractPdf";
-import { extractWithClaude } from "@/lib/extraction/claude/extractPdf";
+import { extractWithClaude } from "@/lib/extraction/Claude/extractPdf";
 
 
 const { logStep, logSuccess, logError, logWarn } = ParseLogger;
