@@ -1,6 +1,7 @@
 // src/app/api/parse/extract/[parseId]/route.ts
 // Version: 7.2.1 - 2026-01-13
 // Implements: ping → full Claude → fallback to Gemini pattern with strict timeouts
+// future: implement racing ping: whichever AI returns first gets the job. For now, sequential try/catch
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
