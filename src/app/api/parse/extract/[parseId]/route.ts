@@ -8,7 +8,9 @@ import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
 import { mapExtractionToParseResult } from "@/lib/parse/map-to-parse-result";
 import { extractWithGemini } from "@/lib/extraction/gemini/extractPdf";
-import { logStep, logSuccess, logError, logWarn } from "@/lib/debug/parse-logger";
+import * as ParseLogger from "@/lib/debug/parse-logger";
+
+const { logStep, logSuccess, logError, logWarn } = ParseLogger;
 
 export const runtime = "nodejs";
 export const maxDuration = 300; // still safe ceiling on Vercel Pro
