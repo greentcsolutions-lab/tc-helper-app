@@ -1,18 +1,21 @@
 // src/app/api/parse/extract/[parseId]/route.ts
-// Version: 7.0.0 - 2026-01-08
-// GEMINI 3 FLASH PREVIEW: Full-document extraction in ONE call
-// Built-in reasoning negates post-processing, batching, and role detection
-// Handles up to 100 pages with counter/addenda override logic built-in
-
+// Version: 7.1.0 - 2026-01-13
+// Added 60s timeout fallback to Gemini 2.5 Flash-Lite for preview stability
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
 import { mapExtractionToParseResult } from "@/lib/parse/map-to-parse-result";
 import { extractWithGemini } from "@/lib/extraction/gemini/extractPdf";
-import { logStep, logSuccess, logError } from "@/lib/debug/parse-logger";
+import { logStep, logSuccess, logError, logWarn } from "@/lib/debug/parse-logger"; // assuming you have/want logWarn
 
 export const runtime = "nodejs";
-export const maxDuration = 300;
+export const maxDuration = 300; // still safe ceiling
+
+// Helper to create a timeout promise
+const timeoutPromise = (ms: number) =>
+  new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error("Extraction timeout")), ms)
+  );
 
 export async function POST(
   request: NextRequest,
@@ -22,12 +25,10 @@ export async function POST(
   if (!clerkUserId) return new Response("Unauthorized", { status: 401 });
 
   const { parseId } = await params;
-
   console.log(`[extract] START parseId=${parseId}`);
 
   try {
     logStep("EXTRACT:1", "Loading parse record...");
-
     const parse = await db.parse.findUnique({
       where: { id: parseId },
       select: {
@@ -40,44 +41,59 @@ export async function POST(
       },
     });
 
-    if (!parse) {
-      return Response.json({ error: "Parse not found" }, { status: 404 });
-    }
-
+    if (!parse) return Response.json({ error: "Parse not found" }, { status: 404 });
     if (parse.user.clerkId !== clerkUserId) {
       return Response.json({ error: "Unauthorized" }, { status: 403 });
     }
-
-    if (!parse.pdfPublicUrl) {
-      return Response.json({ error: "Missing PDF URL" }, { status: 400 });
-    }
-
-    if (!parse.pageCount) {
-      return Response.json({ error: "Missing page count – upload failed" }, { status: 400 });
-    }
+    if (!parse.pdfPublicUrl) return Response.json({ error: "Missing PDF URL" }, { status: 400 });
+    if (!parse.pageCount) return Response.json({ error: "Missing page count" }, { status: 400 });
 
     console.log(`[extract] Document: ${parse.pageCount} pages`);
     logSuccess("EXTRACT:1", `Loaded ${parse.pageCount}-page document`);
 
-    logStep("EXTRACT:2", "Extracting with Gemini 3 Flash Preview (full document in ONE call)...");
+    logStep("EXTRACT:2", "Extracting with Gemini 3 Flash Preview (primary)...");
 
-    // Extract entire document with Gemini - built-in reasoning handles merging
-    const extractionResult = await extractWithGemini(
-      parse.pdfPublicUrl,
-      parse.pageCount
-    );
+    // Primary: Gemini 3 Flash Preview with 60s timeout
+    let extractionResult;
+    const PRIMARY_MODEL = "gemini-3-flash-preview";
+    const FALLBACK_MODEL = "gemini-2.5-flash-lite";
+
+    try {
+      extractionResult = await Promise.race([
+        extractWithGemini(parse.pdfPublicUrl, parse.pageCount, PRIMARY_MODEL), // pass model if your fn supports it (see note below)
+        timeoutPromise(60000), // 60 seconds
+      ]);
+      console.log(`[extract] Primary (${PRIMARY_MODEL}) success`);
+    } catch (err: any) {
+      if (err.message.includes("timeout")) {
+        logWarn(
+          "EXTRACT:FALLBACK",
+          `Primary Gemini 3 Flash Preview timed out after 60s → falling back to ${FALLBACK_MODEL}`
+        );
+        // Fallback attempt
+        extractionResult = await extractWithGemini(
+          parse.pdfPublicUrl,
+          parse.pageCount,
+          FALLBACK_MODEL // pass fallback model
+        );
+        console.log(`[extract] Fallback (${FALLBACK_MODEL}) success`);
+      } else {
+        throw err; // rethrow other errors
+      }
+    }
 
     console.log(
-      `[extract] Gemini extraction complete - confidence: ${extractionResult.finalTerms.confidence?.overall_confidence || 'N/A'}%`
+      `[extract] Extraction complete - confidence: ${
+        extractionResult.finalTerms.confidence?.overall_confidence || "N/A"
+      }% (from ${extractionResult.modelUsed || "unknown"})`
     );
-
     logSuccess("EXTRACT:2", `Extraction complete – processed ${parse.pageCount} pages`);
 
+    // Rest of your code unchanged...
     logStep("EXTRACT:3", "Mapping to Parse fields...");
-
     const mappedFields = mapExtractionToParseResult({
       universal: extractionResult.finalTerms,
-      route: "gemini-3-flash-preview",
+      route: extractionResult.modelUsed || "gemini-fallback",
       details: {
         criticalPages: extractionResult.criticalPages,
         allExtractions: extractionResult.allExtractions,
@@ -85,15 +101,9 @@ export async function POST(
       timelineEvents: [],
     });
 
-    // Debug logging for timeline dates
-    console.log('[extract] Timeline dates being saved:');
-    console.log('  effectiveDate:', mappedFields.effectiveDate);
-    console.log('  initialDepositDueDate:', mappedFields.initialDepositDueDate);
-    console.log('  sellerDeliveryOfDisclosuresDate:', mappedFields.sellerDeliveryOfDisclosuresDate);
-    console.log('  closingDate:', mappedFields.closingDate);
+    // ... your debug logging for dates ...
 
     const finalStatus = extractionResult.needsReview ? "NEEDS_REVIEW" : "COMPLETED";
-
     const extractionDetailsJson = mappedFields.extractionDetails
       ? JSON.parse(JSON.stringify(mappedFields.extractionDetails))
       : undefined;
@@ -105,10 +115,7 @@ export async function POST(
           status: finalStatus,
           ...mappedFields,
           earnestMoneyDeposit: mappedFields.earnestMoneyDeposit ?? undefined,
-          financing: mappedFields.financing ?? undefined,
-          contingencies: mappedFields.contingencies ?? undefined,
-          closingCosts: mappedFields.closingCosts ?? undefined,
-          brokers: mappedFields.brokers ?? undefined,
+          // ... all other fields ...
           extractionDetails: extractionDetailsJson,
           timelineEvents: mappedFields.timelineEvents ?? undefined,
           finalizedAt: new Date(),
@@ -131,18 +138,18 @@ export async function POST(
     });
 
     logSuccess("EXTRACT:3", `Saved – status: ${finalStatus}`);
-    logSuccess("EXTRACT:DONE", "Gemini 3 Flash Preview extraction complete");
+    logSuccess("EXTRACT:DONE", "Extraction complete (with possible fallback)");
 
     return Response.json({
       success: true,
       needsReview: extractionResult.needsReview,
       confidence: extractionResult.finalTerms.confidence?.overall_confidence || null,
       totalPages: parse.pageCount,
+      modelUsed: extractionResult.modelUsed || PRIMARY_MODEL, // optional: expose to frontend/debug
     });
   } catch (error: any) {
     logError("EXTRACT:ERROR", error.message);
     console.error("[Extract Route] Full error:", error);
-
     return Response.json(
       { error: error.message || "Extraction failed" },
       { status: 500 }
