@@ -13,6 +13,18 @@ if (!ANTHROPIC_API_KEY) {
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_VERSION = '2023-06-01'; // You can update this if Anthropic releases a newer version
 
+const STATIC_SYSTEM_BLOCKS = [
+  {
+    type: 'text',
+    text: EXTRACTION_PROMPT.replace(
+      '${JSON.stringify(EXTRACTION_SCHEMA, null, 2)}',
+      JSON.stringify(EXTRACTION_SCHEMA, null, 2)
+    ),
+    cache_control: { type: 'ephemeral' }  // 5-minute TTL, auto-refreshes on hits
+    // For 1-hour TTL (if gaps >5 min between calls): { type: 'ephemeral', ttl: '1h' }
+  }
+];
+
 // ── Quick availability check (fast ping to see if Claude is responding) ─────
 async function checkClaudeAvailability(modelName: string, timeoutMs = 5000): Promise<boolean> {
   const controller = new AbortController();
@@ -71,12 +83,12 @@ export async function extractWithClaude(
   console.log(`[claude-extract] PDF URL: ${pdfUrl}`);
 
   try {
-    // Step 1: Quick check if Claude is alive (usually 0.5–2 seconds)
+    // Step 1: Quick availability check
     console.log(`[claude-extract] Quick availability check (max 5s)...`);
     await checkClaudeAvailability(modelName, 5000);
-    console.log(`[claude-extract] Claude is responding ✓ Proceeding with full extraction`);
+    console.log(`[claude-extract] Claude is responding ✓ Proceeding`);
 
-    // Step 2: Fetch and process the actual PDF
+    // Step 2: Fetch PDF
     console.log(`[claude-extract] Fetching PDF from URL...`);
     const pdfResponse = await fetch(pdfUrl);
     if (!pdfResponse.ok) {
@@ -86,7 +98,7 @@ export async function extractWithClaude(
     const pdfBase64 = Buffer.from(pdfBuffer).toString('base64');
     console.log(`[claude-extract] PDF fetched: ${(pdfBuffer.byteLength / 1024 / 1024).toFixed(2)} MB`);
 
-    console.log(`[claude-extract] Sending full request to ${modelName} at ${new Date().toISOString()}...`);
+    console.log(`[claude-extract] Sending request with cached prompt to ${modelName}...`);
 
     const startTime = Date.now();
 
@@ -101,6 +113,7 @@ export async function extractWithClaude(
         model: modelName,
         max_tokens: 4096,
         temperature: 0.1,
+        system: STATIC_SYSTEM_BLOCKS, // ← Cached static prompt + schema
         messages: [
           {
             role: 'user',
@@ -115,7 +128,7 @@ export async function extractWithClaude(
               },
               {
                 type: 'text',
-                text: EXTRACTION_PROMPT,
+                text: 'Extract structured data from this PDF according to the schema and rules. Use scratchpad for reasoning, then output ONLY the JSON inside <json> tags with no additional text.',
               },
             ],
           },
@@ -130,13 +143,15 @@ export async function extractWithClaude(
 
     const result = await response.json();
     const durationMs = Date.now() - startTime;
-    console.log(`[claude-extract] Response received from ${modelName} after ${durationMs}ms`);
+    console.log(`[claude-extract] Response received after ${durationMs}ms`);
+
+    // Log cache usage (very useful for debugging)
+    console.log('[claude-extract] Usage stats:', JSON.stringify(result.usage, null, 2));
 
     const text = result.content[0].text;
     console.log(`[claude-extract] Received response (${text.length} chars)`);
-    console.log(`[claude-extract] First 500 chars: ${text.substring(0, 500)}`);
 
-    // ── IMPROVED JSON EXTRACTION ────────────────────────────────────────────
+    // ── JSON extraction ──────────────────────────────────────────────────────
     let extractedData;
     try {
       const jsonMatch = text.match(/<json>([\s\S]*?)<\/json>/);
@@ -147,15 +162,13 @@ export async function extractWithClaude(
       const jsonText = jsonMatch[1].trim();
       extractedData = JSON.parse(jsonText);
 
-      console.log(`[claude-extract] Successfully extracted JSON from <json> tags`);
+      console.log(`[claude-extract] Successfully extracted JSON`);
     } catch (parseError: any) {
       console.error(`[claude-extract] JSON extraction failed:`, parseError);
       console.error(`[claude-extract] Raw response preview:`, text.substring(0, 1200));
-      throw new Error(`Failed to parse JSON from Claude's <json> block: ${parseError.message}`);
+      throw new Error(`Failed to parse JSON: ${parseError.message}`);
     }
 
-    // ── Rest of the processing remains the same ─────────────────────────────
-    console.log(`[claude-extract] Successfully parsed extraction data`);
     console.log(`[claude-extract] Overall confidence: ${extractedData.confidence?.overall_confidence}%`);
 
     const finalTerms = transformToUniversal(extractedData);
@@ -178,7 +191,6 @@ export async function extractWithClaude(
   } catch (error: any) {
     console.error(`[claude-extract] Error with ${modelName}:`, error);
 
-    // Make it easier for calling code to detect availability issues
     if (error.message.includes('Ping failed') || error.message.includes('AbortError')) {
       throw new Error(`Claude appears to be down or not responding right now`);
     }
@@ -186,6 +198,7 @@ export async function extractWithClaude(
     throw new Error(`Claude extraction failed (${modelName}): ${error.message}`);
   }
 }
+
 // ── JSON Schema (unchanged) ─────────────────────────────────────────────────
 const EXTRACTION_SCHEMA = {
   type: "object",
