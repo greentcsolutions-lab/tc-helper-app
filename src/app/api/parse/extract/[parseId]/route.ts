@@ -1,6 +1,5 @@
 // src/app/api/parse/extract/[parseId]/route.ts
-// Version: 7.2.2 - 2026-01-13
-// Fixed try/catch nesting + flow control
+// Version: 7.2.3 - Fixed try/catch structure - should now compile
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
@@ -18,13 +17,13 @@ const { logStep, logSuccess, logError, logWarn } = ParseLogger;
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-// ── Timeout helper ──────────────────────────────────────────────────────────
+// Timeout helper
 const timeoutPromise = (ms: number, label = "Operation") =>
   new Promise<never>((_, reject) =>
     setTimeout(() => reject(new Error(`${label} timeout`)), ms)
   );
 
-// Recommended timeouts (milliseconds)
+// Timeouts in ms
 const PING_TIMEOUT_MS = 4500;
 const CLAUDE_FULL_TIMEOUT_MS = 85000;
 const GEMINI_FALLBACK_TIMEOUT_MS = 110000;
@@ -39,14 +38,16 @@ export async function POST(
   const { parseId } = await params;
   console.log(`[extract] START parseId=${parseId} at ${new Date().toISOString()}`);
 
+  let parse;                    // declare here so it's available in catch blocks if needed
   let extractionResult;
+
   const PRIMARY_MODEL = "claude-4-sonnet-20250514";
   const FALLBACK_MODEL = "gemini-3-flash-preview";
 
   try {
-    // ── Load parse record ─────────────────────────────────────────────────
+    // ── 1. Load parse record ──────────────────────────────────────────────
     logStep("EXTRACT:1", "Loading parse record...");
-    const parse = await db.parse.findUnique({
+    parse = await db.parse.findUnique({
       where: { id: parseId },
       select: {
         id: true,
@@ -68,8 +69,9 @@ export async function POST(
     console.log(`[extract] Document: ${parse.pageCount} pages`);
     logSuccess("EXTRACT:1", `Loaded ${parse.pageCount}-page document`);
 
-    // ── Phase 1: Quick availability ping ──────────────────────────────────
+    // ── 2. Try primary (Claude) path ──────────────────────────────────────
     logStep("EXTRACT:2", `Trying primary: ${PRIMARY_MODEL}`);
+
     console.log(`[claude-check] Quick availability ping (max ${PING_TIMEOUT_MS/1000}s)...`);
 
     const isClaudeResponsive = await Promise.race([
@@ -84,7 +86,6 @@ export async function POST(
 
     console.log(`[claude-check] Looks alive ✓ Proceeding with full extraction`);
 
-    // ── Phase 2: Full expensive primary extraction ────────────────────────
     console.log(`[extract] Starting full extraction with ${PRIMARY_MODEL}...`);
 
     extractionResult = await Promise.race([
@@ -94,7 +95,7 @@ export async function POST(
 
     console.log(`[extract] Primary (${PRIMARY_MODEL}) SUCCESS`);
   } catch (primaryError: any) {
-    // ── Primary path failed (ping or full extraction) → try fallback ─────
+    // ── Primary failed → fallback to Gemini ───────────────────────────────
     const isTimeout = primaryError.message?.includes("timeout");
     console.log(
       `[extract] Primary path failed (${isTimeout ? "timeout" : "error"}): ${primaryError.message}`
@@ -111,21 +112,19 @@ export async function POST(
       ]);
 
       console.log(`[extract] Fallback (${FALLBACK_MODEL}) SUCCESS`);
-      // Optional: mark that we used fallback
       extractionResult = { ...extractionResult, fromFallback: true };
     } catch (fallbackError: any) {
-      console.error(`[extract] Fallback also failed: ${fallbackError.message}`);
-      logError("EXTRACT:ERROR", `Both providers failed: ${fallbackError.message}`);
-      throw fallbackError; // → outer catch
+      console.error(`Fallback also failed: ${fallbackError.message}`);
+      throw fallbackError; // let outer catch handle final failure
     }
   }
 
-  // ── At this point we should have extractionResult or have thrown ───────
+  // ── If we reach here, we have (or should have) a result ────────────────
   if (!extractionResult) {
     throw new Error("No extraction result received from either provider");
   }
 
-  // ── Result processing & database save ─────────────────────────────────
+  // ── Process result & save to DB ───────────────────────────────────────
   const modelUsed =
     extractionResult.modelUsed ||
     (extractionResult.fromFallback ? FALLBACK_MODEL : PRIMARY_MODEL);
@@ -149,7 +148,6 @@ export async function POST(
     timelineEvents: [],
   });
 
-  // Debug print dates
   console.log("[extract] Timeline dates being saved:");
   console.log(" effectiveDate:", mappedFields.effectiveDate);
   console.log(" initialDepositDueDate:", mappedFields.initialDepositDueDate);
@@ -204,7 +202,6 @@ export async function POST(
     modelUsed,
   });
 } catch (error: any) {
-  // Final safety net for any unhandled error
   logError("EXTRACT:ERROR", error.message);
   console.error("[Extract Route] Full error:", error);
   return Response.json(
