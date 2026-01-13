@@ -1,6 +1,6 @@
 // src/app/api/parse/extract/[parseId]/route.ts
-// Version: 7.2.4 - 2026-01-13
-// Fixed: proper single outer try/catch + inner fallback try/catch
+// Version: 7.2.6 - 2026-01-13
+// FIXED: Single properly nested try/catch structure - compiles now
 
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
@@ -18,13 +18,12 @@ const { logStep, logSuccess, logError, logWarn } = ParseLogger;
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-// ── Timeout helper ──────────────────────────────────────────────────────────
+// Timeout helper
 const timeoutPromise = (ms: number, label = "Operation") =>
   new Promise<never>((_, reject) =>
     setTimeout(() => reject(new Error(`${label} timeout`)), ms)
   );
 
-// Timeouts (ms)
 const PING_TIMEOUT_MS = 4500;
 const CLAUDE_FULL_TIMEOUT_MS = 85000;
 const GEMINI_FALLBACK_TIMEOUT_MS = 110000;
@@ -46,7 +45,7 @@ export async function POST(
   const FALLBACK_MODEL = "gemini-3-flash-preview";
 
   try {
-    // ── 1. Load parse record ──────────────────────────────────────────────
+    // Load parse record
     logStep("EXTRACT:1", "Loading parse record...");
     parse = await db.parse.findUnique({
       where: { id: parseId },
@@ -70,63 +69,53 @@ export async function POST(
     console.log(`[extract] Document: ${parse.pageCount} pages`);
     logSuccess("EXTRACT:1", `Loaded ${parse.pageCount}-page document`);
 
-    // ── 2. Primary path (Claude) ──────────────────────────────────────────
+    // Try primary Claude path
     logStep("EXTRACT:2", `Trying primary: ${PRIMARY_MODEL}`);
 
-    console.log(`[claude-check] Quick availability ping (max ${PING_TIMEOUT_MS/1000}s)...`);
-
+    console.log(`[claude-check] Quick ping (${PING_TIMEOUT_MS/1000}s max)...`);
     const isClaudeResponsive = await Promise.race([
       checkClaudeAvailability(),
-      timeoutPromise(PING_TIMEOUT_MS, "Claude availability ping"),
+      timeoutPromise(PING_TIMEOUT_MS, "Claude ping")
     ]).catch(() => false);
 
     if (!isClaudeResponsive) {
-      console.warn(`[claude-check] Primary not quickly available → early fallback`);
-      throw new Error("Claude availability check failed");
+      console.warn(`[claude-check] Not responsive quickly → fallback`);
+      throw new Error("Claude ping failed");
     }
 
-    console.log(`[claude-check] Looks alive ✓ Proceeding`);
-
-    console.log(`[extract] Starting full extraction with ${PRIMARY_MODEL}...`);
-
+    console.log(`[claude-check] Alive → full extraction`);
     extractionResult = await Promise.race([
       extractWithClaude(parse.pdfPublicUrl, parse.pageCount, PRIMARY_MODEL),
-      timeoutPromise(CLAUDE_FULL_TIMEOUT_MS, "Claude full extraction"),
+      timeoutPromise(CLAUDE_FULL_TIMEOUT_MS, "Claude extraction")
     ]);
 
     console.log(`[extract] Primary (${PRIMARY_MODEL}) SUCCESS`);
-  } catch (primaryError: any) {
-    // ── Primary failed → fallback ─────────────────────────────────────────
-    const isTimeout = primaryError.message?.includes("timeout");
-    console.log(
-      `[extract] Primary failed (${isTimeout ? "timeout" : "error"}): ${primaryError.message}`
-    );
+  } catch (err: any) {
+    // Primary path failed (ping or full extraction) → fallback to Gemini
+    console.log(`[extract] Primary failed: ${err.message}`);
 
     logWarn("EXTRACT:FALLBACK", `Falling back to ${FALLBACK_MODEL}`);
 
     try {
-      console.log(`[extract] Starting fallback with ${FALLBACK_MODEL}...`);
-
       extractionResult = await Promise.race([
         extractWithGemini(parse.pdfPublicUrl, parse.pageCount, FALLBACK_MODEL),
-        timeoutPromise(GEMINI_FALLBACK_TIMEOUT_MS, "Gemini fallback"),
+        timeoutPromise(GEMINI_FALLBACK_TIMEOUT_MS, "Gemini fallback")
       ]);
 
       console.log(`[extract] Fallback (${FALLBACK_MODEL}) SUCCESS`);
       extractionResult = { ...extractionResult, fromFallback: true };
-    } catch (fallbackError: any) {
-      console.error(`[extract] Fallback also failed: ${fallbackError.message}`);
-      throw fallbackError;
+    } catch (fallbackErr: any) {
+      console.error(`[extract] Fallback failed too: ${fallbackErr.message}`);
+      throw fallbackErr;
     }
   }
 
-  // ── We should have result by now, or we would have thrown ─────────────
+  // ── Only reached if we have a result ──────────────────────────────────────
   if (!extractionResult) {
-    throw new Error("No extraction result from either provider");
+    throw new Error("No extraction result from any provider");
   }
 
-  const modelUsed =
-    extractionResult.modelUsed ||
+  const modelUsed = extractionResult.modelUsed ||
     (extractionResult.fromFallback ? FALLBACK_MODEL : PRIMARY_MODEL);
 
   console.log(
@@ -148,11 +137,11 @@ export async function POST(
     timelineEvents: [],
   });
 
-  console.log("[extract] Timeline dates being saved:");
-  console.log(" effectiveDate:", mappedFields.effectiveDate);
-  console.log(" initialDepositDueDate:", mappedFields.initialDepositDueDate);
-  console.log(" sellerDeliveryOfDisclosuresDate:", mappedFields.sellerDeliveryOfDisclosuresDate);
-  console.log(" closingDate:", mappedFields.closingDate);
+  console.log('[extract] Timeline dates being saved:');
+  console.log(' effectiveDate:', mappedFields.effectiveDate);
+  console.log(' initialDepositDueDate:', mappedFields.initialDepositDueDate);
+  console.log(' sellerDeliveryOfDisclosuresDate:', mappedFields.sellerDeliveryOfDisclosuresDate);
+  console.log(' closingDate:', mappedFields.closingDate);
 
   const finalStatus = extractionResult.needsReview ? "NEEDS_REVIEW" : "COMPLETED";
   const extractionDetailsJson = mappedFields.extractionDetails
@@ -202,6 +191,7 @@ export async function POST(
     modelUsed,
   });
 } catch (error: any) {
+  // Final safety net for any uncaught error
   logError("EXTRACT:ERROR", error.message);
   console.error("[Extract Route] Full error:", error);
   return Response.json(
