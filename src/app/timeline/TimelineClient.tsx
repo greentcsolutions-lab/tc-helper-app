@@ -268,48 +268,49 @@ export default function TimelineClient({ parses }: TimelineClientProps) {
         </Card>
       )}
 
-      {/* Legend */}
-      <Card className="shadow-sm">
-  <CardHeader className="pb-3">
-    <CardTitle className="text-base font-semibold">Event Types</CardTitle>
-  </CardHeader>
-  <CardContent>
-    {/* Increased gap from 4 to 8 for more breathing room */}
-    <div className="flex flex-wrap gap-x-8 gap-y-4 items-center">
-      
-      <div className="flex items-center gap-2.5">
-        <div className="w-3.5 h-3.5 rounded-sm bg-[#14b8a6]" />
-        <span className="text-sm font-medium text-muted-foreground">Acceptance</span>
-      </div>
+{/* Legend */}
+      <Card className="shadow-sm border-none bg-transparent shadow-none">
+        <CardHeader className="pb-3 px-0">
+          <CardTitle className="text-base font-semibold">Event Types</CardTitle>
+        </CardHeader>
+        <CardContent className="px-0">
+          {/* Using inline style to force the gap regardless of calendar.css overrides */}
+          <div 
+            className="flex flex-wrap items-center" 
+            style={{ gap: '2rem' }}
+          >
+            <div className="flex items-center gap-2">
+              <div className="w-3.5 h-3.5 rounded-sm bg-[#14b8a6]" />
+              <span className="text-sm font-medium text-muted-foreground">Acceptance</span>
+            </div>
 
-      <div className="flex items-center gap-2.5">
-        <div className="w-3.5 h-3.5 rounded-sm bg-[#10b981]" />
-        <span className="text-sm font-medium text-muted-foreground">Closing</span>
-      </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3.5 h-3.5 rounded-sm bg-[#10b981]" />
+              <span className="text-sm font-medium text-muted-foreground">Closing</span>
+            </div>
 
-      <div className="flex items-center gap-2.5">
-        <div className="w-3.5 h-3.5 rounded-sm bg-[#f59e0b]" />
-        <span className="text-sm font-medium text-muted-foreground">Contingency</span>
-      </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3.5 h-3.5 rounded-sm bg-[#f59e0b]" />
+              <span className="text-sm font-medium text-muted-foreground">Contingency</span>
+            </div>
 
-      <div className="flex items-center gap-2.5">
-        <div className="w-3.5 h-3.5 rounded-sm bg-[#8b5cf6]" />
-        <span className="text-sm font-medium text-muted-foreground">Deposit</span>
-      </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3.5 h-3.5 rounded-sm bg-[#8b5cf6]" />
+              <span className="text-sm font-medium text-muted-foreground">Deposit</span>
+            </div>
 
-      <div className="flex items-center gap-2.5">
-        <div className="w-3.5 h-3.5 rounded-sm bg-[#3b82f6]" />
-        <span className="text-sm font-medium text-muted-foreground">Deadline</span>
-      </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3.5 h-3.5 rounded-sm bg-[#3b82f6]" />
+              <span className="text-sm font-medium text-muted-foreground">Deadline</span>
+            </div>
 
-      <div className="flex items-center gap-2.5">
-        <div className="w-3.5 h-3.5 rounded-sm bg-[#ef4444]" />
-        <span className="text-sm font-medium text-muted-foreground">Overdue</span>
-      </div>
-
-    </div>
-  </CardContent>
-</Card>
+            <div className="flex items-center gap-2">
+              <div className="w-3.5 h-3.5 rounded-sm bg-[#ef4444]" />
+              <span className="text-sm font-medium text-muted-foreground">Overdue</span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
