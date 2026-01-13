@@ -1,4 +1,5 @@
 // src/app/page.tsx
+// version 2.0.0 - Targeting Solo TCs looking to offload their manual entry
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -19,10 +20,12 @@ import {
   ArrowRight,
   Users,
   MessageSquare,
-  Check
+  Check,
+  FileText
 } from "lucide-react";
 import { SignUpButton, SignedOut } from "@clerk/nextjs";
 import Link from "next/link";
+import Image from "next/image"; // Added for optimized image loading
 
 export default function Home() {
   return (
@@ -32,56 +35,67 @@ export default function Home() {
         <div className="max-w-6xl mx-auto text-center">
           <div className="inline-flex items-center gap-2 bg-primary/10 text-primary px-4 py-2 rounded-full text-sm font-medium mb-8">
             <Sparkles className="h-4 w-4" />
-            Powered by AI
+            AI-Powered Extraction
           </div>
 
           <h1 className="text-5xl md:text-7xl font-bold tracking-tight mb-6">
             <span className="bg-gradient-to-r from-cyan-600 via-blue-600 to-purple-600 bg-clip-text text-transparent">
-              AI-Powered Workflow
+              Stop Typing Your Contracts.
             </span>
             <br />
-            <span className="text-foreground">for Real Estate Professionals</span>
+            <span className="text-foreground">Start Managing Them.</span>
           </h1>
 
           <p className="text-xl md:text-2xl text-muted-foreground mb-8 max-w-3xl mx-auto leading-relaxed">
-            Upload contracts. AI builds your workflow. You customize and execute.
+            Upload any real estate contract. Our AI extracts every date, contact, and contingency in 60 seconds. You just execute.
           </p>
 
-          {/* Value Props */}
-          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-10 text-sm md:text-base">
-            <div className="flex items-center gap-2">
-              <Zap className="h-5 w-5 text-cyan-600" />
-              <span className="text-muted-foreground">AI extracts + auto-generates tasks in 30 seconds</span>
-            </div>
-            <div className="hidden sm:block text-muted-foreground">•</div>
-            <div className="flex items-center gap-2">
-              <CheckSquare className="h-5 w-5 text-blue-600" />
-              <span className="text-muted-foreground">Customizable workflows that fit how YOU work</span>
-            </div>
-            <div className="hidden sm:block text-muted-foreground">•</div>
-            <div className="flex items-center gap-2">
-              <Calendar className="h-5 w-5 text-purple-600" />
-              <span className="text-muted-foreground">Never miss a deadline with smart timelines</span>
-            </div>
-          </div>
-
-          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-16">
             <SignedOut>
               <SignUpButton mode="modal">
                 <Button size="lg" className="h-14 px-10 text-lg font-semibold shadow-xl hover:shadow-2xl transition-all">
                   <Sparkles className="mr-2 h-5 w-5" />
-                  Start Free — 1 Credit Included
+                  Extract Your First Contract Free
                 </Button>
               </SignUpButton>
             </SignedOut>
             <Button size="lg" variant="outline" className="h-14 px-8 text-lg" asChild>
               <a href="#how-it-works">
-                See How It Works
+                See the Extraction
                 <ArrowRight className="ml-2 h-5 w-5" />
               </a>
             </Button>
           </div>
-          <p className="text-sm text-muted-foreground mt-4">No credit card required</p>
+
+          {/* New Side-by-Side Visual Comparison */}
+          <div className="relative max-w-5xl mx-auto mt-8 rounded-2xl overflow-hidden border shadow-2xl bg-card">
+            <div className="grid md:grid-cols-2 gap-0">
+                <div className="p-4 bg-muted/50 border-r">
+                    <p className="text-xs font-bold text-muted-foreground uppercase mb-2">The Messy PDF</p>
+                    <Image 
+                        src="/Messy Contract Extraction.png" 
+                        alt="Messy Real Estate Contract Extraction" 
+                        width={600} 
+                        height={400}
+                        className="rounded-lg opacity-80 grayscale-[30%]"
+                    />
+                </div>
+                <div className="p-4 bg-background relative">
+                    <div className="absolute inset-0 bg-blue-500/5 animate-pulse pointer-events-none" />
+                    <p className="text-xs font-bold text-blue-600 uppercase mb-2 flex items-center gap-1">
+                        <Brain className="h-3 w-3" /> TCHelper AI Output
+                    </p>
+                    <div className="space-y-2">
+                        <div className="h-8 bg-muted rounded animate-pulse w-3/4" />
+                        <div className="h-8 bg-muted rounded animate-pulse w-full" />
+                        <div className="h-8 bg-muted rounded animate-pulse w-1/2" />
+                        <div className="h-24 border-2 border-dashed border-blue-200 rounded flex items-center justify-center text-blue-400 text-sm italic">
+                            Dates and Tasks Generated Instantly...
+                        </div>
+                    </div>
+                </div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -89,12 +103,12 @@ export default function Home() {
       <section className="py-16 px-4 bg-muted/30">
         <div className="max-w-4xl mx-auto text-center">
           <h2 className="text-3xl md:text-4xl font-bold mb-6">
-            Sound Familiar?
+            Drowning in Data Entry?
           </h2>
           <p className="text-xl text-muted-foreground leading-relaxed">
-            Drowning in manual checklists? Unclear on what's next? Communication falling through the cracks?
+            Stop squinting at blurry PDFs and manual counting dates. Missing a contingency shouldn't be the cost of doing business.
             <span className="block mt-4 font-medium text-foreground">
-              It's time for workflow clarity powered by AI.
+              TCHelper automates the boring stuff so you can handle more files with less stress.
             </span>
           </p>
         </div>
@@ -105,11 +119,22 @@ export default function Home() {
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
             <h2 className="text-3xl md:text-4xl font-bold mb-4">
-              How It Works
+              Your New 60-Second Workflow
             </h2>
             <p className="text-xl text-muted-foreground">
-              AI jumpstarts your workflow in seconds
+              From PDF to a perfect timeline in four simple steps
             </p>
+          </div>
+
+          {/* App Screenshot Integration */}
+          <div className="mb-20 max-w-5xl mx-auto rounded-xl border shadow-lg overflow-hidden">
+             <Image 
+                src="/TC Helper Transactions Page.png" 
+                alt="TC Helper Dashboard and Transactions Page" 
+                width={1200} 
+                height={800}
+                className="w-full"
+            />
           </div>
 
           <div className="grid md:grid-cols-4 gap-8">
@@ -117,29 +142,29 @@ export default function Home() {
               {
                 step: "01",
                 icon: Upload,
-                title: "Upload Contract",
-                description: "Drag and drop PDFs up to 100 pages — even handwritten or complex addenda",
+                title: "Drop Your PDF",
+                description: "Drag in any contract or complex addenda. Even the handwritten ones.",
                 color: "from-cyan-500 to-cyan-600"
               },
               {
                 step: "02",
                 icon: Brain,
-                title: "AI Extracts Everything",
-                description: "95% accuracy on 20+ data points: dates, parties, amounts, contingencies",
+                title: "AI Scans & Extracts",
+                description: "Our engine identifies EMD, Inspection dates, and 20+ other data points.",
                 color: "from-blue-500 to-blue-600"
               },
               {
                 step: "03",
-                icon: CheckSquare,
-                title: "Tasks Auto-Generated",
-                description: "AI creates your entire workflow from contract dates and deadlines",
+                icon: Calendar,
+                title: "Timeline Built",
+                description: "A color-coded, sortable timeline is generated based on contract dates.",
                 color: "from-purple-500 to-purple-600"
               },
               {
                 step: "04",
                 icon: Rocket,
-                title: "Customize & Execute",
-                description: "Add custom tasks, apply templates, and manage everything in one place",
+                title: "Review & Ship",
+                description: "Add custom tasks, verify the data, and start your transaction with confidence.",
                 color: "from-pink-500 to-pink-600"
               }
             ].map((item, i) => (
