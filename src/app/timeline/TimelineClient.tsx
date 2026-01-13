@@ -279,32 +279,32 @@ export default function TimelineClient({ parses }: TimelineClientProps) {
             className="flex flex-wrap items-center" 
             style={{ gap: '2rem' }}
           >
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
               <div className="w-3.5 h-3.5 rounded-sm bg-[#14b8a6]" />
               <span className="text-sm font-medium text-muted-foreground">Acceptance</span>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
               <div className="w-3.5 h-3.5 rounded-sm bg-[#10b981]" />
               <span className="text-sm font-medium text-muted-foreground">Closing</span>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
               <div className="w-3.5 h-3.5 rounded-sm bg-[#f59e0b]" />
               <span className="text-sm font-medium text-muted-foreground">Contingency</span>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
               <div className="w-3.5 h-3.5 rounded-sm bg-[#8b5cf6]" />
               <span className="text-sm font-medium text-muted-foreground">Deposit</span>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
               <div className="w-3.5 h-3.5 rounded-sm bg-[#3b82f6]" />
               <span className="text-sm font-medium text-muted-foreground">Deadline</span>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
               <div className="w-3.5 h-3.5 rounded-sm bg-[#ef4444]" />
               <span className="text-sm font-medium text-muted-foreground">Overdue</span>
             </div>
