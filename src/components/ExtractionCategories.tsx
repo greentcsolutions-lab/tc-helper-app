@@ -23,7 +23,6 @@ export default function ExtractionCategories({
   viewContext,
 }: ExtractionCategoriesProps) {
   
-  // Render Left Side: Purchasing Terms FIRST, Info LAST
   if (viewContext === "left") {
     return (
       <div className="space-y-8">
@@ -32,7 +31,6 @@ export default function ExtractionCategories({
           isEditing={isEditing}
           onDataChange={onDataChange}
         />
-        {/* System metadata pushed to bottom of left column */}
         <div className="pt-6 border-t border-dashed">
           <CategoryTransactionInfo
             data={data}
@@ -44,7 +42,6 @@ export default function ExtractionCategories({
     );
   }
 
-  // Render Right Side: Timeline & Representing Parties
   if (viewContext === "right") {
     return (
       <div className="space-y-8">
@@ -62,7 +59,6 @@ export default function ExtractionCategories({
     );
   }
 
-  // Default / Mobile View (Stacking with Info at the bottom)
   return (
     <div className="space-y-8">
       <CategoryPurchaseTerms
