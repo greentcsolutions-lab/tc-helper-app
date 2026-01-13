@@ -75,7 +75,7 @@ export async function POST(
       console.log(`[extract] Primary (${PRIMARY_MODEL}) FAILED at ${errorTime}: ${err.message}`);
 
       if (err.message.includes("timeout")) {
-        logWarn(
+        console.warn(
           "EXTRACT:FALLBACK",
           `Primary Gemini 3 Flash Preview timed out after 60s → falling back to ${FALLBACK_MODEL}`
         );
