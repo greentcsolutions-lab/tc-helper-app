@@ -244,29 +244,31 @@ export default function TimelineClient({ parses }: TimelineClientProps) {
       </aside>
 
       {/* --- MAIN CALENDAR AREA --- */}
-      <main className="flex-1 overflow-hidden bg-slate-50/20 relative">
-        <div className="h-full p-6">
-          <Calendar
-            localizer={localizer}
-            events={filteredEvents}
-            startAccessor="start"
-            endAccessor="end"
-            style={{ height: "100%" }}
-            eventPropGetter={eventStyleGetter}
-            onSelectEvent={setSelectedEvent}
-            date={date}
-            onNavigate={setDate}
-            view={view}
-            onView={setView}
-            toolbar={false}
-            components={{
-              event: ({ event }) => (
-                <div className="truncate px-1.5 font-semibold text-[11px] py-0.5">{event.title}</div>
-              ),
-            }}
-          />
-        </div>
-      </main>
+      {/* --- MAIN CALENDAR AREA --- */}
+<main className="flex-1 overflow-hidden bg-slate-50/20 relative flex flex-col">
+  {/* Dynamic Calendar Header */}
+  <div className="px-6 pt-6 flex justify-end items-center">
+    <h2 className="text-xl font-bold text-slate-800">
+      {view === 'month' && format(date, "MMMM, yyyy")}
+      {view === 'week' && format(date, "MMMM, yyyy")}
+      {view === 'day' && format(date, "MMMM d, yyyy")}
+    </h2>
+  </div>
+
+  <div className="flex-1 p-6">
+    <Calendar
+      localizer={localizer}
+      events={filteredEvents}
+      // ... rest of your props
+      toolbar={false} // Keeping this false as we are building our own
+      date={date}
+      view={view}
+      onNavigate={setDate}
+      onView={setView}
+      // ... rest of your existing calendar code
+    />
+  </div>
+</main>
 
       {/* --- RIGHT SIDEBAR (Event Details Slide-over) --- */}
       <aside 
