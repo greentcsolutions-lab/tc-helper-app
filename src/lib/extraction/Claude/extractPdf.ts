@@ -1,7 +1,6 @@
 // src/lib/extraction/claude/extractPdf.ts
-// Version: 1.0.0 - 2026-01-13
-// Initial implementation mirroring Gemini for Claude Sonnet
-// Supports direct PDF base64 upload via Anthropic Messages API
+// Version: 1.1.0 - 2026-01-13
+// Added quick availability check via minimal test call before full extraction
 
 import { coerceNumber, coerceString } from '@/lib/grok/type-coercion';
 import { normalizeDateString } from '@/lib/extraction/extract/universal/helpers/date-utils';
@@ -11,7 +10,177 @@ if (!ANTHROPIC_API_KEY) {
   throw new Error('ANTHROPIC_API_KEY is required');
 }
 
-// ── JSON Schema (unchanged from Gemini) ─────────────────────────────────────────────────
+const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
+const ANTHROPIC_VERSION = '2023-06-01'; // You can update this if Anthropic releases a newer version
+
+// ── Quick availability check (fast ping to see if Claude is responding) ─────
+async function checkClaudeAvailability(modelName: string, timeoutMs = 5000): Promise<boolean> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(ANTHROPIC_API_URL, {
+      method: 'POST',
+      headers: {
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': ANTHROPIC_VERSION,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: modelName,
+        max_tokens: 1,           // We only need a tiny response
+        temperature: 0,
+        messages: [
+          {
+            role: 'user',
+            content: 'Ping',       // Shortest possible meaningful prompt
+          },
+        ],
+      }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '(no details)');
+      throw new Error(`Ping failed: ${response.status} - ${errorText}`);
+    }
+
+    return true;
+  } catch (err: any) {
+    clearTimeout(timeoutId);
+    console.warn(`[claude-check] Availability check failed: ${err.message}`);
+    throw err; // We'll catch this in the main function to allow fallback
+  }
+}
+
+// ── Main extraction function ────────────────────────────────────────────────
+export async function extractWithClaude(
+  pdfUrl: string,
+  totalPages: number,
+  modelName: string = 'claude-4-sonnet-20250514'
+): Promise<{
+  finalTerms: any;
+  needsReview: boolean;
+  criticalPages: string[];
+  allExtractions: any[];
+  modelUsed: string;
+}> {
+  console.log(`[claude-extract] Starting extraction for ${totalPages}-page document using model: ${modelName}`);
+  console.log(`[claude-extract] PDF URL: ${pdfUrl}`);
+
+  try {
+    // Step 1: Quick check if Claude is alive (usually 0.5–2 seconds)
+    console.log(`[claude-extract] Quick availability check (max 5s)...`);
+    await checkClaudeAvailability(modelName, 5000);
+    console.log(`[claude-extract] Claude is responding ✓ Proceeding with full extraction`);
+
+    // Step 2: Fetch and process the actual PDF
+    console.log(`[claude-extract] Fetching PDF from URL...`);
+    const pdfResponse = await fetch(pdfUrl);
+    if (!pdfResponse.ok) {
+      throw new Error(`Failed to fetch PDF: ${pdfResponse.status} ${pdfResponse.statusText}`);
+    }
+    const pdfBuffer = await pdfResponse.arrayBuffer();
+    const pdfBase64 = Buffer.from(pdfBuffer).toString('base64');
+    console.log(`[claude-extract] PDF fetched: ${(pdfBuffer.byteLength / 1024 / 1024).toFixed(2)} MB`);
+
+    console.log(`[claude-extract] Sending full request to ${modelName} at ${new Date().toISOString()}...`);
+
+    const startTime = Date.now();
+
+    const response = await fetch(ANTHROPIC_API_URL, {
+      method: 'POST',
+      headers: {
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': ANTHROPIC_VERSION,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: modelName,
+        max_tokens: 4096,
+        temperature: 0.1,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'document',
+                source: {
+                  type: 'base64',
+                  media_type: 'application/pdf',
+                  data: pdfBase64,
+                },
+              },
+              {
+                type: 'text',
+                text: EXTRACTION_PROMPT,
+              },
+            ],
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      throw new Error(`Claude API error: ${response.status} - ${errorBody}`);
+    }
+
+    const result = await response.json();
+    const durationMs = Date.now() - startTime;
+    console.log(`[claude-extract] Response received from ${modelName} after ${durationMs}ms`);
+
+    const text = result.content[0].text;
+    console.log(`[claude-extract] Received response (${text.length} chars)`);
+    console.log(`[claude-extract] First 500 chars: ${text.substring(0, 500)}`);
+
+    // Robust JSON parsing (strip markdown if present)
+    let extractedData;
+    try {
+      const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/) || [null, text];
+      const jsonText = jsonMatch[1] || text;
+      extractedData = JSON.parse(jsonText.trim());
+    } catch (parseError: any) {
+      console.error(`[claude-extract] JSON parse error:`, parseError);
+      console.error(`[claude-extract] Raw text:`, text);
+      throw new Error(`Failed to parse Claude response as JSON: ${parseError.message}`);
+    }
+
+    console.log(`[claude-extract] Successfully parsed extraction data`);
+    console.log(`[claude-extract] Overall confidence: ${extractedData.confidence?.overall_confidence}%`);
+
+    const finalTerms = transformToUniversal(extractedData);
+
+    const needsReview =
+      extractedData.confidence?.overall_confidence < 80 ||
+      !extractedData.extracted?.buyer_names?.length ||
+      !extractedData.extracted?.property_address?.full ||
+      !extractedData.extracted?.purchase_price;
+
+    console.log(`[claude-extract] Extraction complete - needsReview: ${needsReview}`);
+
+    return {
+      finalTerms,
+      needsReview,
+      criticalPages: ['1-' + totalPages],
+      allExtractions: [extractedData],
+      modelUsed: modelName,
+    };
+  } catch (error: any) {
+    console.error(`[claude-extract] Error with ${modelName}:`, error);
+
+    // Make it easier for your calling code to detect availability issues
+    if (error.message.includes('Ping failed') || error.message.includes('AbortError')) {
+      throw new Error(`Claude appears to be down or not responding right now`);
+    }
+
+    throw new Error(`Claude extraction failed (${modelName}): ${error.message}`);
+  }
+}
+
+// ── JSON Schema (unchanged) ─────────────────────────────────────────────────
 const EXTRACTION_SCHEMA = {
   type: "object",
   properties: {
@@ -190,119 +359,6 @@ Now provide your final output as valid JSON matching the schema. Your output mus
 
 Your final response should contain ONLY the JSON output inside <json> tags, with no additional commentary or explanation outside those tags.`;
 
-export async function extractWithClaude(
-  pdfUrl: string,
-  totalPages: number,
-  modelName: string = 'claude-4-sonnet-20250514'
-): Promise<{
-  finalTerms: any;
-  needsReview: boolean;
-  criticalPages: string[];
-  allExtractions: any[];
-  modelUsed: string;
-}> {
-  console.log(`[claude-extract] Starting extraction for ${totalPages}-page document using model: ${modelName}`);
-  console.log(`[claude-extract] PDF URL: ${pdfUrl}`);
-
-  try {
-    // Fetch PDF
-    console.log(`[claude-extract] Fetching PDF from URL...`);
-    const pdfResponse = await fetch(pdfUrl);
-    if (!pdfResponse.ok) {
-      throw new Error(`Failed to fetch PDF: ${pdfResponse.status} ${pdfResponse.statusText}`);
-    }
-    const pdfBuffer = await pdfResponse.arrayBuffer();
-    const pdfBase64 = Buffer.from(pdfBuffer).toString('base64');
-    console.log(`[claude-extract] PDF fetched: ${(pdfBuffer.byteLength / 1024 / 1024).toFixed(2)} MB`);
-
-    console.log(`[claude-extract] Sending request to ${modelName} at ${new Date().toISOString()}...`);
-
-    const startTime = Date.now();
-
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: modelName,
-        max_tokens: 4096, // Sufficient for JSON output
-        temperature: 0.1, // Low for deterministic extraction
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'document',
-                source: {
-                  type: 'base64',
-                  media_type: 'application/pdf',
-                  data: pdfBase64,
-                },
-              },
-              {
-                type: 'text',
-                text: EXTRACTION_PROMPT,
-              },
-            ],
-          },
-        ],
-      }),
-    });
-
-    if (!response.ok) {
-      const errorBody = await response.text();
-      throw new Error(`Claude API error: ${response.status} - ${errorBody}`);
-    }
-
-    const result = await response.json();
-    const durationMs = Date.now() - startTime;
-    console.log(`[claude-extract] Response received from ${modelName} after ${durationMs}ms at ${new Date().toISOString()}`);
-
-    const text = result.content[0].text;
-    console.log(`[claude-extract] Received response (${text.length} chars)`);
-    console.log(`[claude-extract] First 500 chars: ${text.substring(0, 500)}`);
-
-    // Robust JSON parsing (strip markdown if present)
-    let extractedData;
-    try {
-      const jsonMatch = text.match(/```json
-      const jsonText = jsonMatch ? jsonMatch[1] : text;
-      extractedData = JSON.parse(jsonText.trim());
-    } catch (parseError: any) {
-      console.error(`[claude-extract] JSON parse error:`, parseError);
-      console.error(`[claude-extract] Raw text:`, text);
-      throw new Error(`Failed to parse Claude response as JSON: ${parseError.message}`);
-    }
-
-    console.log(`[claude-extract] Successfully parsed extraction data`);
-    console.log(`[claude-extract] Overall confidence: ${extractedData.confidence?.overall_confidence}%`);
-
-    const finalTerms = transformToUniversal(extractedData);
-
-    const needsReview =
-      extractedData.confidence?.overall_confidence < 80 ||
-      !extractedData.extracted?.buyer_names?.length ||
-      !extractedData.extracted?.property_address?.full ||
-      !extractedData.extracted?.purchase_price;
-
-    console.log(`[claude-extract] Extraction complete - needsReview: ${needsReview}`);
-
-    return {
-      finalTerms,
-      needsReview,
-      criticalPages: ['1-' + totalPages],
-      allExtractions: [extractedData],
-      modelUsed: modelName,
-    };
-  } catch (error: any) {
-    console.error(`[claude-extract] Error with ${modelName}:`, error);
-    throw new Error(`Claude extraction failed (${modelName}): ${error.message}`);
-  }
-}
-
 // ── Date calculation helper (unchanged) ─────────────────────────────────────
 function calculateDateFromRelative(dateStr: string | null, effectiveDate: string | null): string | null {
   if (!dateStr || !effectiveDate) return dateStr;
@@ -329,7 +385,7 @@ function calculateDateFromRelative(dateStr: string | null, effectiveDate: string
   }
 }
 
-// ── Transform to universal format (unchanged, renamed for generality) ───────────────────────────────
+// ── Transform to universal format (unchanged) ───────────────────────────────
 function transformToUniversal(data: any): any {
   const e = data.extracted;
 
