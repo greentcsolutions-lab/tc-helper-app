@@ -1,4 +1,5 @@
-// src/app/transactions/TransactionsClient.tsx
+// src/components/transactions/TransactionsClient.tsx
+// Version 3.2.0 major UI update
 "use client";
 
 import { useState } from "react";
@@ -12,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Search, FileText, Archive, Plus } from "lucide-react";
+import { Search, FileText, Plus } from "lucide-react";
 import Link from "next/link";
 import TransactionTable from "@/components/transactions/TransactionTable";
 import ActionBar from "@/components/transactions/ActionBar";
@@ -38,14 +39,7 @@ export default function TransactionsClient({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isActioning, setIsActioning] = useState(false);
 
-  // Sorting Labels Map
-  const sortLabels: Record<SortOption, string> = {
-    date: "Latest First",
-    address: "Address (A-Z)",
-    closing: "Closing Date",
-    price: "Purchase Price",
-  };
-
+  // Sorting Logic
   const filteredAndSorted = initialParses
     .filter((parse) => {
       const isArchived = parse.status === "ARCHIVED";
@@ -78,6 +72,7 @@ export default function TransactionsClient({
   const latestParseId = initialParses[0]?.id;
   const remainingSlots = userQuota - activeCount;
 
+  // Selection Logic
   const toggleSelect = (id: string) => {
     const newSelected = new Set(selectedIds);
     if (newSelected.has(id)) {
@@ -98,7 +93,27 @@ export default function TransactionsClient({
 
   const clearSelection = () => setSelectedIds(new Set());
 
+  // --- ACTION HANDLERS ---
+
+  // Single Archive (New)
+  const handleArchive = async (id: string) => {
+    try {
+      const res = await fetch("/api/parse/archive", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: [id] }), 
+      });
+      if (!res.ok) throw new Error();
+      toast.success("Transaction archived");
+      window.location.reload();
+    } catch {
+      toast.error("Failed to archive");
+    }
+  };
+
+  // Single Delete
   const handleDelete = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this transaction?")) return;
     try {
       const res = await fetch(`/api/parse/delete/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error();
@@ -109,6 +124,7 @@ export default function TransactionsClient({
     }
   };
 
+  // Bulk Actions
   const handleBulkArchive = async () => {
     if (selectedIds.size === 0) return;
     setIsActioning(true);
@@ -139,7 +155,7 @@ export default function TransactionsClient({
         body: JSON.stringify({ ids: Array.from(selectedIds) }),
       });
       if (!res.ok) throw new Error();
-      toast.success("Deleted");
+      toast.success("Deleted successfully");
       window.location.reload();
     } catch {
       toast.error("Failed to delete");
@@ -151,7 +167,7 @@ export default function TransactionsClient({
   return (
     <>
       <div className="max-w-[1600px] mx-auto space-y-4 p-6">
-        {/* Row 1: Title & Usage Info */}
+        {/* Title & Quota Info */}
         <div className="flex flex-col gap-1">
           <h1 className="text-3xl font-bold tracking-tight">Transactions</h1>
           <p className="text-sm text-muted-foreground">
@@ -159,13 +175,13 @@ export default function TransactionsClient({
           </p>
         </div>
 
-        {/* Row 2: Search, Sort, View, and Upload (Glide Style) */}
+        {/* Toolbar: Search, Sort, Filter */}
         <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
           <div className="flex flex-1 items-center gap-3 min-w-[300px]">
             <div className="relative w-full max-w-sm">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground h-4 w-4" />
               <Input
-                placeholder="Search transactions..."
+                placeholder="Search by address, buyer, or filename..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-9 h-10 bg-background"
@@ -205,7 +221,7 @@ export default function TransactionsClient({
           </Button>
         </div>
 
-        {/* Transaction Table Section */}
+        {/* Table Section */}
         <div className="pt-2">
           {filteredAndSorted.length === 0 ? (
             <div className="border rounded-xl border-dashed py-20 text-center bg-card/50">
@@ -226,12 +242,14 @@ export default function TransactionsClient({
                 onToggleSelect={toggleSelect}
                 onToggleSelectAll={toggleSelectAll}
                 onDelete={handleDelete}
+                onArchive={handleArchive} // Wired to the cabinet button
               />
             </div>
           )}
         </div>
       </div>
 
+      {/* Floating Bulk Action Bar */}
       <ActionBar
         selectedCount={selectedIds.size}
         onArchive={handleBulkArchive}
