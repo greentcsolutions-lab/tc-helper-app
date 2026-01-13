@@ -3,6 +3,10 @@ const nextConfig = {
   // Externalize pdfjs-dist at runtime (Vercel Node.js loads it fine)
   serverExternalPackages: ["pdfjs-dist"],
 
+  experimental: {
+    serverMinification: false,  // ← This shows real variable names in errors instead of 'N'
+  },
+  
   // Critical fix: Transpile + external for server bundles (bypasses Webpack resolve errors)
   webpack: (config, { isServer }) => {
     if (isServer) {
