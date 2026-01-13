@@ -5,7 +5,7 @@ import { useState, useEffect } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ChevronDown, ChevronUp, Trash2, AlertCircle, Edit, Save, X } from "lucide-react";
+import { ChevronRight, ChevronDown, Trash2, AlertCircle, Edit, Save, X } from "lucide-react";
 import { format } from "date-fns";
 import ExtractionCategories from "@/components/ExtractionCategories";
 import { ParseResult } from "@/types";
@@ -176,22 +176,30 @@ export default function TransactionTable({
               return (
                 <tr
                   key={transaction.id}
-                  className={`border-b last:border-b-0 ${isExpanded ? "bg-primary/5" : "hover:bg-muted/30"} transition-colors`}
+                  className={`border-b last:border-b-0 ${isExpanded ? "bg-primary/5" : "hover:bg-muted/30"} transition-colors cursor-pointer group`}
+                  onClick={() => toggleRow(transaction.id)}
                 >
                   <td colSpan={7} className="p-0">
                     <div>
-                      {/* Main Row */}
+                      {/* Main Row Container */}
                       <div className="flex items-center">
-                        <div className="w-12 p-4 flex items-center justify-center">
+                        {/* Checkbox Cell - Stop propagation so clicking box doesn't close row */}
+                        <div 
+                          className="w-12 p-4 flex items-center justify-center"
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           <Checkbox
                             checked={isSelected}
                             onCheckedChange={() => onToggleSelect(transaction.id)}
-                            onClick={(e) => e.stopPropagation()}
                           />
                         </div>
+
+                        {/* Property Info */}
                         <div className="flex-1 p-4 min-w-[300px]">
                           <div className="flex items-center gap-2">
-                            <span className="font-medium">{displayData.propertyAddress || "Address Not Found"}</span>
+                            <span className="font-medium group-hover:text-primary transition-colors">
+                                {displayData.propertyAddress || "Address Not Found"}
+                            </span>
                             {transaction.missingSCOs && (
                               <Badge variant="destructive" className="text-xs">
                                 <AlertCircle className="h-3 w-3 mr-1" />
@@ -201,6 +209,8 @@ export default function TransactionTable({
                           </div>
                           <p className="text-sm text-muted-foreground mt-1">{transaction.fileName}</p>
                         </div>
+
+                        {/* Data Cells */}
                         <div className="w-32 p-4 hidden md:table-cell">
                           <Badge variant={displayData.transactionType === 'listing' ? 'default' : 'secondary'}>
                             {formatTransactionType(displayData.transactionType)}
@@ -208,7 +218,12 @@ export default function TransactionTable({
                         </div>
                         <div className="w-40 p-4 text-sm hidden lg:table-cell">{formatDate(displayData.closingDate)}</div>
                         <div className="w-48 p-4 text-sm text-muted-foreground hidden xl:table-cell">{formatDateTime(transaction.createdAt)}</div>
-                        <div className="w-40 p-4">
+                        
+                        {/* Edit Button Cell - Stop propagation so clicking Edit doesn't close row */}
+                        <div 
+                          className="w-40 p-4"
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           {isEditing ? (
                             <div className="flex gap-1">
                               <Button variant="default" size="sm" onClick={handleSave} disabled={isSaving || !hasUnsavedChanges} className="h-8">
@@ -224,18 +239,24 @@ export default function TransactionTable({
                             </Button>
                           )}
                         </div>
-                        <div className="w-12 p-4">
-                          <Button variant="ghost" size="sm" onClick={() => toggleRow(transaction.id)} className="h-8 w-8 p-0">
-                            {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                          </Button>
+
+                        {/* Chevron Icon Cell */}
+                        <div className="w-12 p-4 text-muted-foreground group-hover:text-primary transition-colors">
+                           {isExpanded ? (
+                             <ChevronDown className="h-5 w-5" />
+                           ) : (
+                             <ChevronRight className="h-5 w-5" />
+                           )}
                         </div>
                       </div>
 
-                      {/* Expanded Content - F-Shape Grid */}
+                      {/* Expanded Content */}
                       {isExpanded && (
-                        <div className="border-t bg-background p-6 animate-in slide-in-from-top-2 duration-300">
+                        <div 
+                          className="border-t bg-background p-6 animate-in slide-in-from-top-2 duration-300 cursor-default"
+                          onClick={(e) => e.stopPropagation()} // Prevent clicking inside categories from closing row
+                        >
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                            {/* Column 1: Purchasing Terms */}
                             <div className="space-y-6">
                               <ExtractionCategories
                                 data={displayData}
@@ -244,8 +265,6 @@ export default function TransactionTable({
                                 viewContext="left"
                               />
                             </div>
-
-                            {/* Column 2: Timeline & Parties */}
                             <div className="space-y-6 md:border-l md:pl-8">
                               <ExtractionCategories
                                 data={displayData}
@@ -253,14 +272,9 @@ export default function TransactionTable({
                                 onDataChange={handleDataChange}
                                 viewContext="right"
                               />
-                              
                               {!isEditing && (
                                 <div className="flex justify-end mt-12 pt-6 border-t">
-                                  <Button
-                                    variant="destructive"
-                                    size="sm"
-                                    onClick={() => onDelete(transaction.id)}
-                                  >
+                                  <Button variant="destructive" size="sm" onClick={() => onDelete(transaction.id)}>
                                     <Trash2 className="h-4 w-4 mr-2" />
                                     Delete Transaction
                                   </Button>
