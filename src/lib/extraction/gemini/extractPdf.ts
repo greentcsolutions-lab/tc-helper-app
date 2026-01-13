@@ -1,8 +1,9 @@
 // src/lib/extraction/gemini/extractPdf.ts
-// Version: 1.2.0 - 2026-01-13
-// ADDED: Optional model param for primary/fallback (gemini-3-flash-preview default)
-// ADDED: modelUsed in return for logging/tracking
-// Gemini 3 Flash Preview for full-document extraction + safe fallback path
+// Version: 1.3.0 - 2026-01-13
+// ADDED: Optional model param + modelUsed in result
+// ADDED: Detailed timing & lifecycle logging around generateContent
+// Gemini 3 Flash Preview primary + safe fallback to 2.5 Flash Lite
+
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { coerceNumber, coerceString } from '@/lib/grok/type-coercion';
 import { normalizeDateString } from '@/lib/extraction/extract/universal/helpers/date-utils';
@@ -14,9 +15,119 @@ if (!GEMINI_API_KEY) {
 
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
-// JSON Schema remains unchanged...
-const EXTRACTION_SCHEMA = { /* ... your full schema here, unchanged ... */ };
+// ── JSON Schema (unchanged) ─────────────────────────────────────────────────
+const EXTRACTION_SCHEMA = {
+  type: "object",
+  properties: {
+    extracted: {
+      type: "object",
+      properties: {
+        buyer_names: { type: "array", items: { type: "string" }, minItems: 1 },
+        property_address: {
+          type: "object",
+          properties: { full: { type: "string" } },
+          required: ["full"]
+        },
+        purchase_price: {
+          type: "string",
+          pattern: "^\\$\\d{1,3}(,\\d{3})*(\\.\\d{2})?$"
+        },
+        all_cash: { type: "boolean" },
+        close_of_escrow: { type: "string" },
+        initial_deposit: {
+          type: "object",
+          properties: { amount: { type: "string" }, due: { type: "string" } },
+          required: ["amount", "due"]
+        },
+        loan_type: { type: ["string", "null"] },
+        loan_type_note: { type: ["string", "null"] },
+        seller_credit_to_buyer: { type: ["string", "null"] },
+        contingencies: {
+          type: "object",
+          properties: {
+            loan_days: { type: "integer", minimum: 0 },
+            appraisal_days: { type: "integer", minimum: 0 },
+            investigation_days: { type: "integer", minimum: 0 },
+            crb_attached_and_signed: { type: "boolean" }
+          },
+          required: ["loan_days", "appraisal_days", "investigation_days", "crb_attached_and_signed"]
+        },
+        cop_contingency: { type: "boolean" },
+        seller_delivery_of_documents_days: { type: "integer", minimum: 0 },
+        home_warranty: {
+          type: "object",
+          properties: {
+            ordered_by: { type: ["string", "null"], enum: ["Buyer", "Seller", "Both", "Waived", null] },
+            seller_max_cost: { type: ["string", "null"] },
+            provider: { type: ["string", "null"] }
+          }
+        },
+        final_acceptance_date: {
+          type: "string",
+          pattern: "^\\d{2}/\\d{2}/\\d{4}$"
+        },
+        counters: {
+          type: "object",
+          properties: {
+            has_counter_or_addendum: { type: "boolean" },
+            counter_chain: { type: "array", items: { type: "string" } },
+            final_version_page: { type: ["integer", "null"] },
+            summary: { type: "string" }
+          },
+          required: ["has_counter_or_addendum", "counter_chain", "summary"]
+        },
+        buyers_broker: {
+          type: "object",
+          properties: {
+            brokerage_name: { type: ["string", "null"] },
+            agent_name: { type: ["string", "null"] },
+            email: { type: ["string", "null"] },
+            phone: { type: ["string", "null"] }
+          }
+        },
+        sellers_broker: {
+          type: "object",
+          properties: {
+            brokerage_name: { type: ["string", "null"] },
+            agent_name: { type: ["string", "null"] },
+            email: { type: ["string", "null"] },
+            phone: { type: ["string", "null"] }
+          }
+        }
+      },
+      required: [
+        "buyer_names", "property_address", "purchase_price", "all_cash",
+        "close_of_escrow", "initial_deposit", "contingencies", "cop_contingency",
+        "seller_delivery_of_documents_days", "home_warranty", "final_acceptance_date",
+        "counters", "buyers_broker", "sellers_broker"
+      ]
+    },
+    confidence: {
+      type: "object",
+      properties: {
+        overall_confidence: { type: "integer", minimum: 0, maximum: 100 },
+        purchase_price: { type: "integer", minimum: 0, maximum: 100 },
+        property_address: { type: "integer", minimum: 0, maximum: 100 },
+        buyer_names: { type: "integer", minimum: 0, maximum: 100 },
+        close_of_escrow: { type: "integer", minimum: 0, maximum: 100 },
+        final_acceptance_date: { type: "integer", minimum: 0, maximum: 100 },
+        contingencies: { type: "integer", minimum: 0, maximum: 100 },
+        home_warranty: { type: "integer", minimum: 0, maximum: 100 },
+        brokerage_info: { type: "integer", minimum: 0, maximum: 100 },
+        loan_type: { type: "integer", minimum: 0, maximum: 100 }
+      },
+      required: [
+        "overall_confidence", "purchase_price", "property_address", "buyer_names",
+        "close_of_escrow", "final_acceptance_date", "contingencies", "home_warranty",
+        "brokerage_info", "loan_type"
+      ]
+    },
+    handwriting_detected: { type: "boolean" }
+  },
+  required: ["extracted", "confidence", "handwriting_detected"]
+};
 
+// ── Extraction Prompt (unchanged) ───────────────────────────────────────────
 const EXTRACTION_PROMPT = `Extract JSON from this PDF matching this schema. Focus on ALL fields in the schema, especially:
 - Buyer/seller names, property address, purchase price
 - Final acceptance date (effective date)
@@ -43,19 +154,19 @@ Return ONLY valid JSON matching the schema above. Use your reasoning to:
 export async function extractWithGemini(
   pdfUrl: string,
   totalPages: number,
-  modelName: string = 'gemini-3-flash-preview'  // <-- NEW: optional, defaults to primary
+  modelName: string = 'gemini-3-flash-preview'
 ): Promise<{
   finalTerms: any;
   needsReview: boolean;
   criticalPages: string[];
   allExtractions: any[];
-  modelUsed: string;  // <-- NEW: expose which model actually ran
+  modelUsed: string;
 }> {
   console.log(`[gemini-extract] Starting extraction for ${totalPages}-page document using model: ${modelName}`);
   console.log(`[gemini-extract] PDF URL: ${pdfUrl}`);
 
   try {
-    // Fetch PDF from URL (unchanged)
+    // Fetch PDF
     console.log(`[gemini-extract] Fetching PDF from URL...`);
     const pdfResponse = await fetch(pdfUrl);
     if (!pdfResponse.ok) {
@@ -65,23 +176,22 @@ export async function extractWithGemini(
     const pdfBase64 = Buffer.from(pdfBuffer).toString('base64');
     console.log(`[gemini-extract] PDF fetched: ${(pdfBuffer.byteLength / 1024 / 1024).toFixed(2)} MB`);
 
-    // Initialize model with the requested name
+    // Initialize model with tuning for Lite fallback
     const model = genAI.getGenerativeModel({
       model: modelName,
-      // Optional: Tune for fallback model (Lite) – lower thinking/resolution for speed & cost
       generationConfig: modelName.includes('lite')
         ? {
-            temperature: 0.1,           // more deterministic for extraction
+            temperature: 0.1,
             topP: 0.95,
-            // If SDK supports thinking_level (preview feature), force minimal on Lite
-            // thinking_level: 'minimal',  // uncomment if available in your SDK version
+            // Add thinking_level: 'minimal' here if your SDK version supports it
           }
         : undefined,
     });
 
-    console.log(`[gemini-extract] Sending to ${modelName}...`);
+    console.log(`[gemini-extract] Sending request to ${modelName} at ${new Date().toISOString()}...`);
 
-    // Create request with PDF and prompt (unchanged)
+    const startTime = Date.now();
+
     const result = await model.generateContent([
       {
         inlineData: {
@@ -92,12 +202,15 @@ export async function extractWithGemini(
       EXTRACTION_PROMPT
     ]);
 
+    const durationMs = Date.now() - startTime;
+    console.log(`[gemini-extract] Response received from ${modelName} after ${durationMs}ms at ${new Date().toISOString()}`);
+
     const response = result.response;
     const text = response.text();
     console.log(`[gemini-extract] Received response (${text.length} chars)`);
     console.log(`[gemini-extract] First 500 chars: ${text.substring(0, 500)}`);
 
-    // Parse JSON response (unchanged, robust handling)
+    // Robust JSON parsing
     let extractedData;
     try {
       const jsonMatch = text.match(/```json\n?([\s\S]*?)\n?```/) || text.match(/```\n?([\s\S]*?)\n?```/);
@@ -112,10 +225,8 @@ export async function extractWithGemini(
     console.log(`[gemini-extract] Successfully parsed extraction data`);
     console.log(`[gemini-extract] Overall confidence: ${extractedData.confidence?.overall_confidence}%`);
 
-    // Transform (unchanged)
     const finalTerms = transformGeminiToUniversal(extractedData);
 
-    // Needs review logic (unchanged)
     const needsReview =
       extractedData.confidence?.overall_confidence < 80 ||
       !extractedData.extracted?.buyer_names?.length ||
@@ -129,7 +240,7 @@ export async function extractWithGemini(
       needsReview,
       criticalPages: ['1-' + totalPages],
       allExtractions: [extractedData],
-      modelUsed: modelName,  // <-- NEW: critical for route-level logging
+      modelUsed: modelName,
     };
   } catch (error: any) {
     console.error(`[gemini-extract] Error with ${modelName}:`, error);
@@ -137,11 +248,10 @@ export async function extractWithGemini(
   }
 }
 
-// Helper to calculate date from "X days after acceptance" pattern
+// ── Date calculation helper (unchanged) ─────────────────────────────────────
 function calculateDateFromRelative(dateStr: string | null, effectiveDate: string | null): string | null {
   if (!dateStr || !effectiveDate) return dateStr;
 
-  // Check for "X days after acceptance" pattern
   const daysMatch = dateStr.match(/(\d+)\s*days?\s*after/i);
   if (!daysMatch) return dateStr;
 
@@ -164,24 +274,20 @@ function calculateDateFromRelative(dateStr: string | null, effectiveDate: string
   }
 }
 
-// Transform Gemini's schema format to the UniversalExtractionResult format
+// ── Transform to universal format (unchanged) ───────────────────────────────
 function transformGeminiToUniversal(geminiData: any): any {
   const e = geminiData.extracted;
 
-  // First normalize the effective date
   const effectiveDate = normalizeDateString(e.final_acceptance_date) || e.final_acceptance_date;
 
-  // Apply type coercion and date normalization
   const purchasePrice = coerceNumber(e.purchase_price);
   const earnestMoneyAmount = e.initial_deposit?.amount ? coerceNumber(e.initial_deposit.amount) : null;
   const sellerCreditAmount = coerceNumber(e.seller_credit_to_buyer);
 
-  // Calculate close of escrow date (handle relative dates)
   let closeOfEscrowDate = e.close_of_escrow;
   closeOfEscrowDate = calculateDateFromRelative(closeOfEscrowDate, effectiveDate);
   closeOfEscrowDate = normalizeDateString(closeOfEscrowDate) || closeOfEscrowDate;
 
-  // Calculate seller delivery of disclosures date from days
   let sellerDeliveryDate: string | null = null;
   if (e.seller_delivery_of_documents_days && typeof e.seller_delivery_of_documents_days === 'number' && effectiveDate) {
     try {
@@ -198,23 +304,17 @@ function transformGeminiToUniversal(geminiData: any): any {
     }
   }
 
-  // Calculate initial deposit due date (handle both specific dates and relative phrases)
   let initialDepositDueDate: string | null = null;
   if (e.initial_deposit?.due && effectiveDate) {
-    // First try to normalize if it's already a date
     const normalizedDate = normalizeDateString(e.initial_deposit.due);
     if (normalizedDate) {
       initialDepositDueDate = normalizedDate;
     } else {
-      // Try to extract business days or regular days from phrases like:
-      // "Within 3 business days after Acceptance"
-      // "3 days after acceptance"
       const businessDaysMatch = e.initial_deposit.due.match(/(\d+)\s*business\s*days?\s*after/i);
       const regularDaysMatch = e.initial_deposit.due.match(/(\d+)\s*days?\s*after/i);
 
       let daysToAdd = 0;
       if (businessDaysMatch) {
-        // For business days, approximate as 1.4x regular days (accounts for weekends)
         daysToAdd = Math.ceil(parseInt(businessDaysMatch[1], 10) * 1.4);
       } else if (regularDaysMatch) {
         daysToAdd = parseInt(regularDaysMatch[1], 10);
@@ -234,7 +334,6 @@ function transformGeminiToUniversal(geminiData: any): any {
           console.error(`[gemini-transform] Failed to calculate initial deposit due date:`, error);
         }
       } else {
-        // If we can't parse it, keep the original string (better than null)
         initialDepositDueDate = e.initial_deposit.due;
       }
     }
@@ -249,9 +348,8 @@ function transformGeminiToUniversal(geminiData: any): any {
   console.log(`[gemini-transform] Normalized effectiveDate: "${e.final_acceptance_date}" → ${effectiveDate}`);
 
   return {
-    // Core fields
     buyerNames: e.buyer_names || [],
-    sellerNames: [], // Not in schema but needed for universal format
+    sellerNames: [],
     propertyAddress: coerceString(e.property_address?.full),
     purchasePrice,
     closeOfEscrowDate,
@@ -259,20 +357,17 @@ function transformGeminiToUniversal(geminiData: any): any {
     initialDepositDueDate,
     sellerDeliveryOfDisclosuresDate: sellerDeliveryDate,
 
-    // Earnest money
     earnestMoneyDeposit: e.initial_deposit ? {
       amount: earnestMoneyAmount,
-      holder: null, // Not in schema
+      holder: null,
     } : null,
 
-    // Financing
     financing: {
       isAllCash: e.all_cash,
       loanType: coerceString(e.loan_type),
-      loanAmount: null, // Not in schema
+      loanAmount: null,
     },
 
-    // Contingencies
     contingencies: e.contingencies ? {
       inspectionDays: coerceNumber(e.contingencies.investigation_days, 0),
       appraisalDays: coerceNumber(e.contingencies.appraisal_days, 0),
@@ -280,14 +375,12 @@ function transformGeminiToUniversal(geminiData: any): any {
       saleOfBuyerProperty: e.cop_contingency || false,
     } : null,
 
-    // Closing costs
     closingCosts: {
       buyerPays: [],
       sellerPays: [],
       sellerCreditAmount,
     },
 
-    // Brokers
     brokers: {
       listingBrokerage: coerceString(e.sellers_broker?.brokerage_name),
       listingAgent: coerceString(e.sellers_broker?.agent_name),
@@ -299,11 +392,9 @@ function transformGeminiToUniversal(geminiData: any): any {
       sellingAgentPhone: coerceString(e.buyers_broker?.phone),
     },
 
-    // Additional fields
     personalPropertyIncluded: null,
     escrowHolder: null,
 
-    // Metadata
     confidence: geminiData.confidence,
     handwritingDetected: geminiData.handwriting_detected,
     counters: e.counters,
