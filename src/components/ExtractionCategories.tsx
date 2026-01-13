@@ -1,6 +1,6 @@
 // src/components/ExtractionCategories.tsx
-// Version: 2.2.0 - 2026-01-13
-// UPDATED: Added viewContext for F-shape desktop layout
+// Version: 2.3.0 - 2026-01-13
+// UPDATED: Reordered categories for F-shape (Terms first, Info last)
 "use client";
 
 import CategoryTransactionInfo from "./CategoryTransactionInfo";
@@ -13,7 +13,7 @@ interface ExtractionCategoriesProps {
   data: ParseResult;
   isEditing?: boolean;
   onDataChange?: (updatedData: ParseResult) => void;
-  viewContext?: "left" | "right"; // Determines which side of the F-shape to render
+  viewContext?: "left" | "right";
 }
 
 export default function ExtractionCategories({
@@ -23,20 +23,23 @@ export default function ExtractionCategories({
   viewContext,
 }: ExtractionCategoriesProps) {
   
-  // Render Left Side: Purchasing Terms & Core Info
+  // Render Left Side: Purchasing Terms FIRST, Info LAST
   if (viewContext === "left") {
     return (
       <div className="space-y-8">
-        <CategoryTransactionInfo
-          data={data}
-          isEditing={isEditing}
-          onDataChange={onDataChange}
-        />
         <CategoryPurchaseTerms
           data={data}
           isEditing={isEditing}
           onDataChange={onDataChange}
         />
+        {/* System metadata pushed to bottom of left column */}
+        <div className="pt-6 border-t border-dashed">
+          <CategoryTransactionInfo
+            data={data}
+            isEditing={isEditing}
+            onDataChange={onDataChange}
+          />
+        </div>
       </div>
     );
   }
@@ -59,14 +62,9 @@ export default function ExtractionCategories({
     );
   }
 
-  // Default / Mobile View (Stack everything)
+  // Default / Mobile View (Stacking with Info at the bottom)
   return (
-    <div className="space-y-6">
-      <CategoryTransactionInfo
-        data={data}
-        isEditing={isEditing}
-        onDataChange={onDataChange}
-      />
+    <div className="space-y-8">
       <CategoryPurchaseTerms
         data={data}
         isEditing={isEditing}
@@ -82,6 +80,13 @@ export default function ExtractionCategories({
         isEditing={isEditing}
         onDataChange={onDataChange}
       />
+      <div className="pt-6 border-t border-dashed">
+        <CategoryTransactionInfo
+          data={data}
+          isEditing={isEditing}
+          onDataChange={onDataChange}
+        />
+      </div>
     </div>
   );
 }
