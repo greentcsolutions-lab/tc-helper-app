@@ -1,13 +1,12 @@
 // src/components/transactions/TransactionTable.tsx
 // Version 3.0.0 MAJOR UI UPDATE - F shape layout 
-
 "use client";
 
 import { useState, useEffect } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ChevronRight, ChevronDown, Trash2, AlertCircle, Edit, Save, X, Archive } from "lucide-react"; // Added Archive icon
+import { ChevronRight, ChevronDown, Trash2, AlertCircle, Edit, Save, X, Archive } from "lucide-react";
 import { format } from "date-fns";
 import ExtractionCategories from "@/components/ExtractionCategories";
 import { ParseResult } from "@/types";
@@ -20,7 +19,7 @@ interface TransactionTableProps {
   onToggleSelect: (id: string) => void;
   onToggleSelectAll: () => void;
   onDelete: (id: string) => void;
-  onArchive?: (id: string) => void; // Added archive prop
+  onArchive: (id: string) => void;
 }
 
 export default function TransactionTable({
@@ -123,14 +122,6 @@ export default function TransactionTable({
     }
   };
 
-  const formatDateTime = (date: string | Date) => {
-    try {
-      return format(new Date(date), "MMM d, yyyy 'at' h:mm a");
-    } catch {
-      return "-";
-    }
-  };
-
   return (
     <div className="border rounded-lg overflow-hidden">
       <div className="overflow-x-auto">
@@ -146,7 +137,6 @@ export default function TransactionTable({
               <th className="text-left p-2 md:p-4 font-semibold min-w-[150px] md:min-w-[300px]">Property</th>
               <th className="text-left p-4 font-semibold w-32 hidden md:table-cell">Type</th>
               <th className="text-left p-4 font-semibold w-40 hidden lg:table-cell">Closing</th>
-              <th className="text-left p-4 font-semibold w-40 hidden xl:table-cell">Created</th>
               <th className="text-right md:text-left p-2 md:p-4 font-semibold w-24 md:w-40">Actions</th>
               <th className="w-10 md:w-12 p-2 md:p-4"></th>
             </tr>
@@ -241,7 +231,7 @@ export default function TransactionTable({
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  onClick={() => onArchive?.(transaction.id)}
+                                  onClick={() => onArchive(transaction.id)}
                                   className="h-9"
                                 >
                                   <Archive className="h-4 w-4 mr-2" />
