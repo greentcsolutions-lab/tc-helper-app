@@ -39,7 +39,7 @@ export async function POST(
     let parse;
     let extractionResult;
 
-    const PRIMARY_MODEL = "claude-4-sonnet-20250514";
+    const PRIMARY_MODEL = "claude-haiku-4-5-latest";
     const FALLBACK_MODEL = "gemini-3-flash-preview";
 
     // 1. Load parse record
