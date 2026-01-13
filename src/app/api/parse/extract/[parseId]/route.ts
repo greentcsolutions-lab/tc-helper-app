@@ -7,8 +7,12 @@ import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
 import { mapExtractionToParseResult } from "@/lib/parse/map-to-parse-result";
-import { extractWithGemini } from "@/lib/extraction/gemini/extractPdf";
 import * as ParseLogger from "@/lib/debug/parse-logger";
+
+// Importing LLM Processes
+import { extractWithGemini } from "@/lib/extraction/gemini/extractPdf";
+import { extractWithClaude } from "@/lib/extraction/claude/extractPdf";
+
 
 const { logStep, logSuccess, logError, logWarn } = ParseLogger;
 
@@ -58,48 +62,47 @@ export async function POST(
     logStep("EXTRACT:2", "Extracting with Gemini 3 Flash Preview (primary)...");
 
     // Primary + Fallback configuration
-    let extractionResult;
-    const PRIMARY_MODEL = "gemini-3-flash-preview";
-    const FALLBACK_MODEL = "gemini-2.5-flash-lite";
+let extractionResult;
+const PRIMARY_MODEL = "claude-4-sonnet-20250514";
+const FALLBACK_MODEL = "gemini-3-flash-preview"; // Or your old fallback
 
-    // ── Primary attempt ───────────────────────────────────────────────────────
-    console.log(`[extract] Starting primary call to ${PRIMARY_MODEL} at ${new Date().toISOString()}`);
+// ── Primary attempt (now Claude) ──────────────────────────────────────────
+console.log(`[extract] Starting primary call to ${PRIMARY_MODEL} at ${new Date().toISOString()}`);
+try {
+  extractionResult = await Promise.race([
+    extractWithClaude(parse.pdfPublicUrl, parse.pageCount, PRIMARY_MODEL),
+    timeoutPromise(60000), // 60 seconds
+  ]);
+  console.log(`[extract] Primary (${PRIMARY_MODEL}) SUCCESS at ${new Date().toISOString()}`);
+} catch (err: any) {
+  const errorTime = new Date().toISOString();
+  console.log(`[extract] Primary (${PRIMARY_MODEL}) FAILED at ${errorTime}: ${err.message}`);
+
+  if (err.message.includes("timeout")) {
+    console.warn(
+      "EXTRACT:FALLBACK",
+      `Primary Claude 4 Sonnet timed out after 60s → falling back to ${FALLBACK_MODEL}`
+    );
+
+    // ── Fallback attempt (Gemini) ─────────────────────────────────────────
+    console.log(`[extract] Starting fallback call to ${FALLBACK_MODEL} at ${new Date().toISOString()}`);
     try {
-      extractionResult = await Promise.race([
-        extractWithGemini(parse.pdfPublicUrl, parse.pageCount, PRIMARY_MODEL),
-        timeoutPromise(60000), // 60 seconds
-      ]);
-      console.log(`[extract] Primary (${PRIMARY_MODEL}) SUCCESS at ${new Date().toISOString()}`);
-    } catch (err: any) {
-      const errorTime = new Date().toISOString();
-      console.log(`[extract] Primary (${PRIMARY_MODEL}) FAILED at ${errorTime}: ${err.message}`);
-
-      if (err.message.includes("timeout")) {
-        console.warn(
-          "EXTRACT:FALLBACK",
-          `Primary Gemini 3 Flash Preview timed out after 60s → falling back to ${FALLBACK_MODEL}`
-        );
-
-        // ── Fallback attempt ──────────────────────────────────────────────────
-        console.log(`[extract] Starting fallback call to ${FALLBACK_MODEL} at ${new Date().toISOString()}`);
-        try {
-          extractionResult = await extractWithGemini(
-            parse.pdfPublicUrl,
-            parse.pageCount,
-            FALLBACK_MODEL
-          );
-          console.log(`[extract] Fallback (${FALLBACK_MODEL}) SUCCESS at ${new Date().toISOString()}`);
-        } catch (fallbackErr: any) {
-          console.log(
-            `[extract] Fallback (${FALLBACK_MODEL}) also FAILED at ${new Date().toISOString()}: ${fallbackErr.message}`
-          );
-          throw fallbackErr; // Let outer catch handle final 500
-        }
-      } else {
-        // Non-timeout error (auth, rate limit, etc.)
-        throw err;
-      }
+      extractionResult = await extractWithGemini(
+        parse.pdfPublicUrl,
+        parse.pageCount,
+        FALLBACK_MODEL
+      );
+      console.log(`[extract] Fallback (${FALLBACK_MODEL}) SUCCESS at ${new Date().toISOString()}`);
+    } catch (fallbackErr: any) {
+      console.log(
+        `[extract] Fallback (${FALLBACK_MODEL}) also FAILED at ${new Date().toISOString()}: ${fallbackErr.message}`
+      );
+      throw fallbackErr;
     }
+  } else {
+    throw err;
+  }
+}
 
     // ── Result handling ───────────────────────────────────────────────────────
     console.log(
