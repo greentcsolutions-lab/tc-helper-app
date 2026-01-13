@@ -136,18 +136,25 @@ export async function extractWithClaude(
     console.log(`[claude-extract] Received response (${text.length} chars)`);
     console.log(`[claude-extract] First 500 chars: ${text.substring(0, 500)}`);
 
-    // Robust JSON parsing (strip markdown if present)
+    // ── IMPROVED JSON EXTRACTION ────────────────────────────────────────────
     let extractedData;
     try {
-      const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/) || [null, text];
-      const jsonText = jsonMatch[1] || text;
-      extractedData = JSON.parse(jsonText.trim());
+      const jsonMatch = text.match(/<json>([\s\S]*?)<\/json>/);
+      if (!jsonMatch || !jsonMatch[1]) {
+        throw new Error("No <json> block found in Claude response");
+      }
+
+      const jsonText = jsonMatch[1].trim();
+      extractedData = JSON.parse(jsonText);
+
+      console.log(`[claude-extract] Successfully extracted JSON from <json> tags`);
     } catch (parseError: any) {
-      console.error(`[claude-extract] JSON parse error:`, parseError);
-      console.error(`[claude-extract] Raw text:`, text);
-      throw new Error(`Failed to parse Claude response as JSON: ${parseError.message}`);
+      console.error(`[claude-extract] JSON extraction failed:`, parseError);
+      console.error(`[claude-extract] Raw response preview:`, text.substring(0, 1200));
+      throw new Error(`Failed to parse JSON from Claude's <json> block: ${parseError.message}`);
     }
 
+    // ── Rest of the processing remains the same ─────────────────────────────
     console.log(`[claude-extract] Successfully parsed extraction data`);
     console.log(`[claude-extract] Overall confidence: ${extractedData.confidence?.overall_confidence}%`);
 
@@ -171,7 +178,7 @@ export async function extractWithClaude(
   } catch (error: any) {
     console.error(`[claude-extract] Error with ${modelName}:`, error);
 
-    // Make it easier for your calling code to detect availability issues
+    // Make it easier for calling code to detect availability issues
     if (error.message.includes('Ping failed') || error.message.includes('AbortError')) {
       throw new Error(`Claude appears to be down or not responding right now`);
     }
@@ -179,7 +186,6 @@ export async function extractWithClaude(
     throw new Error(`Claude extraction failed (${modelName}): ${error.message}`);
   }
 }
-
 // ── JSON Schema (unchanged) ─────────────────────────────────────────────────
 const EXTRACTION_SCHEMA = {
   type: "object",
