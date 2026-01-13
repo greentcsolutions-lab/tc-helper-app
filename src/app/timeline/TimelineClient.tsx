@@ -1,19 +1,40 @@
 // src/app/timeline/TimelineClient.tsx
-// Version: 1.0.0 - Interactive calendar view with react-big-calendar
+// Version: 2.0.0 - Major UI update
 "use client";
 
 import { useMemo, useState } from "react";
-import { Calendar, dateFnsLocalizer } from "react-big-calendar";
-import { format, parse, startOfWeek, getDay } from "date-fns";
+import { Calendar, dateFnsLocalizer, View } from "react-big-calendar";
+import { format, parse, startOfWeek, getDay, isSameDay } from "date-fns";
 import { enUS } from "date-fns/locale";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 import "./calendar.css";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { getAllTimelineEvents, TimelineEvent } from "@/lib/dates/extract-timeline-events";
-import { Calendar as CalendarIcon, AlertCircle, CheckCircle, Clock } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Separator } from "@/components/ui/separator";
+import { 
+  getAllTimelineEvents, 
+  TimelineEvent 
+} from "@/lib/dates/extract-timeline-events";
+import { 
+  Calendar as CalendarIcon, 
+  AlertCircle, 
+  CheckCircle, 
+  Clock, 
+  Search, 
+  Lock, 
+  ChevronLeft, 
+  ChevronRight,
+  Filter,
+  X,
+  MapPin,
+  Tag,
+  FileText
+} from "lucide-react";
 
 const locales = { "en-US": enUS };
 
@@ -25,292 +46,317 @@ const localizer = dateFnsLocalizer({
   locales,
 });
 
+const EVENT_TYPES = [
+  { id: "acceptance", label: "Acceptance", color: "#14b8a6" },
+  { id: "closing", label: "Closing", color: "#10b981" },
+  { id: "contingency", label: "Contingency", color: "#f59e0b" },
+  { id: "deposit", label: "Deposit", color: "#8b5cf6" },
+  { id: "deadline", label: "Deadline", color: "#3b82f6" },
+  { id: "overdue", label: "Overdue", color: "#ef4444" },
+];
+
 interface TimelineClientProps {
   parses: any[];
 }
 
 export default function TimelineClient({ parses }: TimelineClientProps) {
+  const [date, setDate] = useState(new Date());
+  const [view, setView] = useState<View>("month");
+  const [search, setSearch] = useState("");
+  const [selectedTypes, setSelectedTypes] = useState<string[]>(EVENT_TYPES.map(t => t.id));
   const [selectedEvent, setSelectedEvent] = useState<TimelineEvent | null>(null);
 
-  const events = useMemo(() => getAllTimelineEvents(parses), [parses]);
+  const rawEvents = useMemo(() => getAllTimelineEvents(parses), [parses]);
 
-  // Group events by status
-  const upcomingCount = events.filter(e => e.status === 'upcoming').length;
-  const overdueCount = events.filter(e => e.status === 'overdue').length;
+  // Live Filtering Logic
+  const filteredEvents = useMemo(() => {
+    return rawEvents.filter(event => {
+      const matchesSearch = 
+        event.title.toLowerCase().includes(search.toLowerCase()) ||
+        event.propertyAddress?.toLowerCase().includes(search.toLowerCase());
+      
+      const isOverdue = event.status === 'overdue';
+      const typeMatch = isOverdue 
+        ? selectedTypes.includes('overdue') 
+        : selectedTypes.includes(event.type);
 
-  // Custom event style based on type and status
-  const eventStyleGetter = (event: TimelineEvent) => {
-    let backgroundColor = '#3b82f6'; // blue for default
+      return matchesSearch && typeMatch;
+    });
+  }, [rawEvents, search, selectedTypes]);
 
-    if (event.status === 'overdue') {
-      backgroundColor = '#ef4444'; // red
-    } else if (event.type === 'closing') {
-      backgroundColor = '#10b981'; // green
-    } else if (event.type === 'contingency') {
-      backgroundColor = '#f59e0b'; // orange
-    } else if (event.type === 'deposit') {
-      backgroundColor = '#8b5cf6'; // purple
-    } else if (event.type === 'acceptance') {
-      backgroundColor = '#14b8a6'; // teal
-    } else if (event.type === 'deadline') {
-      backgroundColor = '#3b82f6'; // blue
+  // Group events by status for sidebar stats
+  const stats = {
+    upcoming: rawEvents.filter(e => e.status === 'upcoming').length,
+    overdue: rawEvents.filter(e => e.status === 'overdue').length,
+    total: rawEvents.length
+  };
+
+  const handleSelectAll = () => {
+    if (selectedTypes.length === EVENT_TYPES.length) {
+      setSelectedTypes([]);
+    } else {
+      setSelectedTypes(EVENT_TYPES.map(t => t.id));
     }
+  };
+
+  const eventStyleGetter = (event: TimelineEvent) => {
+    let backgroundColor = '#3b82f6';
+    if (event.status === 'overdue') backgroundColor = '#ef4444';
+    else if (event.type === 'closing') backgroundColor = '#10b981';
+    else if (event.type === 'contingency') backgroundColor = '#f59e0b';
+    else if (event.type === 'deposit') backgroundColor = '#8b5cf6';
+    else if (event.type === 'acceptance') backgroundColor = '#14b8a6';
 
     return {
-      style: {
-        backgroundColor,
-        borderRadius: '6px',
-        opacity: 0.9,
-        color: 'white',
-        border: '0px',
-        display: 'block',
-        fontSize: '0.875rem',
-        fontWeight: 500,
+      style: { 
+        backgroundColor, 
+        borderRadius: '4px', 
+        opacity: 0.9, 
+        color: 'white', 
+        border: 'none', 
+        display: 'block', 
+        fontSize: '11px', 
+        fontWeight: 500 
       },
     };
   };
 
-  const handleSelectEvent = (event: TimelineEvent) => {
-    setSelectedEvent(event);
-  };
-
-  // Custom Event component with hover tooltip
-  const CustomEvent = ({ event }: { event: TimelineEvent }) => {
-    return (
-      <div className="group relative h-full">
-        <div className="truncate">{event.title}</div>
-        {/* Hover Tooltip */}
-        <div className="absolute left-0 top-full mt-1 hidden group-hover:block z-50 w-64 p-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg">
-          <div className="space-y-2 text-xs">
-            <div>
-              <p className="font-semibold text-gray-900 dark:text-gray-100">{event.title}</p>
-            </div>
-            {event.propertyAddress && (
-              <div>
-                <p className="text-gray-500 dark:text-gray-400">Property:</p>
-                <p className="text-gray-900 dark:text-gray-100">{event.propertyAddress}</p>
-              </div>
-            )}
-            <div>
-              <p className="text-gray-500 dark:text-gray-400">Type:</p>
-              <p className="text-gray-900 dark:text-gray-100 capitalize">{event.type}</p>
-            </div>
-            <div>
-              <p className="text-gray-500 dark:text-gray-400">Status:</p>
-              <p className="text-gray-900 dark:text-gray-100 capitalize">{event.status}</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="flex h-screen overflow-hidden bg-background relative">
+      {/* --- NESTED SIDEBAR --- */}
+      <aside className="w-[300px] border-r flex flex-col p-6 space-y-6 overflow-y-auto shrink-0 bg-white z-20">
         <div>
-          <h1 className="text-4xl font-bold mb-2">Timeline</h1>
-          <p className="text-muted-foreground text-lg">
-            All important dates from your contracts
+          <h1 className="text-2xl font-bold tracking-tight">Timeline</h1>
+          <p className="text-xs text-muted-foreground mt-1">
+            Track all contract dates and deadlines
           </p>
         </div>
-      </div>
 
-      {/* Google Calendar Connection Banner */}
-      <Card className="border-dashed bg-muted/50">
-        <CardContent className="pt-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
-                <CalendarIcon className="h-6 w-6 text-primary" />
-              </div>
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <h3 className="font-semibold">Connect Google Calendar</h3>
-                  <Badge variant="secondary">Coming Soon</Badge>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Sync your timeline events with Google Calendar for automatic updates
-                </p>
-              </div>
-            </div>
-            <Button disabled variant="outline">
-              <CalendarIcon className="mr-2 h-4 w-4" />
-              Connect Calendar
+        {/* Live Search */}
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input 
+            placeholder="Search properties or tasks..." 
+            className="pl-9 h-9 text-sm"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+
+        {/* View Switcher (Segmented Control) */}
+        <div className="space-y-2">
+          <p className="text-[10px] font-bold uppercase text-muted-foreground px-1 tracking-wider">View Mode</p>
+          <ToggleGroup type="single" value={view} onValueChange={(v) => v && setView(v as View)} className="justify-start bg-slate-100/50 p-1 rounded-md">
+            <ToggleGroupItem value="day" className="flex-1 text-xs h-7 data-[state=on]:bg-white data-[state=on]:shadow-sm">Day</ToggleGroupItem>
+            <ToggleGroupItem value="week" className="flex-1 text-xs h-7 data-[state=on]:bg-white data-[state=on]:shadow-sm">Week</ToggleGroupItem>
+            <ToggleGroupItem value="month" className="flex-1 text-xs h-7 data-[state=on]:bg-white data-[state=on]:shadow-sm">Month</ToggleGroupItem>
+          </ToggleGroup>
+        </div>
+
+        {/* Navigation (Segmented Control) */}
+        <div className="space-y-2">
+          <p className="text-[10px] font-bold uppercase text-muted-foreground px-1 tracking-wider">Navigate</p>
+          <div className="flex gap-1">
+            <Button variant="outline" size="icon" className="h-8 w-8 shrink-0" onClick={() => setDate(localizer.add(date, -1, view as any))}>
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button 
+              variant={isSameDay(date, new Date()) ? "secondary" : "outline"} 
+              className="flex-1 h-8 text-xs font-medium"
+              onClick={() => setDate(new Date())}
+            >
+              Current
+            </Button>
+            <Button variant="outline" size="icon" className="h-8 w-8 shrink-0" onClick={() => setDate(localizer.add(date, 1, view as any))}>
+              <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
-        </CardContent>
-      </Card>
+        </div>
 
-      {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
-                <Clock className="h-5 w-5 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{upcomingCount}</p>
-                <p className="text-sm text-muted-foreground">Upcoming</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <Separator />
 
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-red-100 flex items-center justify-center">
-                <AlertCircle className="h-5 w-5 text-red-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{overdueCount}</p>
-                <p className="text-sm text-muted-foreground">Overdue</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        {/* Filter By Section */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between px-1">
+            <p className="text-[10px] font-bold uppercase text-muted-foreground flex items-center gap-2 tracking-wider">
+              <Filter className="h-3 w-3" /> Filter By
+            </p>
+            <button onClick={handleSelectAll} className="text-[10px] font-medium text-primary hover:underline transition-all">
+              {selectedTypes.length === EVENT_TYPES.length ? "Deselect All" : "Select All"}
+            </button>
+          </div>
+          <div className="space-y-2.5">
+            {EVENT_TYPES.map((type) => (
+              <label key={type.id} className="flex items-center gap-3 px-1 cursor-pointer group">
+                <Checkbox 
+                  checked={selectedTypes.includes(type.id)}
+                  onCheckedChange={(checked) => {
+                    setSelectedTypes(prev => checked 
+                      ? [...prev, type.id] 
+                      : prev.filter(t => t !== type.id)
+                    );
+                  }}
+                />
+                <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: type.color }} />
+                <span className="text-sm text-muted-foreground group-hover:text-foreground transition-colors font-medium">
+                  {type.label}
+                </span>
+              </label>
+            ))}
+          </div>
+        </div>
 
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
-                <CheckCircle className="h-5 w-5 text-green-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{events.length}</p>
-                <p className="text-sm text-muted-foreground">Total Events</p>
-              </div>
+        {/* Assigned To Placeholder */}
+        <div className="space-y-2">
+          <p className="text-[10px] font-bold uppercase text-muted-foreground px-1 tracking-wider">Assigned To</p>
+          <div className="relative flex items-center justify-between p-2.5 rounded-lg border bg-slate-50 border-dashed border-slate-300 opacity-70">
+            <div className="flex items-center gap-2">
+              <Lock className="h-3.5 w-3.5 text-slate-400" />
+              <span className="text-xs font-semibold text-slate-500">Agent Filters</span>
             </div>
-          </CardContent>
-        </Card>
-      </div>
+            <Badge className="text-[9px] uppercase font-bold bg-blue-600 hover:bg-blue-600 text-white border-none scale-90 origin-right">Teams</Badge>
+          </div>
+        </div>
 
-      {/* Calendar */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <CalendarIcon className="h-5 w-5" />
-            Contract Timeline
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {events.length > 0 ? (
-            <div className="h-[600px]">
-              <Calendar
-                localizer={localizer}
-                events={events}
-                startAccessor="start"
-                endAccessor="end"
-                style={{ height: "100%" }}
-                eventPropGetter={eventStyleGetter}
-                onSelectEvent={handleSelectEvent}
-                views={["month", "week", "agenda"]}
-                defaultView="month"
-                components={{
-                  event: CustomEvent,
-                }}
-              />
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <CalendarIcon className="h-16 w-16 text-muted-foreground mb-4" />
-              <h3 className="text-xl font-semibold mb-2">No Events Yet</h3>
-              <p className="text-muted-foreground max-w-md">
-                Upload and parse contracts to see important dates and deadlines here
-              </p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+        <Separator />
 
-      {/* Selected Event Details */}
-      {selectedEvent && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <span>Event Details</span>
-              <Badge
-                variant={
-                  selectedEvent.status === 'overdue'
-                    ? 'destructive'
-                    : 'default'
-                }
+        {/* Dense Stats Section */}
+        <div className="space-y-3 px-1 pt-2">
+          <div className="flex items-center justify-between text-sm">
+            <div className="flex items-center gap-2.5 text-slate-600 font-medium">
+              <Clock className="h-4 w-4 text-blue-500" /> <span>Upcoming</span>
+            </div>
+            <span className="font-bold tabular-nums">{stats.upcoming}</span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <div className="flex items-center gap-2.5 text-slate-600 font-medium">
+              <AlertCircle className="h-4 w-4 text-red-500" /> <span>Overdue</span>
+            </div>
+            <span className="font-bold text-red-600 tabular-nums">{stats.overdue}</span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <div className="flex items-center gap-2.5 text-slate-600 font-medium">
+              <CheckCircle className="h-4 w-4 text-emerald-500" /> <span>Total</span>
+            </div>
+            <span className="font-bold tabular-nums">{stats.total}</span>
+          </div>
+        </div>
+      </aside>
+
+      {/* --- MAIN CALENDAR AREA --- */}
+      <main className="flex-1 overflow-hidden bg-slate-50/20 relative">
+        <div className="h-full p-6">
+          <Calendar
+            localizer={localizer}
+            events={filteredEvents}
+            startAccessor="start"
+            endAccessor="end"
+            style={{ height: "100%" }}
+            eventPropGetter={eventStyleGetter}
+            onSelectEvent={setSelectedEvent}
+            date={date}
+            onNavigate={setDate}
+            view={view}
+            onView={setView}
+            toolbar={false}
+            components={{
+              event: ({ event }) => (
+                <div className="truncate px-1.5 font-semibold text-[11px] py-0.5">{event.title}</div>
+              ),
+            }}
+          />
+        </div>
+      </main>
+
+      {/* --- RIGHT SIDEBAR (Event Details Slide-over) --- */}
+      <aside 
+        className={`fixed top-0 right-0 h-full w-[380px] bg-white border-l shadow-[-10px_0_30px_rgba(0,0,0,0.05)] transform transition-transform duration-300 ease-in-out z-50 ${
+          selectedEvent ? 'translate-x-0' : 'translate-x-full'
+        }`}
+      >
+        {selectedEvent && (
+          <div className="flex flex-col h-full">
+            <div className="p-6 border-b flex items-center justify-between bg-slate-50/80 backdrop-blur-sm">
+              <div className="flex items-center gap-2">
+                <FileText className="h-5 w-5 text-slate-400" />
+                <h2 className="font-bold text-lg text-slate-900 tracking-tight">Timeline Detail</h2>
+              </div>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={() => setSelectedEvent(null)}
+                className="rounded-full h-9 w-9 hover:bg-slate-200 transition-colors"
               >
-                {selectedEvent.status}
-              </Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div>
-              <p className="text-sm text-muted-foreground">Title</p>
-              <p className="font-medium">{selectedEvent.title}</p>
+                <X className="h-5 w-5" />
+              </Button>
             </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Date</p>
-              <p className="font-medium">
-                {format(selectedEvent.start, "MMMM d, yyyy")}
-              </p>
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Type</p>
-              <p className="font-medium capitalize">{selectedEvent.type}</p>
-            </div>
-            {selectedEvent.propertyAddress && (
-              <div>
-                <p className="text-sm text-muted-foreground">Property</p>
-                <p className="font-medium">{selectedEvent.propertyAddress}</p>
+
+            <div className="p-8 space-y-10 overflow-y-auto">
+              {/* Header Info */}
+              <div className="space-y-4">
+                <Badge 
+                  className={`uppercase text-[10px] font-bold tracking-[0.1em] px-2.5 py-1 ${
+                    selectedEvent.status === 'overdue' 
+                    ? 'bg-red-100 text-red-700 hover:bg-red-100' 
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  {selectedEvent.status}
+                </Badge>
+                <h3 className="text-2xl font-extrabold leading-[1.2] text-slate-900">{selectedEvent.title}</h3>
               </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
 
-{/* Legend */}
-      <Card className="shadow-sm border-none bg-transparent shadow-none">
-        <CardHeader className="pb-3 px-0">
-          <CardTitle className="text-base font-semibold">Event Types</CardTitle>
-        </CardHeader>
-        <CardContent className="px-0">
-          {/* Using inline style to force the gap regardless of calendar.css overrides */}
-          <div 
-            className="flex flex-wrap items-center" 
-            style={{ gap: '2rem' }}
-          >
-            <div className="flex items-center gap-1">
-              <div className="w-3.5 h-3.5 rounded-sm bg-[#14b8a6]" />
-              <span className="text-sm font-medium text-muted-foreground">Acceptance</span>
-            </div>
+              {/* Grid Details */}
+              <div className="space-y-8">
+                <div className="flex items-start gap-4 group">
+                  <div className="w-11 h-11 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                    <CalendarIcon className="h-5 w-5 text-blue-600" />
+                  </div>
+                  <div className="space-y-1 pt-1">
+                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Target Date</p>
+                    <p className="text-sm font-semibold text-slate-800">
+                      {format(selectedEvent.start, "EEEE, MMMM do, yyyy")}
+                    </p>
+                  </div>
+                </div>
 
-            <div className="flex items-center gap-1">
-              <div className="w-3.5 h-3.5 rounded-sm bg-[#10b981]" />
-              <span className="text-sm font-medium text-muted-foreground">Closing</span>
-            </div>
+                <div className="flex items-start gap-4 group">
+                  <div className="w-11 h-11 rounded-xl bg-purple-50 border border-purple-100 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                    <Tag className="h-5 w-5 text-purple-600" />
+                  </div>
+                  <div className="space-y-1 pt-1">
+                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Event Type</p>
+                    <p className="text-sm font-semibold text-slate-800 capitalize">{selectedEvent.type}</p>
+                  </div>
+                </div>
 
-            <div className="flex items-center gap-1">
-              <div className="w-3.5 h-3.5 rounded-sm bg-[#f59e0b]" />
-              <span className="text-sm font-medium text-muted-foreground">Contingency</span>
-            </div>
+                {selectedEvent.propertyAddress && (
+                  <div className="flex items-start gap-4 group">
+                    <div className="w-11 h-11 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                      <MapPin className="h-5 w-5 text-emerald-600" />
+                    </div>
+                    <div className="space-y-1 pt-1">
+                      <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Property Address</p>
+                      <p className="text-sm font-semibold text-slate-800 leading-relaxed">
+                        {selectedEvent.propertyAddress}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
 
-            <div className="flex items-center gap-1">
-              <div className="w-3.5 h-3.5 rounded-sm bg-[#8b5cf6]" />
-              <span className="text-sm font-medium text-muted-foreground">Deposit</span>
-            </div>
-
-            <div className="flex items-center gap-1">
-              <div className="w-3.5 h-3.5 rounded-sm bg-[#3b82f6]" />
-              <span className="text-sm font-medium text-muted-foreground">Deadline</span>
-            </div>
-
-            <div className="flex items-center gap-1">
-              <div className="w-3.5 h-3.5 rounded-sm bg-[#ef4444]" />
-              <span className="text-sm font-medium text-muted-foreground">Overdue</span>
+              <div className="pt-6 space-y-3">
+                <Button className="w-full h-11 font-bold shadow-sm" variant="default">
+                  View Full Transaction
+                </Button>
+                <Button className="w-full h-11 font-bold text-slate-600" variant="outline" onClick={() => setSelectedEvent(null)}>
+                  Close Details
+                </Button>
+              </div>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        )}
+      </aside>
     </div>
   );
 }
