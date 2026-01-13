@@ -1,9 +1,9 @@
-// src/components/CategorySection.tsx — FINAL, BEAUTIFUL, BUTTERY SMOOTH
-// Version: 2.0.0 - 2026-01-03 - ENHANCED: Added edit mode support
+// src/components/CategorySection.tsx
+// Version: 2.1.0 - 2026-01-13
+// ENHANCED: Fixed header height/padding and updated chevron logic
 "use client";
 
 import {
-  Card,
   CardContent,
   CardHeader,
   CardTitle,
@@ -17,7 +17,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { ChevronDown } from "lucide-react";
+import { ChevronRight } from "lucide-react"; // Swapped to Right
 import CopyAllButton from "@/components/ui/CopyAllButton";
 import CopyFieldRow from "@/components/ui/CopyFieldRow";
 import { ReactNode } from "react";
@@ -126,18 +126,21 @@ export default function CategorySection({
   };
 
   return (
-    <Collapsible defaultOpen={defaultOpen}>
+    <Collapsible defaultOpen={defaultOpen} className="w-full">
       <CollapsibleTrigger asChild>
-        <CardHeader className="bg-muted/50 hover:bg-muted/70 transition-all duration-200 cursor-pointer rounded-lg -mb-2">
-          <div className="flex items-center justify-between">
+        {/* UPDATED: Increased py-4, removed negative margin, added min-h */}
+        <CardHeader className="bg-muted/50 hover:bg-muted/70 transition-all duration-200 cursor-pointer rounded-lg py-4 px-5 min-h-[64px] flex justify-center">
+          <div className="flex items-center justify-between w-full">
             <div className="flex items-center gap-3">
-              {icon}
-              <CardTitle className="text-lg">{title}</CardTitle>
-              <Badge variant="secondary">{fields.length} fields</Badge>
-              {isEditing && <Badge variant="default">Editing</Badge>}
+              <span className="text-primary">{icon}</span>
+              <CardTitle className="text-lg font-bold leading-none">{title}</CardTitle>
+              <Badge variant="secondary" className="font-mono text-[10px] px-1.5 py-0">
+                {fields.length} FIELDS
+              </Badge>
+              {isEditing && <Badge variant="default" className="animate-pulse">Editing</Badge>}
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-4">
               {!isEditing && (
                 <div onClick={(e) => e.stopPropagation()}>
                   <CopyAllButton
@@ -147,16 +150,15 @@ export default function CategorySection({
                 </div>
               )}
 
-              {/* This now rotates perfectly */}
-              <ChevronDown className="h-5 w-5 transition-transform duration-300 [[data-state=open]_&]:rotate-180" />
+              {/* UPDATED: ChevronRight with 90deg rotation logic */}
+              <ChevronRight className="h-5 w-5 text-muted-foreground transition-transform duration-300 [[data-state=open]_&]:rotate-90" />
             </div>
           </div>
         </CardHeader>
       </CollapsibleTrigger>
 
-      {/* Smooth, beautiful, built-in Radix animation */}
       <CollapsibleContent className="overflow-hidden transition-all data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 data-[state=closed]:fade-out data-[state=open]:fade-in data-[state=closed]:duration-200 data-[state=open]:duration-300">
-        <CardContent className="p-6 pt-4 border border-border/50 rounded-b-lg bg-card">
+        <CardContent className="p-6 pt-5 border-x border-b border-border/50 rounded-b-lg bg-card">
           <div className={isEditing ? "space-y-4" : "divide-y divide-border"}>
             {fields.map((field, i) => renderEditableField(field, i))}
           </div>
