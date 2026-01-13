@@ -7,7 +7,7 @@ import { useState, useEffect } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ChevronRight, ChevronDown, Trash2, AlertCircle, Edit, Save, X } from "lucide-react";
+import { ChevronRight, ChevronDown, Trash2, AlertCircle, Edit, Save, X, Archive } from "lucide-react"; // Added Archive icon
 import { format } from "date-fns";
 import ExtractionCategories from "@/components/ExtractionCategories";
 import { ParseResult } from "@/types";
@@ -20,6 +20,7 @@ interface TransactionTableProps {
   onToggleSelect: (id: string) => void;
   onToggleSelectAll: () => void;
   onDelete: (id: string) => void;
+  onArchive?: (id: string) => void; // Added archive prop
 }
 
 export default function TransactionTable({
@@ -29,6 +30,7 @@ export default function TransactionTable({
   onToggleSelect,
   onToggleSelectAll,
   onDelete,
+  onArchive,
 }: TransactionTableProps) {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(
     new Set(latestId ? [latestId] : [])
@@ -233,11 +235,26 @@ export default function TransactionTable({
                               onDataChange={handleDataChange}
                               viewContext="right"
                             />
+                            
                             {!isEditing && (
-                              <div className="flex justify-end mt-12 pt-6 border-t">
-                                <Button variant="destructive" size="sm" onClick={() => onDelete(transaction.id)}>
+                              <div className="flex justify-end items-center gap-3 mt-12 pt-6 border-t">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => onArchive?.(transaction.id)}
+                                  className="h-9"
+                                >
+                                  <Archive className="h-4 w-4 mr-2" />
+                                  Archive
+                                </Button>
+                                <Button
+                                  variant="destructive"
+                                  size="sm"
+                                  onClick={() => onDelete(transaction.id)}
+                                  className="h-9"
+                                >
                                   <Trash2 className="h-4 w-4 mr-2" />
-                                  Delete Transaction
+                                  Delete
                                 </Button>
                               </div>
                             )}
