@@ -73,7 +73,7 @@ export default function Home() {
                 <div className="p-4 bg-muted/50 border-r">
                     <p className="text-xs font-bold text-muted-foreground uppercase mb-2">The Messy PDF</p>
                     <Image 
-                        src="/messy-contract-extraction.png" 
+                        src="public/messy-contract-extraction.png" 
                         alt="Messy Real Estate Contract Extraction" 
                         width={600} 
                         height={400}
@@ -129,7 +129,7 @@ export default function Home() {
           {/* App Screenshot Integration */}
           <div className="mb-20 max-w-5xl mx-auto rounded-xl border shadow-lg overflow-hidden">
              <Image 
-                src="/tc-helper-transactions-page.png" 
+                src="public/tc-helper-transactions-page.png" 
                 alt="TC Helper Dashboard and Transactions Page" 
                 width={1200} 
                 height={800}
