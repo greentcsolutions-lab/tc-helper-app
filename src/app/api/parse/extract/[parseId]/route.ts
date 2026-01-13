@@ -94,14 +94,15 @@ export async function POST(
     ]);
 
     console.log(`[extract] Primary (${PRIMARY_MODEL}) SUCCESS`);
-  }
-  catch (primaryError: any) {
+
+    // ── Fallback path ─────────────────────────────────────────────────────
+    // (moved inside try — only reached if above throws)
+  } catch (primaryError: any) {
     const isTimeout = primaryError.message?.includes("timeout");
     console.log(
       `[extract] Primary path failed (${isTimeout ? 'timeout' : 'error'}): ${primaryError.message}`
     );
 
-    // ── Phase 3: Fallback to Gemini ───────────────────────────────────────
     logWarn("EXTRACT:FALLBACK", `Falling back to ${FALLBACK_MODEL}`);
 
     try {
@@ -113,16 +114,15 @@ export async function POST(
       ]);
 
       console.log(`[extract] Fallback (${FALLBACK_MODEL}) SUCCESS`);
-      extractionResult.fromFallback = true; // optional flag for logging/analytics
-    }
-    catch (fallbackError: any) {
+      extractionResult.fromFallback = true; // optional
+    } catch (fallbackError: any) {
       console.error(`[extract] Fallback also failed: ${fallbackError.message}`);
       logError("EXTRACT:ERROR", `Both providers failed: ${fallbackError.message}`);
-      throw fallbackError;
+      throw fallbackError; // will be caught by outer catch
     }
   }
 
-  // ── Result handling ─────────────────────────────────────────────────────
+  // ── Result handling (executed only if we have a result) ───────────────
   if (!extractionResult) {
     throw new Error("No extraction result received from either provider");
   }
@@ -149,7 +149,6 @@ export async function POST(
     timelineEvents: [],
   });
 
-  // Debug timeline dates
   console.log('[extract] Timeline dates being saved:');
   console.log(' effectiveDate:', mappedFields.effectiveDate);
   console.log(' initialDepositDueDate:', mappedFields.initialDepositDueDate);
@@ -203,13 +202,12 @@ export async function POST(
     totalPages: parse.pageCount,
     modelUsed,
   });
-}
-catch (error: any) {
+} catch (error: any) {
+  // ← This is now the outer/final error handler
   logError("EXTRACT:ERROR", error.message);
   console.error("[Extract Route] Full error:", error);
   return Response.json(
     { error: error.message || "Extraction failed" },
     { status: 500 }
   );
-}
 }
