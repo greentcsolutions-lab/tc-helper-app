@@ -1,4 +1,3 @@
-// src/components/transactions/TransactionTable.tsx
 "use client";
 
 import { useState, useEffect } from "react";
@@ -85,26 +84,7 @@ export default function TransactionTable({
       const response = await fetch(`/api/transactions/update/${editingId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          transactionType: editedData.transactionType,
-          buyerNames: editedData.buyerNames,
-          sellerNames: editedData.sellerNames,
-          propertyAddress: editedData.propertyAddress,
-          purchasePrice: editedData.purchasePrice,
-          closingDate: editedData.closingDate,
-          effectiveDate: editedData.effectiveDate,
-          initialDepositDueDate: editedData.initialDepositDueDate,
-          sellerDeliveryOfDisclosuresDate: editedData.sellerDeliveryOfDisclosuresDate,
-          isAllCash: editedData.isAllCash,
-          loanType: editedData.loanType,
-          earnestMoneyDeposit: editedData.earnestMoneyDeposit,
-          financing: editedData.financing,
-          contingencies: editedData.contingencies,
-          closingCosts: editedData.closingCosts,
-          brokers: editedData.brokers,
-          personalPropertyIncluded: editedData.personalPropertyIncluded,
-          escrowHolder: editedData.escrowHolder,
-        }),
+        body: JSON.stringify(editedData),
       });
       if (!response.ok) throw new Error();
       toast.success('Transaction updated successfully');
@@ -149,21 +129,21 @@ export default function TransactionTable({
   return (
     <div className="border rounded-lg overflow-hidden">
       <div className="overflow-x-auto">
-        <table className="w-full">
+        <table className="w-full table-fixed md:table-auto">
           <thead className="bg-muted/50 border-b">
             <tr>
-              <th className="w-12 p-4">
+              <th className="w-10 md:w-12 p-2 md:p-4">
                 <Checkbox
                   checked={selectedIds.size === transactions.length && transactions.length > 0}
                   onCheckedChange={onToggleSelectAll}
                 />
               </th>
-              <th className="text-left p-4 font-semibold min-w-[300px]">Property Address</th>
+              <th className="text-left p-2 md:p-4 font-semibold min-w-[150px] md:min-w-[300px]">Property</th>
               <th className="text-left p-4 font-semibold w-32 hidden md:table-cell">Type</th>
-              <th className="text-left p-4 font-semibold w-40 hidden lg:table-cell">Closing Date</th>
-              <th className="text-left p-4 font-semibold w-48 hidden xl:table-cell">Created</th>
-              <th className="text-left p-4 font-semibold w-40">Actions</th>
-              <th className="w-12 p-4"></th>
+              <th className="text-left p-4 font-semibold w-40 hidden lg:table-cell">Closing</th>
+              <th className="text-left p-4 font-semibold w-40 hidden xl:table-cell">Created</th>
+              <th className="text-right md:text-left p-2 md:p-4 font-semibold w-24 md:w-40">Actions</th>
+              <th className="w-10 md:w-12 p-2 md:p-4"></th>
             </tr>
           </thead>
           <tbody>
@@ -180,111 +160,88 @@ export default function TransactionTable({
                   onClick={() => toggleRow(transaction.id)}
                 >
                   <td colSpan={7} className="p-0">
-                    <div>
-                      {/* Main Row Container */}
-                      <div className="flex items-center">
-                        {/* Checkbox Cell - Stop propagation so clicking box doesn't close row */}
-                        <div 
-                          className="w-12 p-4 flex items-center justify-center"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <Checkbox
-                            checked={isSelected}
-                            onCheckedChange={() => onToggleSelect(transaction.id)}
-                          />
-                        </div>
-
-                        {/* Property Info */}
-                        <div className="flex-1 p-4 min-w-[300px]">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium group-hover:text-primary transition-colors">
-                                {displayData.propertyAddress || "Address Not Found"}
-                            </span>
-                            {transaction.missingSCOs && (
-                              <Badge variant="destructive" className="text-xs">
-                                <AlertCircle className="h-3 w-3 mr-1" />
-                                Missing SCO
-                              </Badge>
-                            )}
-                          </div>
-                          <p className="text-sm text-muted-foreground mt-1">{transaction.fileName}</p>
-                        </div>
-
-                        {/* Data Cells */}
-                        <div className="w-32 p-4 hidden md:table-cell">
-                          <Badge variant={displayData.transactionType === 'listing' ? 'default' : 'secondary'}>
-                            {formatTransactionType(displayData.transactionType)}
-                          </Badge>
-                        </div>
-                        <div className="w-40 p-4 text-sm hidden lg:table-cell">{formatDate(displayData.closingDate)}</div>
-                        <div className="w-48 p-4 text-sm text-muted-foreground hidden xl:table-cell">{formatDateTime(transaction.createdAt)}</div>
-                        
-                        {/* Edit Button Cell - Stop propagation so clicking Edit doesn't close row */}
-                        <div 
-                          className="w-40 p-4"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          {isEditing ? (
-                            <div className="flex gap-1">
-                              <Button variant="default" size="sm" onClick={handleSave} disabled={isSaving || !hasUnsavedChanges} className="h-8">
-                                <Save className="h-4 w-4 mr-1" /> Save
-                              </Button>
-                              <Button variant="outline" size="sm" onClick={handleCancel} disabled={isSaving} className="h-8">
-                                <X className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          ) : (
-                            <Button variant="outline" size="sm" onClick={() => handleEdit(transaction)} className="h-8">
-                              <Edit className="h-4 w-4 mr-1" /> Edit
-                            </Button>
-                          )}
-                        </div>
-
-                        {/* Chevron Icon Cell */}
-                        <div className="w-12 p-4 text-muted-foreground group-hover:text-primary transition-colors">
-                           {isExpanded ? (
-                             <ChevronDown className="h-5 w-5" />
-                           ) : (
-                             <ChevronRight className="h-5 w-5" />
-                           )}
-                        </div>
+                    <div className="flex items-center w-full">
+                      <div className="w-10 md:w-12 p-2 md:p-4 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                        <Checkbox checked={isSelected} onCheckedChange={() => onToggleSelect(transaction.id)} />
                       </div>
 
-                      {/* Expanded Content */}
-                      {isExpanded && (
-                        <div 
-                          className="border-t bg-background p-6 animate-in slide-in-from-top-2 duration-300 cursor-default"
-                          onClick={(e) => e.stopPropagation()} // Prevent clicking inside categories from closing row
-                        >
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                            <div className="space-y-6">
-                              <ExtractionCategories
-                                data={displayData}
-                                isEditing={isEditing}
-                                onDataChange={handleDataChange}
-                                viewContext="left"
-                              />
-                            </div>
-                            <div className="space-y-6 md:border-l md:pl-8">
-                              <ExtractionCategories
-                                data={displayData}
-                                isEditing={isEditing}
-                                onDataChange={handleDataChange}
-                                viewContext="right"
-                              />
-                              {!isEditing && (
-                                <div className="flex justify-end mt-12 pt-6 border-t">
-                                  <Button variant="destructive" size="sm" onClick={() => onDelete(transaction.id)}>
-                                    <Trash2 className="h-4 w-4 mr-2" />
-                                    Delete Transaction
-                                  </Button>
-                                </div>
-                              )}
-                            </div>
+                      <div className="flex-1 p-2 md:p-4 min-w-0">
+                        <div className="flex items-center gap-1 md:gap-2">
+                          <span className="font-medium text-sm md:text-base truncate block group-hover:text-primary transition-colors">
+                            {displayData.propertyAddress || "Address Not Found"}
+                          </span>
+                          {transaction.missingSCOs && (
+                            <Badge variant="destructive" className="scale-75 md:scale-100 origin-left">
+                              <AlertCircle className="h-3 w-3 mr-1" /> Missing SCO
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-[10px] md:text-sm text-muted-foreground truncate">{transaction.fileName}</p>
+                      </div>
+
+                      <div className="w-32 p-4 hidden md:table-cell">
+                        <Badge variant={displayData.transactionType === 'listing' ? 'default' : 'secondary'}>
+                          {formatTransactionType(displayData.transactionType)}
+                        </Badge>
+                      </div>
+                      <div className="w-40 p-4 text-sm hidden lg:table-cell">{formatDate(displayData.closingDate)}</div>
+
+                      <div className="w-24 md:w-40 p-2 md:p-4 flex justify-end md:justify-start" onClick={(e) => e.stopPropagation()}>
+                        {isEditing ? (
+                          <div className="flex gap-1">
+                            <Button size="icon" variant="default" onClick={handleSave} className="h-8 w-8 md:w-auto md:px-3">
+                              <Save className="h-4 w-4" />
+                            </Button>
+                            <Button size="icon" variant="outline" onClick={handleCancel} className="h-8 w-8">
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <Button variant="outline" size="sm" onClick={() => handleEdit(transaction)} className="h-8 px-2 md:px-3">
+                            <Edit className="h-4 w-4 md:mr-2" />
+                            <span className="hidden md:inline">Edit</span>
+                          </Button>
+                        )}
+                      </div>
+
+                      <div className="w-10 md:w-12 p-2 md:p-4 text-muted-foreground">
+                         {isExpanded ? <ChevronDown className="h-4 w-4 md:h-5 md:w-5" /> : <ChevronRight className="h-4 w-4 md:h-5 md:w-5" />}
+                      </div>
+                    </div>
+
+                    {isExpanded && (
+                      <div 
+                        className="border-t bg-background p-4 md:p-6 animate-in slide-in-from-top-2 duration-300 cursor-default"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                          <div className="space-y-6">
+                            <ExtractionCategories
+                              data={displayData}
+                              isEditing={isEditing}
+                              onDataChange={handleDataChange}
+                              viewContext="left"
+                            />
+                          </div>
+                          <div className="space-y-6 md:border-l md:pl-8">
+                            <ExtractionCategories
+                              data={displayData}
+                              isEditing={isEditing}
+                              onDataChange={handleDataChange}
+                              viewContext="right"
+                            />
+                            {!isEditing && (
+                              <div className="flex justify-end mt-12 pt-6 border-t">
+                                <Button variant="destructive" size="sm" onClick={() => onDelete(transaction.id)}>
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Delete Transaction
+                                </Button>
+                              </div>
+                            )}
                           </div>
                         </div>
-                      )}
-                    </div>
+                      </div>
+                    )}
                   </td>
                 </tr>
               );
