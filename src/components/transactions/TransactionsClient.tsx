@@ -2,7 +2,6 @@
 "use client";
 
 import { useState } from "react";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -13,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Search, FileText, Archive } from "lucide-react";
+import { Search, FileText, Archive, Plus } from "lucide-react";
 import Link from "next/link";
 import TransactionTable from "@/components/transactions/TransactionTable";
 import ActionBar from "@/components/transactions/ActionBar";
@@ -39,15 +38,20 @@ export default function TransactionsClient({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isActioning, setIsActioning] = useState(false);
 
-  // Simple client-side search & sort & filter
+  // Sorting Labels Map
+  const sortLabels: Record<SortOption, string> = {
+    date: "Latest First",
+    address: "Address (A-Z)",
+    closing: "Closing Date",
+    price: "Purchase Price",
+  };
+
   const filteredAndSorted = initialParses
     .filter((parse) => {
-      // Filter by archived status
       const isArchived = parse.status === "ARCHIVED";
       if (showArchived && !isArchived) return false;
       if (!showArchived && isArchived) return false;
 
-      // Search filter
       const term = search.toLowerCase();
       return (
         parse.propertyAddress?.toLowerCase().includes(term) ||
@@ -92,9 +96,7 @@ export default function TransactionsClient({
     }
   };
 
-  const clearSelection = () => {
-    setSelectedIds(new Set());
-  };
+  const clearSelection = () => setSelectedIds(new Set());
 
   const handleDelete = async (id: string) => {
     try {
@@ -109,7 +111,6 @@ export default function TransactionsClient({
 
   const handleBulkArchive = async () => {
     if (selectedIds.size === 0) return;
-
     setIsActioning(true);
     try {
       const res = await fetch("/api/parse/archive", {
@@ -117,14 +118,11 @@ export default function TransactionsClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids: Array.from(selectedIds) }),
       });
-
       if (!res.ok) throw new Error();
-
       toast.success(`${selectedIds.size} transaction(s) archived`);
-      setSelectedIds(new Set());
       window.location.reload();
     } catch {
-      toast.error("Failed to archive transactions");
+      toast.error("Failed to archive");
     } finally {
       setIsActioning(false);
     }
@@ -132,11 +130,7 @@ export default function TransactionsClient({
 
   const handleBulkDelete = async () => {
     if (selectedIds.size === 0) return;
-
-    if (!confirm(`Are you sure you want to delete ${selectedIds.size} transaction(s)? This cannot be undone.`)) {
-      return;
-    }
-
+    if (!confirm(`Delete ${selectedIds.size} transaction(s)?`)) return;
     setIsActioning(true);
     try {
       const res = await fetch("/api/parse/bulk-delete", {
@@ -144,14 +138,11 @@ export default function TransactionsClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids: Array.from(selectedIds) }),
       });
-
       if (!res.ok) throw new Error();
-
-      toast.success(`${selectedIds.size} transaction(s) deleted`);
-      setSelectedIds(new Set());
+      toast.success("Deleted");
       window.location.reload();
     } catch {
-      toast.error("Failed to delete transactions");
+      toast.error("Failed to delete");
     } finally {
       setIsActioning(false);
     }
@@ -159,108 +150,88 @@ export default function TransactionsClient({
 
   return (
     <>
-      <div className="space-y-6 pb-24 p-6">
-        {/* Header */}
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div>
-            <h1 className="text-4xl font-bold mb-2">Transactions</h1>
-            <div className="space-y-1">
-              <p className="text-muted-foreground text-lg">
-                {filteredAndSorted.length} {showArchived ? "archived" : "active"} {filteredAndSorted.length === 1 ? "transaction" : "transactions"}
-              </p>
-              <p className="text-sm text-muted-foreground">
-                You can create <span className="font-semibold text-primary">{remainingSlots}</span> more {remainingSlots === 1 ? "file" : "files"} before reaching your limit
-              </p>
+      <div className="max-w-[1600px] mx-auto space-y-4 p-6">
+        {/* Row 1: Title & Usage Info */}
+        <div className="flex flex-col gap-1">
+          <h1 className="text-3xl font-bold tracking-tight">Transactions</h1>
+          <p className="text-sm text-muted-foreground">
+            {activeCount} active transactions — You can create <span className="font-medium text-foreground">{remainingSlots}</span> more before your limit.
+          </p>
+        </div>
+
+        {/* Row 2: Search, Sort, View, and Upload (Glide Style) */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+          <div className="flex flex-1 items-center gap-3 min-w-[300px]">
+            <div className="relative w-full max-w-sm">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground h-4 w-4" />
+              <Input
+                placeholder="Search transactions..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9 h-10 bg-background"
+              />
             </div>
+
+            <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
+              <SelectTrigger className="w-[220px] h-10 bg-background">
+                <span className="text-muted-foreground mr-1">Sort by:</span>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="date">Latest First</SelectItem>
+                <SelectItem value="address">Address (A-Z)</SelectItem>
+                <SelectItem value="closing">Closing Date</SelectItem>
+                <SelectItem value="price">Purchase Price</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <label className="flex items-center gap-2 px-2 cursor-pointer select-none">
+              <Checkbox
+                checked={showArchived}
+                onCheckedChange={(checked: boolean) => {
+                  setShowArchived(checked);
+                  clearSelection();
+                }}
+              />
+              <span className="text-sm font-medium text-muted-foreground">View Archived</span>
+            </label>
           </div>
-          <Button asChild variant="outline">
+
+          <Button asChild className="h-10 px-4 shadow-sm">
             <Link href="/upload">
-              <FileText className="h-4 w-4 mr-2" />
+              <Plus className="h-4 w-4 mr-2" />
               Upload New File
             </Link>
           </Button>
         </div>
 
-        {/* Search + Sort + Filters */}
-        <Card>
-          <CardContent className="pt-6">
-            <div className="space-y-4">
-              <div className="flex gap-4 flex-col sm:flex-row">
-                <div className="flex-1 relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground h-5 w-5" />
-                  <Input
-                    placeholder="Search by address, buyer, agent, or filename..."
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    className="pl-10"
-                  />
-                </div>
-                <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
-                  <SelectTrigger className="w-full sm:w-[200px]">
-                    <SelectValue placeholder="Sort by..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="date">Latest First</SelectItem>
-                    <SelectItem value="address">Address (A-Z)</SelectItem>
-                    <SelectItem value="closing">Closing Date</SelectItem>
-                    <SelectItem value="price">Purchase Price</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="flex items-center justify-end gap-4 flex-wrap">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <Checkbox
-                    checked={showArchived}
-                    onCheckedChange={(checked: boolean) => {
-                      setShowArchived(checked);
-                      setSelectedIds(new Set()); // Clear selection when toggling view
-                    }}
-                  />
-                  <Archive className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">
-                    View Archived
-                  </span>
-                </label>
-              </div>
+        {/* Transaction Table Section */}
+        <div className="pt-2">
+          {filteredAndSorted.length === 0 ? (
+            <div className="border rounded-xl border-dashed py-20 text-center bg-card/50">
+              <FileText className="h-12 w-12 text-muted-foreground/40 mx-auto mb-4" />
+              <h2 className="text-xl font-semibold">
+                {search ? "No matches found" : "No transactions yet"}
+              </h2>
+              <p className="text-muted-foreground text-sm mt-1">
+                {search ? "Try adjusting your filters" : "Upload your first contract to see it here"}
+              </p>
             </div>
-          </CardContent>
-        </Card>
-
-      {/* List or Empty State */}
-      {filteredAndSorted.length === 0 ? (
-        <Card className="border-dashed">
-          <CardContent className="py-16 text-center">
-            <FileText className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-            <h2 className="text-2xl font-bold mb-2">
-              {search ? "No results found" : "No transactions yet"}
-            </h2>
-            <p className="text-muted-foreground mb-6">
-              {search ? "Try adjusting your search terms" : "Upload your first contract to get started"}
-            </p>
-            {!search && (
-              <Button asChild>
-                <Link href="/upload">
-                  <FileText className="h-4 w-4 mr-2" />
-                  Upload Contract
-                </Link>
-              </Button>
-            )}
-          </CardContent>
-        </Card>
-      ) : (
-        <TransactionTable
-          transactions={filteredAndSorted}
-          latestId={latestParseId}
-          selectedIds={selectedIds}
-          onToggleSelect={toggleSelect}
-          onToggleSelectAll={toggleSelectAll}
-          onDelete={handleDelete}
-        />
-      )}
+          ) : (
+            <div className="bg-card rounded-xl border shadow-sm overflow-hidden">
+              <TransactionTable
+                transactions={filteredAndSorted}
+                latestId={latestParseId}
+                selectedIds={selectedIds}
+                onToggleSelect={toggleSelect}
+                onToggleSelectAll={toggleSelectAll}
+                onDelete={handleDelete}
+              />
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Action Bar */}
       <ActionBar
         selectedCount={selectedIds.size}
         onArchive={handleBulkArchive}
