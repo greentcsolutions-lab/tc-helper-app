@@ -412,7 +412,7 @@ export default function Home() {
                   <span className="text-4xl font-bold">$20</span>
                   <span className="text-muted-foreground">/month</span>
                 </div>
-                <p className="text-muted-foreground">or $200/year (save $30)</p>
+                <p className="text-muted-foreground">or $200/year (save $40)</p>
               </div>
               <ul className="space-y-3 mb-8">
                 <li className="flex items-start gap-2">
