@@ -71,7 +71,7 @@ export default function Home() {
                 <p className="text-xs font-bold text-muted-foreground uppercase mb-4 text-left">The Messy PDF</p>
                 <div className="relative w-full">
                   <img 
-                    src="/messy-contract-extraction.png" 
+                    src="/mess-contract-extraction.png" 
                     alt="Messy Real Estate Contract Extraction" 
                     className="rounded-lg opacity-80 grayscale-[30%] w-full h-auto"
                   />
@@ -124,7 +124,7 @@ export default function Home() {
 
           <div className="mb-20 max-w-5xl mx-auto rounded-xl border shadow-2xl overflow-hidden bg-white">
             <img 
-              src="/tc-helper-transactions-page.png" 
+              src="/tc-helper-transactionss-page.png" 
               alt="TC Helper Dashboard" 
               className="w-full h-auto"
             />
