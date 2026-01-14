@@ -59,7 +59,7 @@ async function checkClaudeAvailability(modelName: string, timeoutMs = 5000): Pro
 export async function extractWithClaude(
   pdfUrl: string,
   totalPages: number,
-  modelName: string = 'claude-haiku-4-5-latest'
+  modelName: string = 'claude-haiku-4-5-20251001'
 ): Promise<{
   finalTerms: any;
   needsReview: boolean;
