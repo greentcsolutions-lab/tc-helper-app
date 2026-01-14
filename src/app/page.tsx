@@ -23,7 +23,6 @@ import {
 } from "lucide-react";
 import { SignUpButton, SignedOut } from "@clerk/nextjs";
 import Link from "next/link";
-import Image from "next/image";
 
 export default function Home() {
   return (
@@ -71,12 +70,9 @@ export default function Home() {
               <div className="p-4 bg-muted/50 border-r">
                 <p className="text-xs font-bold text-muted-foreground uppercase mb-4 text-left">The Messy PDF</p>
                 <div className="relative w-full">
-                  <Image 
+                  <img 
                     src="/messy-contract-extraction.png" 
                     alt="Messy Real Estate Contract Extraction" 
-                    width={1920}
-                    height={1080}
-                    priority
                     className="rounded-lg opacity-80 grayscale-[30%] w-full h-auto"
                   />
                 </div>
@@ -127,11 +123,9 @@ export default function Home() {
           </div>
 
           <div className="mb-20 max-w-5xl mx-auto rounded-xl border shadow-2xl overflow-hidden bg-white">
-            <Image 
+            <img 
               src="/tc-helper-transactions-page.png" 
               alt="TC Helper Dashboard" 
-              width={1920}
-              height={1080}
               className="w-full h-auto"
             />
           </div>
@@ -184,7 +178,7 @@ export default function Home() {
           </div>
         </div>
       </section>
-      
+     
       {/* Feature Showcase */}
       <section className="py-20 px-4 bg-muted/30">
         <div className="max-w-7xl mx-auto">
