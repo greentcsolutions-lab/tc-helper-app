@@ -124,7 +124,7 @@ export default function Home() {
 
           <div className="mb-20 max-w-5xl mx-auto rounded-xl border shadow-2xl overflow-hidden bg-white">
             <img 
-              src="/tc-helper-transactions-page.jpg" 
+              src="/dashboard.png" 
               alt="TC Helper Dashboard" 
               className="w-full h-auto"
             />
