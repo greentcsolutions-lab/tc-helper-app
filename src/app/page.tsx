@@ -89,6 +89,7 @@ export default function Home() {
     </div>
   </div>
 </div>
+    </section>
 
       {/* The Problem */}
       <section className="py-16 px-4 bg-muted/30">
