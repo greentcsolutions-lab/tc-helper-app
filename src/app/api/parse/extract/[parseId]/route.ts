@@ -86,7 +86,7 @@ export async function POST(
 
       console.log(`[extract] Primary (${PRIMARY_MODEL}) SUCCESS`);
     } catch (err: any) {
-      logWarn("EXTRACT:FALLBACK", `Primary failed: ${err.message}. Falling back to ${FALLBACK_MODEL}`);
+      console.warn("EXTRACT:FALLBACK", `Primary failed: ${err.message}. Falling back to ${FALLBACK_MODEL}`);
 
       try {
         extractionResult = await Promise.race([
