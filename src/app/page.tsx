@@ -24,7 +24,40 @@ import {
 import { SignUpButton, SignedOut } from "@clerk/nextjs";
 import Link from "next/link";
 
+// for animation
+import { motion, AnimatePresence } from "framer-motion";
+import { useState, useEffect } from "react";
+
 export default function Home() {
+
+  const processingSteps = [
+  "Checking your PDF...",
+  "Finding contract terms...",
+  "Constructing timeline...",
+  "Assigning smart tasks...",
+  "Finishing up...",
+];
+
+const [currentStep, setCurrentStep] = useState(0);
+const [showDashboard, setShowDashboard] = useState(false);
+
+useEffect(() => {
+  if (currentStep < processingSteps.length - 1) {
+    const timer = setTimeout(() => {
+      setCurrentStep((prev) => prev + 1);
+    }, 1100); // matches stagger delay
+
+    return () => clearTimeout(timer);
+  } else {
+    // After last step → small pause then reveal dashboard
+    const revealTimer = setTimeout(() => {
+      setShowDashboard(true);
+    }, 1400);
+
+    return () => clearTimeout(revealTimer);
+  }
+}, [currentStep]);
+  
   return (
     <main className="min-h-screen bg-gradient-to-b from-background via-muted/20 to-background">
       {/* Hero */}
@@ -64,35 +97,85 @@ export default function Home() {
             </Button>
           </div>
 
-          {/* Side-by-Side Comparison */}
-          <div className="relative max-w-5xl mx-auto mt-12 rounded-2xl overflow-hidden border shadow-2xl bg-card">
-            <div className="grid md:grid-cols-2 gap-0">
-              <div className="p-4 bg-muted/50 border-r">
-                <p className="text-xs font-bold text-muted-foreground uppercase mb-4 text-left">The Messy PDF</p>
-                <div className="relative w-full">
-                  <img 
-                    src="/mess-contract-extraction.jpg" 
-                    alt="Messy Real Estate Contract Extraction" 
-                    className="rounded-lg opacity-80 grayscale-[30%] w-full h-auto"
-                  />
-                </div>
-              </div>
-              <div className="p-4 bg-background relative flex flex-col justify-center">
-                <div className="absolute inset-0 bg-blue-500/5 animate-pulse pointer-events-none" />
-                <p className="text-xs font-bold text-blue-600 uppercase mb-4 flex items-center gap-1 text-left">
-                  <Brain className="h-3 w-3" /> TCHelper AI Output
-                </p>
-                <div className="space-y-4">
-                  <div className="h-8 bg-muted rounded animate-pulse w-3/4" />
-                  <div className="h-8 bg-muted rounded animate-pulse w-full" />
-                  <div className="h-32 border-2 border-dashed border-blue-200 rounded-xl flex items-center justify-center text-blue-500 text-sm font-medium italic bg-blue-50/30">
-                    Extracting Dates, Parties, and Contingencies...
+          {/* Side-by-Side Comparison – Animated Version */}
+<div className="relative max-w-5xl mx-auto mt-12 rounded-2xl overflow-hidden border shadow-2xl bg-card">
+  <div className="grid md:grid-cols-2 gap-0">
+    {/* Left: Messy PDF (static, slightly desaturated) */}
+    <div className="p-4 bg-muted/50 border-r">
+      <p className="text-xs font-bold text-muted-foreground uppercase mb-4 text-left">
+        The Messy PDF
+      </p>
+      <div className="relative w-full">
+        <img
+          src="/mess-contract-extraction.jpg"
+          alt="Messy Real Estate Contract Extraction"
+          className="rounded-lg opacity-80 grayscale-[30%] w-full h-auto object-cover"
+        />
+      </div>
+    </div>
+
+    {/* Right: AI Processing → Dashboard Reveal */}
+    <div className="p-6 bg-background relative flex flex-col justify-center overflow-hidden">
+      {/* Subtle animated background pulse */}
+      <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-purple-500/5 animate-pulse pointer-events-none" />
+
+      <div className="relative z-10">
+        <p className="text-xs font-bold text-blue-600 uppercase mb-6 flex items-center gap-2">
+          <Brain className="h-4 w-4" /> TCHelper AI Processing
+        </p>
+
+        <AnimatePresence mode="wait">
+          {showDashboard ? (
+            <motion.div
+              key="dashboard"
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.7, ease: "easeOut" }}
+              className="rounded-xl overflow-hidden shadow-2xl border"
+            >
+              <img
+                src="/dashboard.png"
+                alt="TC Helper Transaction Dashboard with Timeline"
+                className="w-full h-auto"
+              />
+            </motion.div>
+          ) : (
+            <motion.div
+              key="steps"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.4 }}
+              className="space-y-5"
+            >
+              {processingSteps.map((step, index) => (
+                <motion.div
+                  key={step}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{
+                    delay: index * 1.1, // ~1.1s per step → total ~5–6s
+                    duration: 0.6,
+                    ease: "easeOut",
+                  }}
+                  className="flex items-center gap-3 text-lg font-medium"
+                >
+                  <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-500 to-cyan-600 flex items-center justify-center text-white text-sm font-bold shrink-0">
+                    {index + 1}
                   </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+                  <span className={index === currentStep ? "text-blue-600" : "text-muted-foreground"}>
+                    {step}
+                  </span>
+                </motion.div>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </div>
+  </div>
+</div>
       </section>
 
       {/* The Problem */}
