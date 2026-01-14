@@ -10,90 +10,85 @@ import {
   Clock,
   Award,
   Heart,
-  Upload,
-  Brain,
+  Upload,          // ← added
+  Brain,           // ← added
   CheckSquare,
   Rocket,
   Calendar,
   LayoutTemplate,
-  ArrowRight,
+  ArrowRight,      // ← added
   Users,
   MessageSquare,
-  Check
+  Check,
+  Workflow,        // ← added (this is the key one for "outputs workflow")
 } from "lucide-react";
 import { SignUpButton, SignedOut } from "@clerk/nextjs";
 import Link from "next/link";
 
 export default function Home() {
   return (
-    <main className="min-h-screen bg-gradient-to-b from-background via-muted/20 to-background">
-      {/* Hero */}
-      <section className="pt-24 pb-16 px-4">
-        <div className="max-w-6xl mx-auto text-center">
-          <div className="inline-flex items-center gap-2 bg-primary/10 text-primary px-4 py-2 rounded-full text-sm font-medium mb-8">
-            <Sparkles className="h-4 w-4" />
-            AI-Powered Extraction
+   <div className="relative max-w-5xl mx-auto mt-12 rounded-2xl overflow-hidden border shadow-2xl bg-card">
+  <div className="grid md:grid-cols-2 gap-0">
+    <div className="p-4 bg-muted/50 border-r">
+      <p className="text-xs font-bold text-muted-foreground uppercase mb-4 text-left">The Messy PDF</p>
+      <div className="relative w-full">
+        <img
+          src="/mess-contract-extraction.jpg"
+          alt="Messy Real Estate Contract Extraction"
+          className="rounded-lg opacity-80 grayscale-[30%] w-full h-auto"
+        />
+      </div>
+    </div>
+
+    {/* Your new AI process visualization – this now correctly becomes the right column */}
+    <div className="p-4 bg-background relative flex flex-col justify-center">
+      <div className="space-y-6 py-6">
+        {/* Step 1 - Upload */}
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-cyan-100 flex items-center justify-center shrink-0">
+            <Upload className="h-6 w-6 text-cyan-600" />
           </div>
-
-          <h1 className="text-5xl md:text-7xl font-bold tracking-tight mb-6">
-            <span className="bg-gradient-to-r from-cyan-600 via-blue-600 to-purple-600 bg-clip-text text-transparent">
-              Stop Typing Your Contracts.
-            </span>
-            <br />
-            <span className="text-foreground">Start Managing Them.</span>
-          </h1>
-
-          <p className="text-xl md:text-2xl text-muted-foreground mb-8 max-w-3xl mx-auto leading-relaxed">
-            Upload any real estate contract. Our AI extracts every date, contact, and contingency in 60 seconds. You just execute.
-          </p>
-
-          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-16">
-            <SignedOut>
-              <SignUpButton mode="modal">
-                <Button size="lg" className="h-14 px-10 text-lg font-semibold shadow-xl hover:shadow-2xl transition-all">
-                  <Sparkles className="mr-2 h-5 w-5" />
-                  Extract Your First Contract Free
-                </Button>
-              </SignUpButton>
-            </SignedOut>
-            <Button size="lg" variant="outline" className="h-14 px-8 text-lg" asChild>
-              <a href="#how-it-works">
-                See the Extraction
-                <ArrowRight className="ml-2 h-5 w-5" />
-              </a>
-            </Button>
-          </div>
-
-          {/* Side-by-Side Comparison */}
-          <div className="relative max-w-5xl mx-auto mt-12 rounded-2xl overflow-hidden border shadow-2xl bg-card">
-            <div className="grid md:grid-cols-2 gap-0">
-              <div className="p-4 bg-muted/50 border-r">
-                <p className="text-xs font-bold text-muted-foreground uppercase mb-4 text-left">The Messy PDF</p>
-                <div className="relative w-full">
-                  <img 
-                    src="/mess-contract-extraction.jpg" 
-                    alt="Messy Real Estate Contract Extraction" 
-                    className="rounded-lg opacity-80 grayscale-[30%] w-full h-auto"
-                  />
-                </div>
-              </div>
-              <div className="p-4 bg-background relative flex flex-col justify-center">
-                <div className="absolute inset-0 bg-blue-500/5 animate-pulse pointer-events-none" />
-                <p className="text-xs font-bold text-blue-600 uppercase mb-4 flex items-center gap-1 text-left">
-                  <Brain className="h-3 w-3" /> TCHelper AI Output
-                </p>
-                <div className="space-y-4">
-                  <div className="h-8 bg-muted rounded animate-pulse w-3/4" />
-                  <div className="h-8 bg-muted rounded animate-pulse w-full" />
-                  <div className="h-32 border-2 border-dashed border-blue-200 rounded-xl flex items-center justify-center text-blue-500 text-sm font-medium italic bg-blue-50/30">
-                    Extracting Dates, Parties, and Contingencies...
-                  </div>
-                </div>
-              </div>
-            </div>
+          <div>
+            <p className="font-medium text-foreground">Uploading Documents</p>
+            <p className="text-sm text-muted-foreground">Your PDF packet is securely received</p>
           </div>
         </div>
-      </section>
+
+        {/* Connector arrow */}
+        <div className="flex justify-center">
+          <ArrowRight className="h-6 w-6 text-muted-foreground rotate-90" />
+        </div>
+
+        {/* Step 2 - AI Thinking */}
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center shrink-0">
+            <Brain className="h-6 w-6 text-blue-600" />
+          </div>
+          <div>
+            <p className="font-medium text-foreground">AI Analysis</p>
+            <p className="text-sm text-muted-foreground">Extracting dates, parties, contingencies...</p>
+          </div>
+        </div>
+
+        {/* Connector arrow */}
+        <div className="flex justify-center">
+          <ArrowRight className="h-6 w-6 text-muted-foreground rotate-90" />
+        </div>
+
+        {/* Step 3 - Output */}
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-purple-100 flex items-center justify-center shrink-0">
+            <Workflow className="h-6 w-6 text-purple-600" />
+          </div>
+          <div>
+            <p className="font-medium text-foreground">Workflow Generated</p>
+            <p className="text-sm text-muted-foreground">Ready timeline + tasks created automatically</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
       {/* The Problem */}
       <section className="py-16 px-4 bg-muted/30">
