@@ -115,6 +115,8 @@ export interface ParseResult {
 
   timelineEvents?: JsonValue | null;
 
+  timelineDataStructured?: JsonValue | null;  // NEW: Structured timeline data with calculation metadata
+
   // === THUMBNAILS / PREVIEWS ===
   lowResZipUrl?: string | null;
   criticalPageNumbers?: number[] | null;

@@ -49,6 +49,7 @@ export async function GET(
       // === RICH / STATE-SPECIFIC DATA ===
       extractionDetails: true,     // contains route + field provenance (FIX #2)
       timelineEvents: true,
+      timelineDataStructured: true,  // NEW: Structured timeline data with calculation metadata
 
       // === FOR REVIEW FLAGS ===
       criticalPageNumbers: true,   // used by preview endpoint
