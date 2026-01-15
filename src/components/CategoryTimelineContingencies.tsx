@@ -1,7 +1,7 @@
 // src/components/CategoryTimelineContingencies.tsx
-// Version: 7.0.0 - 2026-01-15
-// MAJOR UPDATE: Added "Waived" checkbox for timeline events
-// UPDATED: Waived events hidden from display (except big 3 contingencies which always show)
+// Version: 8.0.0 - 2026-01-15
+// FIXED: Waived checkbox now inline with input field, always visible
+// UPDATED: Waived events hidden from view mode (except big 3 contingencies which always show)
 // UPDATED: Disabled input fields when waived checkbox is checked
 
 import CategorySection, { FieldConfig } from "./CategorySection";
@@ -99,13 +99,19 @@ export default function CategoryTimelineContingencies({
     value: any,
     type: 'text' | 'number' | 'date' | 'boolean' | 'array' = 'text',
     onChange?: (val: any) => void,
-    disabled?: boolean
+    disabled?: boolean,
+    waived?: boolean,
+    onWaivedChange?: (waived: boolean) => void,
+    showWaivedCheckbox?: boolean
   ): FieldConfig => ({
     label,
     value,
     type,
     onChange,
     disabled,
+    waived,
+    onWaivedChange,
+    showWaivedCheckbox,
   });
 
   // === DYNAMIC TIMELINE FIELD GENERATION ===
@@ -249,7 +255,7 @@ export default function CategoryTimelineContingencies({
       });
     };
 
-    // Build field with waived checkbox if in edit mode and event is waivable
+    // Build field with inline waived checkbox if event is waivable
     const fieldLabel = displayName;
     const fieldValue = isEditing ? editValue : displayValue;
     const fieldDisabled = isEditing && isWaived;
@@ -260,21 +266,12 @@ export default function CategoryTimelineContingencies({
         fieldValue,
         'text',
         handleChange,
-        fieldDisabled
+        fieldDisabled,
+        isWaived,
+        handleWaivedChange,
+        isWaivable // Show waived checkbox for waivable events
       )
     );
-
-    // Add waived checkbox as a separate field if in edit mode and event is waivable
-    if (isEditing && isWaivable) {
-      fields.push(
-        createField(
-          `  ↳ Waived`,
-          isWaived,
-          'boolean',
-          handleWaivedChange
-        )
-      );
-    }
   }
 
   if (fields.length === 0) return null;

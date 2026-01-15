@@ -30,6 +30,9 @@ export interface FieldConfig {
   options?: { label: string; value: string; disabled?: boolean }[];
   onChange?: (value: any) => void;
   disabled?: boolean; // NEW: Disable input field (grays it out)
+  waived?: boolean; // NEW: Waived state for timeline events
+  onWaivedChange?: (waived: boolean) => void; // NEW: Handler for waived checkbox
+  showWaivedCheckbox?: boolean; // NEW: Whether to show inline waived checkbox
 }
 
 interface CategorySectionProps {
@@ -70,59 +73,75 @@ export default function CategorySection({
           <label className="text-sm font-medium text-muted-foreground">
             {field.label}
           </label>
-          <div>
-            {field.type === 'boolean' ? (
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  checked={field.value === true}
-                  onCheckedChange={(checked) => handleChange(checked)}
+          <div className="flex items-center gap-2">
+            <div className="flex-1">
+              {field.type === 'boolean' ? (
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    checked={field.value === true}
+                    onCheckedChange={(checked) => handleChange(checked)}
+                    disabled={field.disabled}
+                  />
+                  <span className="text-sm">{field.value ? 'Yes' : 'No'}</span>
+                </div>
+              ) : field.type === 'select' && field.options ? (
+                <Select
+                  value={field.value || ''}
+                  onValueChange={handleChange}
+                  disabled={field.disabled}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {field.options.map((opt) => (
+                      <SelectItem
+                        key={opt.value}
+                        value={opt.value}
+                        disabled={opt.disabled}
+                      >
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : field.type === 'array' ? (
+                <Input
+                  type="text"
+                  value={Array.isArray(field.value) ? field.value.join(', ') : ''}
+                  onChange={(e) => {
+                    const arr = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
+                    handleChange(arr);
+                  }}
+                  placeholder="Comma-separated values"
                   disabled={field.disabled}
                 />
-                <span className="text-sm">{field.value ? 'Yes' : 'No'}</span>
+              ) : (
+                <Input
+                  type={field.type || 'text'}
+                  value={field.value ?? ''}
+                  onChange={(e) => {
+                    const val = field.type === 'number' ? parseFloat(e.target.value) || null : e.target.value;
+                    handleChange(val);
+                  }}
+                  placeholder={`Enter ${field.label.toLowerCase()}`}
+                  disabled={field.disabled}
+                />
+              )}
+            </div>
+            {/* Inline Waived Checkbox */}
+            {field.showWaivedCheckbox && (
+              <div className="flex items-center gap-1.5 shrink-0">
+                <Checkbox
+                  checked={field.waived === true}
+                  onCheckedChange={(checked) => {
+                    if (field.onWaivedChange) {
+                      field.onWaivedChange(checked as boolean);
+                    }
+                  }}
+                />
+                <span className="text-xs text-muted-foreground whitespace-nowrap">Waived</span>
               </div>
-            ) : field.type === 'select' && field.options ? (
-              <Select
-                value={field.value || ''}
-                onValueChange={handleChange}
-                disabled={field.disabled}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {field.options.map((opt) => (
-                    <SelectItem
-                      key={opt.value}
-                      value={opt.value}
-                      disabled={opt.disabled}
-                    >
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : field.type === 'array' ? (
-              <Input
-                type="text"
-                value={Array.isArray(field.value) ? field.value.join(', ') : ''}
-                onChange={(e) => {
-                  const arr = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
-                  handleChange(arr);
-                }}
-                placeholder="Comma-separated values"
-                disabled={field.disabled}
-              />
-            ) : (
-              <Input
-                type={field.type || 'text'}
-                value={field.value ?? ''}
-                onChange={(e) => {
-                  const val = field.type === 'number' ? parseFloat(e.target.value) || null : e.target.value;
-                  handleChange(val);
-                }}
-                placeholder={`Enter ${field.label.toLowerCase()}`}
-                disabled={field.disabled}
-              />
             )}
           </div>
         </div>
