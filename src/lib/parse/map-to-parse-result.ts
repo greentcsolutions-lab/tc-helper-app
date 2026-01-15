@@ -1,10 +1,12 @@
 // src/lib/parse/map-to-parse-result.ts
-// Version: 3.1.0 - 2026-01-05
-// FIXED: Maps new flat broker contact fields → nested listingAgentDetails / buyersAgentDetails
-//         Added closeOfEscrowDate support
+// Version: 4.0.0 - 2026-01-15
+// BREAKING: Added support for structured timeline data (timelineDataStructured)
+//           Maps new flat broker contact fields → nested listingAgentDetails / buyersAgentDetails
+//           Added closeOfEscrowDate support
 
 import type { UniversalExtractionResult } from '@/types/extraction';
 import type { FieldProvenance } from '@/types/parse-result';
+import { calculateAllEffectiveDates } from '@/lib/date-utils';
 
 type MapToParseResultParams = {
   universal: UniversalExtractionResult;
@@ -152,7 +154,7 @@ export function mapExtractionToParseResult({
     escrowHolder: universal.escrowHolder ?? null,
 
     // Rich data
-    extractionDetails: { 
+    extractionDetails: {
       route,
       fieldProvenance,
       confidenceBreakdown: details?.confidenceBreakdown || {},
@@ -160,5 +162,37 @@ export function mapExtractionToParseResult({
     },
 
     ...(timelineEvents.length > 0 ? { timelineEvents } : {}),
+
+    // NEW: Structured timeline data with calculated effective dates
+    ...(universal.timelineDataStructured ? {
+      timelineDataStructured: calculateAndStoreEffectiveDates(universal.timelineDataStructured)
+    } : {}),
   };
+}
+
+/**
+ * Calculate effective dates for all timeline events and update the structured data
+ * This is done at extraction time so dates are stored alongside their calculation rules
+ */
+function calculateAndStoreEffectiveDates(timelineData: any): any {
+  if (!timelineData || typeof timelineData !== 'object') {
+    return timelineData;
+  }
+
+  // Calculate all effective dates
+  const effectiveDates = calculateAllEffectiveDates(timelineData);
+
+  // Update each event with its calculated effective date
+  const updatedTimelineData: any = {};
+
+  for (const [eventKey, eventData] of Object.entries(timelineData)) {
+    updatedTimelineData[eventKey] = {
+      ...eventData,
+      effectiveDate: effectiveDates[eventKey] || null,
+    };
+  }
+
+  console.log(`[map-to-parse-result] Calculated ${Object.keys(effectiveDates).length} effective dates`);
+
+  return updatedTimelineData;
 }

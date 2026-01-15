@@ -159,7 +159,9 @@ model Parse {
   // STATE-SPECIFIC RICHNESS & TIMELINE
   // ============================================================================
   extractionDetails    Json?     // { route: "california"|"universal", californiaSpecific: {...} }
-  timelineEvents       Json?     // [{ date, title, type, description }]
+  timelineEvents       Json?     // [{ date, title, type, description }] - DEPRECATED: Use timelineDataStructured
+  timelineDataStructured Json?   // NEW: Structured timeline data with date calculation details
+                                 // { [eventKey]: { dateType, effectiveDate, relativeDays?, anchorPoint?, direction?, dayType?, specifiedDate? } }
 
   // ============================================================================
   // ERROR TRACKING

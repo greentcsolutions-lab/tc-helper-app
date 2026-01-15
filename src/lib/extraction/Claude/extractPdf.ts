@@ -1,9 +1,11 @@
 // src/lib/extraction/claude/extractPdf.ts
-// Version: 1.1.1 - 2026-01-13
-// Fixed build error by moving schema + prompt inside function to avoid top-level evaluation issues
+// Version: 2.0.0 - 2026-01-15
+// BREAKING: Reworked timeline extraction to use structured format
+// AI now extracts HOW dates are calculated (relative vs specified) without performing calculations
 
 import { coerceNumber, coerceString } from '@/lib/grok/type-coercion';
 import { normalizeDateString } from '@/lib/extraction/extract/universal/helpers/date-utils';
+import type { AITimelineExtraction } from '@/types/timeline';
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY!;
 if (!ANTHROPIC_API_KEY) {
@@ -88,27 +90,10 @@ export async function extractWithClaude(
             pattern: "^\\$$   \\d{1,3}(,\\d{3})*(\\.\\d{2})?   $$"
           },
           all_cash: { type: "boolean" },
-          close_of_escrow: { type: "string" },
-          initial_deposit: {
-            type: "object",
-            properties: { amount: { type: "string" }, due: { type: "string" } },
-            required: ["amount", "due"]
-          },
           loan_type: { type: ["string", "null"] },
           loan_type_note: { type: ["string", "null"] },
           seller_credit_to_buyer: { type: ["string", "null"] },
-          contingencies: {
-            type: "object",
-            properties: {
-              loan_days: { type: "integer", minimum: 0 },
-              appraisal_days: { type: "integer", minimum: 0 },
-              investigation_days: { type: "integer", minimum: 0 },
-              crb_attached_and_signed: { type: "boolean" }
-            },
-            required: ["loan_days", "appraisal_days", "investigation_days", "crb_attached_and_signed"]
-          },
           cop_contingency: { type: "boolean" },
-          seller_delivery_of_documents_days: { type: "integer", minimum: 0 },
           home_warranty: {
             type: "object",
             properties: {
@@ -120,6 +105,25 @@ export async function extractWithClaude(
           final_acceptance_date: {
             type: "string",
             pattern: "^\\d{2}/\\d{2}/\\d{4}$"
+          },
+          timeline_events: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                event_key: { type: "string" },
+                display_name: { type: "string" },
+                date_type: { type: "string", enum: ["specified", "relative"] },
+                specified_date: { type: ["string", "null"] },
+                relative_days: { type: ["integer", "null"], minimum: 0 },
+                anchor_point: { type: ["string", "null"] },
+                direction: { type: ["string", "null"], enum: ["after", "before", null] },
+                day_type: { type: ["string", "null"], enum: ["calendar", "business", null] },
+                description: { type: ["string", "null"] }
+              },
+              required: ["event_key", "display_name", "date_type"]
+            },
+            minItems: 1
           },
           counters: {
             type: "object",
@@ -152,9 +156,8 @@ export async function extractWithClaude(
         },
         required: [
           "buyer_names", "property_address", "purchase_price", "all_cash",
-          "close_of_escrow", "initial_deposit", "contingencies", "cop_contingency",
-          "seller_delivery_of_documents_days", "home_warranty", "final_acceptance_date",
-          "counters", "buyers_broker", "sellers_broker"
+          "final_acceptance_date", "timeline_events", "cop_contingency",
+          "home_warranty", "counters", "buyers_broker", "sellers_broker"
         ]
       },
       confidence: {
@@ -164,16 +167,15 @@ export async function extractWithClaude(
           purchase_price: { type: "integer", minimum: 0, maximum: 100 },
           property_address: { type: "integer", minimum: 0, maximum: 100 },
           buyer_names: { type: "integer", minimum: 0, maximum: 100 },
-          close_of_escrow: { type: "integer", minimum: 0, maximum: 100 },
+          timeline_events: { type: "integer", minimum: 0, maximum: 100 },
           final_acceptance_date: { type: "integer", minimum: 0, maximum: 100 },
-          contingencies: { type: "integer", minimum: 0, maximum: 100 },
           home_warranty: { type: "integer", minimum: 0, maximum: 100 },
           brokerage_info: { type: "integer", minimum: 0, maximum: 100 },
           loan_type: { type: "integer", minimum: 0, maximum: 100 }
         },
         required: [
           "overall_confidence", "purchase_price", "property_address", "buyer_names",
-          "close_of_escrow", "final_acceptance_date", "contingencies", "home_warranty",
+          "timeline_events", "final_acceptance_date", "home_warranty",
           "brokerage_info", "loan_type"
         ]
       },
@@ -182,7 +184,7 @@ export async function extractWithClaude(
     required: ["extracted", "confidence", "handwriting_detected"]
   };
 
-  const EXTRACTION_PROMPT = `You will be extracting structured information from a Real Estate PDF document (typically a purchase contract) and outputting it as JSON that matches a specific schema. This task requires careful attention to detail, date calculations, and proper handling of amendments/counters that may override original contract terms.
+  const EXTRACTION_PROMPT = `You will be extracting structured information from a Real Estate PDF document (typically a purchase contract) and outputting it as JSON that matches a specific schema. This task requires careful attention to detail and proper handling of amendments/counters that may override original contract terms.
 
 Here is the JSON schema that your output must match:
 
@@ -194,11 +196,8 @@ Your task is to extract ALL fields specified in the schema with particular focus
 - Buyer and seller names
 - Property address
 - Purchase price
-- Final acceptance date (also called effective date)
-- Close of escrow date
-- Initial deposit amount AND due date
-- Seller delivery of documents days (as a number)
-- Contingency periods (loan, appraisal, investigation)
+- Final acceptance date (also called effective date) - this must be a SPECIFIC date in MM/DD/YYYY format
+- Timeline events (ALL dates/deadlines found in the contract)
 - Broker contact information
 
 Follow these extraction rules:
@@ -207,34 +206,64 @@ Follow these extraction rules:
 - Counters and addenda ONLY override contract terms if they explicitly mention those specific terms
 - If a counter or addendum does not mention a particular field, use the value from the original contract
 - When merging information from multiple pages, apply this override logic carefully
+- Last counter/addendum wins for any field it explicitly modifies
 
-**Date Calculation and Formatting:**
-- When dates are given as relative terms (e.g., "30 days after acceptance", "within 3 business days"), calculate the actual calendar date
-- For "X days after acceptance", add X calendar days to the final acceptance date
-- For "within X business days", add X business days (typically X+1 or X+2 calendar days to account for weekends)
-- Return all dates in MM/DD/YYYY format whenever possible
-- For the initial_deposit.due field: strongly prefer calculating the actual MM/DD/YYYY date over leaving it as a relative phrase
-- For close_of_escrow: calculate the actual date if given relatively
+**CRITICAL: Timeline Events Extraction (NEW)**
+Extract EVERY timeline event found in the contract. For each event, you must identify HOW the date is set, not calculate the actual date.
+
+For each timeline event, extract:
+- event_key: A unique identifier (e.g., "initialDeposit", "sellerDisclosures", "inspectionContingency", "closing")
+- display_name: Human-readable name (e.g., "Initial Deposit Due", "Seller Delivery of Disclosures")
+- date_type: Either "specified" (exact date given) or "relative" (calculated from another date)
+
+If date_type is "specified":
+- specified_date: Extract the EXACT date as written (MM/DD/YYYY or YYYY-MM-DD)
+
+If date_type is "relative":
+- relative_days: The number of days (e.g., 3, 7, 17, 30)
+- anchor_point: What the date is relative to (e.g., "acceptance", "closing", "sellerDisclosures")
+- direction: Either "after" or "before"
+- day_type: Either "business" or "calendar" (look for keywords like "business days" in contract)
+  - If contract says "business days", use "business"
+  - If contract just says "days" or doesn't specify, use "calendar"
+
+Common timeline events to extract (but extract ALL you find):
+- acceptance: The effective date (ALWAYS "specified", from final_acceptance_date)
+- initialDeposit: When initial/earnest money deposit is due
+- sellerDisclosures: When seller must deliver disclosures
+- buyerReviewPeriod: If buyer has review period after receiving disclosures
+- inspectionContingency: Inspection contingency removal deadline
+- appraisalContingency: Appraisal contingency removal deadline
+- loanContingency: Loan contingency removal deadline
+- closing: Close of escrow date
+
+**IMPORTANT**: Some events may be relative to OTHER timeline events (not just acceptance or closing).
+Example: "Buyer has 5 days to review after seller delivers disclosures" means anchor_point is "sellerDisclosures"
+
+**IMPORTANT**: DO NOT calculate any dates. Only identify the structure.
+- BAD: "30 days after 01/15/2026 is 02/14/2026" ❌
+- GOOD: { date_type: "relative", relative_days: 30, anchor_point: "acceptance", direction: "after", day_type: "calendar" } ✓
 
 **Field-Specific Instructions:**
-- seller_delivery_of_documents_days: Extract only the NUMBER (e.g., 7, not "7 days" or "seven days")
 - Prices: Include the dollar sign and format with commas (e.g., $500,000)
-- Handle handwritten annotations and signatures by interpreting them in context
-- Normalize all formats for consistency
+- final_acceptance_date: Must be the last signature date (MM/DD/YYYY format)
+- Be state-agnostic: Extract ALL timeline events regardless of state
+- Better to extract MORE timeline events than miss some
 
 **Processing Approach:**
 Before providing your final JSON output, use the scratchpad to:
 1. Identify all relevant sections (original contract, counters, addenda)
 2. Extract values from each section
 3. Apply override logic to determine final values
-4. Calculate any relative dates to absolute dates
+4. Identify ALL timeline events and their calculation structure
 5. Verify all required schema fields are populated
 
 <scratchpad>
 Use this space to:
 - Note which pages contain which information
 - Track which fields are mentioned in counters/addenda vs original contract
-- Show your date calculations step-by-step
+- Identify timeline events and how each date is calculated
+- Note any events that depend on other timeline events
 - Reason through any ambiguities or conflicts
 - Map extracted information to schema fields
 </scratchpad>
@@ -244,7 +273,7 @@ Now provide your final output as valid JSON matching the schema. Your output mus
 - Match the exact structure of the provided schema
 - Include all fields from the schema
 - Use null for any fields that cannot be found in the document
-- Follow all formatting requirements specified above
+- Extract ALL timeline events with their calculation structure (no date calculations!)
 
 Your final response should contain ONLY the JSON output inside <json> tags, with no additional commentary or explanation outside those tags.`;
 
@@ -375,104 +404,108 @@ Your final response should contain ONLY the JSON output inside <json> tags, with
   }
 }
 
-// ── Date calculation helper (unchanged) ─────────────────────────────────────
-function calculateDateFromRelative(dateStr: string | null, effectiveDate: string | null): string | null {
-  if (!dateStr || !effectiveDate) return dateStr;
-
-  const daysMatch = dateStr.match(/(\d+)\s*days?\s*after/i);
-  if (!daysMatch) return dateStr;
-
-  const daysToAdd = parseInt(daysMatch[1], 10);
-  if (isNaN(daysToAdd)) return dateStr;
-
-  try {
-    const baseDate = new Date(effectiveDate);
-    if (isNaN(baseDate.getTime())) return dateStr;
-
-    baseDate.setDate(baseDate.getDate() + daysToAdd);
-    const year = baseDate.getFullYear();
-    const month = String(baseDate.getMonth() + 1).padStart(2, '0');
-    const day = String(baseDate.getDate()).padStart(2, '0');
-
-    return `${year}-${month}-${day}`;
-  } catch (e) {
-    console.error(`[claude-transform] Failed to calculate date from "${dateStr}":`, e);
-    return dateStr;
-  }
-}
-
-// ── Transform to universal format (unchanged) ───────────────────────────────
+// ── Transform to universal format with structured timeline ─────────────────
 function transformToUniversal(data: any): any {
   const e = data.extracted;
 
   const effectiveDate = normalizeDateString(e.final_acceptance_date) || e.final_acceptance_date;
-
   const purchasePrice = coerceNumber(e.purchase_price);
-  const earnestMoneyAmount = e.initial_deposit?.amount ? coerceNumber(e.initial_deposit.amount) : null;
   const sellerCreditAmount = coerceNumber(e.seller_credit_to_buyer);
 
-  let closeOfEscrowDate = e.close_of_escrow;
-  closeOfEscrowDate = calculateDateFromRelative(closeOfEscrowDate, effectiveDate);
-  closeOfEscrowDate = normalizeDateString(closeOfEscrowDate) || closeOfEscrowDate;
-
-  let sellerDeliveryDate: string | null = null;
-  if (e.seller_delivery_of_documents_days && typeof e.seller_delivery_of_documents_days === 'number' && effectiveDate) {
-    try {
-      const baseDate = new Date(effectiveDate);
-      if (!isNaN(baseDate.getTime())) {
-        baseDate.setDate(baseDate.getDate() + e.seller_delivery_of_documents_days);
-        const year = baseDate.getFullYear();
-        const month = String(baseDate.getMonth() + 1).padStart(2, '0');
-        const day = String(baseDate.getDate()).padStart(2, '0');
-        sellerDeliveryDate = `${year}-${month}-${day}`;
-      }
-    } catch (error) {
-      console.error(`[claude-transform] Failed to calculate seller delivery date:`, error);
-    }
-  }
-
-  let initialDepositDueDate: string | null = null;
-  if (e.initial_deposit?.due && effectiveDate) {
-    const normalizedDate = normalizeDateString(e.initial_deposit.due);
-    if (normalizedDate) {
-      initialDepositDueDate = normalizedDate;
-    } else {
-      const businessDaysMatch = e.initial_deposit.due.match(/(\d+)\s*business\s*days?\s*after/i);
-      const regularDaysMatch = e.initial_deposit.due.match(/(\d+)\s*days?\s*after/i);
-
-      let daysToAdd = 0;
-      if (businessDaysMatch) {
-        daysToAdd = Math.ceil(parseInt(businessDaysMatch[1], 10) * 1.4);
-      } else if (regularDaysMatch) {
-        daysToAdd = parseInt(regularDaysMatch[1], 10);
-      }
-
-      if (daysToAdd > 0) {
-        try {
-          const baseDate = new Date(effectiveDate);
-          if (!isNaN(baseDate.getTime())) {
-            baseDate.setDate(baseDate.getDate() + daysToAdd);
-            const year = baseDate.getFullYear();
-            const month = String(baseDate.getMonth() + 1).padStart(2, '0');
-            const day = String(baseDate.getDate()).padStart(2, '0');
-            initialDepositDueDate = `${year}-${month}-${day}`;
-          }
-        } catch (error) {
-          console.error(`[claude-transform] Failed to calculate initial deposit due date:`, error);
-        }
-      } else {
-        initialDepositDueDate = e.initial_deposit.due;
-      }
-    }
-  }
-
   console.log(`[claude-transform] Coerced purchasePrice: "${e.purchase_price}" → ${purchasePrice}`);
-  console.log(`[claude-transform] Coerced earnestMoney: "${e.initial_deposit?.amount}" → ${earnestMoneyAmount}`);
   console.log(`[claude-transform] Coerced sellerCredit: "${e.seller_credit_to_buyer}" → ${sellerCreditAmount}`);
-  console.log(`[claude-transform] Calculated closeOfEscrow: "${e.close_of_escrow}" → ${closeOfEscrowDate}`);
-  console.log(`[claude-transform] Calculated sellerDelivery: ${e.seller_delivery_of_documents_days} days → ${sellerDeliveryDate}`);
-  console.log(`[claude-transform] Normalized initialDepositDue: "${e.initial_deposit?.due}" → ${initialDepositDueDate}`);
   console.log(`[claude-transform] Normalized effectiveDate: "${e.final_acceptance_date}" → ${effectiveDate}`);
+
+  // Transform timeline events to our structured format
+  const timelineEventsStructured: Record<string, any> = {};
+
+  if (e.timeline_events && Array.isArray(e.timeline_events)) {
+    console.log(`[claude-transform] Processing ${e.timeline_events.length} timeline events`);
+
+    for (const event of e.timeline_events) {
+      const eventData: any = {
+        dateType: event.date_type,
+        effectiveDate: null, // Will be calculated later
+      };
+
+      if (event.date_type === 'specified' && event.specified_date) {
+        eventData.specifiedDate = normalizeDateString(event.specified_date) || event.specified_date;
+      } else if (event.date_type === 'relative') {
+        eventData.relativeDays = event.relative_days;
+        eventData.anchorPoint = event.anchor_point || 'acceptance';
+        eventData.direction = event.direction || 'after';
+        eventData.dayType = event.day_type || 'calendar';
+      }
+
+      if (event.display_name) {
+        eventData.displayName = event.display_name;
+      }
+
+      if (event.description) {
+        eventData.description = event.description;
+      }
+
+      timelineEventsStructured[event.event_key] = eventData;
+
+      console.log(`[claude-transform] Timeline event "${event.event_key}": ${event.date_type}`, eventData);
+    }
+  }
+
+  // For backwards compatibility, extract specific fields from timeline events
+  let closeOfEscrowDate = null;
+  let initialDepositDueDate = null;
+  let sellerDeliveryOfDisclosuresDate = null;
+  let contingencies = null;
+
+  // Extract closing date
+  if (timelineEventsStructured.closing) {
+    if (timelineEventsStructured.closing.dateType === 'specified') {
+      closeOfEscrowDate = timelineEventsStructured.closing.specifiedDate;
+    } else {
+      closeOfEscrowDate = `${timelineEventsStructured.closing.relativeDays} days after ${timelineEventsStructured.closing.anchorPoint}`;
+    }
+  }
+
+  // Extract initial deposit
+  if (timelineEventsStructured.initialDeposit) {
+    if (timelineEventsStructured.initialDeposit.dateType === 'specified') {
+      initialDepositDueDate = timelineEventsStructured.initialDeposit.specifiedDate;
+    } else {
+      initialDepositDueDate = `${timelineEventsStructured.initialDeposit.relativeDays} days`;
+    }
+  }
+
+  // Extract seller disclosures
+  if (timelineEventsStructured.sellerDisclosures) {
+    if (timelineEventsStructured.sellerDisclosures.dateType === 'specified') {
+      sellerDeliveryOfDisclosuresDate = timelineEventsStructured.sellerDisclosures.specifiedDate;
+    } else {
+      sellerDeliveryOfDisclosuresDate = `${timelineEventsStructured.sellerDisclosures.relativeDays} days`;
+    }
+  }
+
+  // Extract contingencies from timeline events
+  const inspectionDays = timelineEventsStructured.inspectionContingency?.relativeDays || null;
+  const appraisalDays = timelineEventsStructured.appraisalContingency?.relativeDays || null;
+  const loanDays = timelineEventsStructured.loanContingency?.relativeDays || null;
+
+  if (inspectionDays || appraisalDays || loanDays) {
+    contingencies = {
+      inspectionDays,
+      appraisalDays,
+      loanDays,
+      saleOfBuyerProperty: e.cop_contingency || false,
+    };
+  }
+
+  // Find initial deposit amount from timeline events
+  let earnestMoneyAmount = null;
+  if (timelineEventsStructured.initialDeposit?.description) {
+    const amountMatch = timelineEventsStructured.initialDeposit.description.match(/\$[\d,]+(?:\.\d{2})?/);
+    if (amountMatch) {
+      earnestMoneyAmount = coerceNumber(amountMatch[0]);
+    }
+  }
 
   return {
     buyerNames: e.buyer_names || [],
@@ -482,9 +515,12 @@ function transformToUniversal(data: any): any {
     closeOfEscrowDate,
     effectiveDate,
     initialDepositDueDate,
-    sellerDeliveryOfDisclosuresDate: sellerDeliveryDate,
+    sellerDeliveryOfDisclosuresDate,
 
-    earnestMoneyDeposit: e.initial_deposit ? {
+    // NEW: Structured timeline data
+    timelineDataStructured: timelineEventsStructured,
+
+    earnestMoneyDeposit: earnestMoneyAmount ? {
       amount: earnestMoneyAmount,
       holder: null,
     } : null,
@@ -495,12 +531,7 @@ function transformToUniversal(data: any): any {
       loanAmount: null,
     },
 
-    contingencies: e.contingencies ? {
-      inspectionDays: coerceNumber(e.contingencies.investigation_days, 0),
-      appraisalDays: coerceNumber(e.contingencies.appraisal_days, 0),
-      loanDays: coerceNumber(e.contingencies.loan_days, 0),
-      saleOfBuyerProperty: e.cop_contingency || false,
-    } : null,
+    contingencies,
 
     closingCosts: {
       buyerPays: [],
