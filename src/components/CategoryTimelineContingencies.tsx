@@ -226,18 +226,11 @@ export default function CategoryTimelineContingencies({
   // === Inspection Contingency ===
   const inspectionDisplay = !isEditing ? getTimelineEventDisplay('inspectionContingency') : null;
 
-  if (inspectionDisplay || cont?.inspectionDays != null || isEditing) {
-    let display = inspectionDisplay;
-
-    // Fallback to old format if no structured data
-    if (!display && !isEditing) {
-      display = formatContingencyDisplay(cont?.inspectionDays, "Inspection Contingency");
-    }
-
+  if (inspectionDisplay || isEditing) {
     fields.push(
       createField(
         "Inspection Contingency",
-        isEditing ? cont?.inspectionDays ?? '' : display,
+        isEditing ? cont?.inspectionDays ?? '' : inspectionDisplay,
         'text',
         (val) => onDataChange?.({
           ...data,
@@ -250,18 +243,11 @@ export default function CategoryTimelineContingencies({
   // === Appraisal Contingency ===
   const appraisalDisplay = !isEditing ? getTimelineEventDisplay('appraisalContingency') : null;
 
-  if (appraisalDisplay || cont?.appraisalDays != null || isEditing) {
-    let display = appraisalDisplay;
-
-    // Fallback to old format if no structured data
-    if (!display && !isEditing) {
-      display = formatContingencyDisplay(cont?.appraisalDays, "Appraisal Contingency");
-    }
-
+  if (appraisalDisplay || isEditing) {
     fields.push(
       createField(
         "Appraisal Contingency",
-        isEditing ? cont?.appraisalDays ?? '' : display,
+        isEditing ? cont?.appraisalDays ?? '' : appraisalDisplay,
         'text',
         (val) => onDataChange?.({
           ...data,
@@ -274,18 +260,11 @@ export default function CategoryTimelineContingencies({
   // === Loan Contingency ===
   const loanDisplay = !isEditing ? getTimelineEventDisplay('loanContingency') : null;
 
-  if (loanDisplay || cont?.loanDays != null || isEditing) {
-    let display = loanDisplay;
-
-    // Fallback to old format if no structured data
-    if (!display && !isEditing) {
-      display = formatContingencyDisplay(cont?.loanDays, "Loan Contingency");
-    }
-
+  if (loanDisplay || isEditing) {
     fields.push(
       createField(
         "Loan Contingency",
-        isEditing ? cont?.loanDays ?? '' : display,
+        isEditing ? cont?.loanDays ?? '' : loanDisplay,
         'text',
         (val) => onDataChange?.({
           ...data,
