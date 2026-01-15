@@ -6,6 +6,7 @@ import { currentUser } from '@clerk/nextjs/server';
 import { db } from '@/lib/prisma';
 import { TASK_STATUS } from '@/types/task';
 import { syncTaskToCalendar, deleteTaskFromCalendar, archiveTaskInCalendar } from '@/lib/google-calendar/sync';
+import { syncTaskToTimeline } from '@/lib/tasks/sync-timeline-tasks';
 
 /**
  * PATCH /api/tasks/[id]
@@ -125,6 +126,13 @@ export async function PATCH(
       });
     }
 
+    // Sync task changes back to timeline (if task has TIMELINE category and dueDate changed)
+    if (body.dueDate !== undefined) {
+      syncTaskToTimeline(id).catch((error) => {
+        console.error('Failed to sync task to timeline:', error);
+      });
+    }
+
     return NextResponse.json({ task: updatedTask });
   } catch (error) {
     console.error('Error updating task:', error);
@@ -137,7 +145,7 @@ export async function PATCH(
 
 /**
  * DELETE /api/tasks/[id]
- * Delete a task (only custom tasks can be deleted)
+ * Delete a task
  */
 export async function DELETE(
   request: NextRequest,
@@ -161,7 +169,7 @@ export async function DELETE(
 
     const { id } = params;
 
-    // Verify task belongs to user and is custom
+    // Verify task belongs to user
     const task = await db.task.findUnique({
       where: { id },
       select: { userId: true, isCustom: true },
@@ -175,30 +183,25 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
-    if (!task.isCustom) {
-      return NextResponse.json(
-        { error: 'Cannot delete timeline tasks' },
-        { status: 400 }
-      );
-    }
-
     // Delete from Google Calendar first (before deleting from database)
     await deleteTaskFromCalendar(dbUser.id, id).catch((error) => {
       console.error('Failed to delete task from calendar:', error);
       // Continue with deletion even if calendar sync fails
     });
 
-    // Delete the task and decrement custom task count in a transaction
+    // Delete the task and decrement custom task count if it's a custom task
     await db.$transaction(async (tx) => {
       await tx.task.delete({
         where: { id },
       });
 
-      // Decrement custom task count
-      await tx.user.update({
-        where: { id: dbUser.id },
-        data: { customTaskCount: { decrement: 1 } },
-      });
+      // Only decrement custom task count for custom tasks
+      if (task.isCustom) {
+        await tx.user.update({
+          where: { id: dbUser.id },
+          data: { customTaskCount: { decrement: 1 } },
+        });
+      }
     });
 
     return NextResponse.json({ success: true });

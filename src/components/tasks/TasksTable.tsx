@@ -22,8 +22,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { TASK_STATUS, TASK_TYPES, getTaskStatus, getDaysUntilDue, formatDaysUntilDue } from "@/types/task";
-import { ArrowUp, ArrowDown, AlertTriangle } from "lucide-react";
+import { ArrowUp, ArrowDown, AlertTriangle, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 type Task = any; // Use Prisma-generated type
@@ -54,11 +56,14 @@ const TASK_TYPE_CONFIG: Record<string, { label: string; color: string }> = {
 interface TasksTableProps {
   tasks: Task[];
   onUpdateTaskStatus: (taskId: string, newStatus: string) => Promise<void>;
+  onDeleteTasks: (taskIds: string[]) => Promise<void>;
 }
 
-export default function TasksTable({ tasks, onUpdateTaskStatus }: TasksTableProps) {
+export default function TasksTable({ tasks, onUpdateTaskStatus, onDeleteTasks }: TasksTableProps) {
   const [sortField, setSortField] = useState<SortField>("dueDate");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Filter to only show not_started and pending tasks (default behavior)
   const filteredTasks = useMemo(() => {
@@ -133,6 +138,68 @@ export default function TasksTable({ tasks, onUpdateTaskStatus }: TasksTableProp
     }
   };
 
+  const toggleTaskSelection = (taskId: string) => {
+    setSelectedTaskIds((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(taskId)) {
+        newSet.delete(taskId);
+      } else {
+        newSet.add(taskId);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedTaskIds.size === sortedTasks.length) {
+      setSelectedTaskIds(new Set());
+    } else {
+      setSelectedTaskIds(new Set(sortedTasks.map((task) => task.id)));
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedTaskIds.size === 0) return;
+
+    const confirmMessage =
+      selectedTaskIds.size === 1
+        ? "Are you sure you want to delete this task?"
+        : `Are you sure you want to delete ${selectedTaskIds.size} tasks?`;
+
+    if (!confirm(confirmMessage)) return;
+
+    setIsDeleting(true);
+    try {
+      await onDeleteTasks(Array.from(selectedTaskIds));
+      setSelectedTaskIds(new Set());
+      toast.success(
+        selectedTaskIds.size === 1
+          ? "Task deleted successfully"
+          : `${selectedTaskIds.size} tasks deleted successfully`
+      );
+    } catch (error) {
+      toast.error("Failed to delete tasks");
+      console.error("Failed to delete tasks:", error);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleDeleteTask = async (taskId: string) => {
+    if (!confirm("Are you sure you want to delete this task?")) return;
+
+    setIsDeleting(true);
+    try {
+      await onDeleteTasks([taskId]);
+      toast.success("Task deleted successfully");
+    } catch (error) {
+      toast.error("Failed to delete task");
+      console.error("Failed to delete task:", error);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   const SortIcon = ({ field }: { field: SortField }) => {
     if (sortField !== field) return null;
     return sortDirection === "asc" ? (
@@ -142,118 +209,173 @@ export default function TasksTable({ tasks, onUpdateTaskStatus }: TasksTableProp
     );
   };
 
-  return (
-    <div className="border rounded-lg">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead
-              className="cursor-pointer hover:bg-muted/50"
-              onClick={() => handleSort("title")}
-            >
-              Task Title <SortIcon field="title" />
-            </TableHead>
-            <TableHead
-              className="cursor-pointer hover:bg-muted/50"
-              onClick={() => handleSort("propertyAddress")}
-            >
-              Property Address <SortIcon field="propertyAddress" />
-            </TableHead>
-            <TableHead
-              className="cursor-pointer hover:bg-muted/50"
-              onClick={() => handleSort("taskTypes")}
-            >
-              Task Types <SortIcon field="taskTypes" />
-            </TableHead>
-            <TableHead
-              className="cursor-pointer hover:bg-muted/50"
-              onClick={() => handleSort("dueDate")}
-            >
-              Due Date <SortIcon field="dueDate" />
-            </TableHead>
-            <TableHead
-              className="cursor-pointer hover:bg-muted/50"
-              onClick={() => handleSort("status")}
-            >
-              Status <SortIcon field="status" />
-            </TableHead>
-            <TableHead>Days Until/Overdue</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {sortedTasks.length === 0 ? (
-            <TableRow>
-              <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                No tasks to display
-              </TableCell>
-            </TableRow>
-          ) : (
-            sortedTasks.map((task) => {
-              const taskStatus = getTaskStatus(task);
-              const isOverdue = taskStatus === "overdue";
-              const daysUntil = getDaysUntilDue(task.dueDate);
-              const daysText = formatDaysUntilDue(task.dueDate);
+  const allSelected = sortedTasks.length > 0 && selectedTaskIds.size === sortedTasks.length;
+  const someSelected = selectedTaskIds.size > 0 && selectedTaskIds.size < sortedTasks.length;
 
-              return (
-                <TableRow key={task.id} className={isOverdue ? "bg-red-50" : ""}>
-                  <TableCell className="font-medium">{task.title}</TableCell>
-                  <TableCell>{task.propertyAddress || "-"}</TableCell>
-                  <TableCell>
-                    <div className="flex flex-wrap gap-1">
-                      {task.taskTypes?.map((type: string) => {
-                        const typeConfig = TASK_TYPE_CONFIG[type];
-                        return (
-                          <Badge
-                            key={type}
-                            variant="outline"
-                            className={`${typeConfig?.color || ""} border-0`}
-                          >
-                            {typeConfig?.label || type}
-                          </Badge>
-                        );
-                      })}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    {format(new Date(task.dueDate), "MMM d, yyyy")}
-                  </TableCell>
-                  <TableCell>
-                    <Select
-                      value={task.status}
-                      onValueChange={(value) => handleStatusChange(task.id, value)}
-                    >
-                      <SelectTrigger className="w-[140px]">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={TASK_STATUS.NOT_STARTED}>
-                          Not Started
-                        </SelectItem>
-                        <SelectItem value={TASK_STATUS.PENDING}>
-                          Pending
-                        </SelectItem>
-                        <SelectItem value={TASK_STATUS.COMPLETED}>
-                          Completed
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      {isOverdue && (
-                        <AlertTriangle className="h-4 w-4 text-red-500" />
-                      )}
-                      <span className={isOverdue ? "text-red-600 font-semibold" : ""}>
-                        {daysText}
-                      </span>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              );
-            })
-          )}
-        </TableBody>
-      </Table>
+  return (
+    <div className="space-y-3">
+      {/* Bulk Actions Toolbar */}
+      {selectedTaskIds.size > 0 && (
+        <div className="bg-muted/50 rounded-lg p-3 flex items-center justify-between">
+          <span className="text-sm font-medium">
+            {selectedTaskIds.size} {selectedTaskIds.size === 1 ? "task" : "tasks"} selected
+          </span>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={handleDeleteSelected}
+            disabled={isDeleting}
+          >
+            <Trash2 className="h-4 w-4 mr-2" />
+            Delete Selected
+          </Button>
+        </div>
+      )}
+
+      {/* Table */}
+      <div className="border rounded-lg">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-[50px]">
+                <Checkbox
+                  checked={allSelected}
+                  onCheckedChange={toggleSelectAll}
+                  aria-label="Select all tasks"
+                  className={someSelected ? "data-[state=checked]:bg-muted-foreground" : ""}
+                />
+              </TableHead>
+              <TableHead
+                className="cursor-pointer hover:bg-muted/50"
+                onClick={() => handleSort("title")}
+              >
+                Task Title <SortIcon field="title" />
+              </TableHead>
+              <TableHead
+                className="cursor-pointer hover:bg-muted/50"
+                onClick={() => handleSort("propertyAddress")}
+              >
+                Property Address <SortIcon field="propertyAddress" />
+              </TableHead>
+              <TableHead
+                className="cursor-pointer hover:bg-muted/50"
+                onClick={() => handleSort("taskTypes")}
+              >
+                Task Types <SortIcon field="taskTypes" />
+              </TableHead>
+              <TableHead
+                className="cursor-pointer hover:bg-muted/50"
+                onClick={() => handleSort("dueDate")}
+              >
+                Due Date <SortIcon field="dueDate" />
+              </TableHead>
+              <TableHead
+                className="cursor-pointer hover:bg-muted/50"
+                onClick={() => handleSort("status")}
+              >
+                Status <SortIcon field="status" />
+              </TableHead>
+              <TableHead>Days Until/Overdue</TableHead>
+              <TableHead className="w-[80px]">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {sortedTasks.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                  No tasks to display
+                </TableCell>
+              </TableRow>
+            ) : (
+              sortedTasks.map((task) => {
+                const taskStatus = getTaskStatus(task);
+                const isOverdue = taskStatus === "overdue";
+                const daysUntil = getDaysUntilDue(task.dueDate);
+                const daysText = formatDaysUntilDue(task.dueDate);
+                const isSelected = selectedTaskIds.has(task.id);
+
+                return (
+                  <TableRow
+                    key={task.id}
+                    className={`${isOverdue ? "bg-red-50" : ""} ${isSelected ? "bg-muted/50" : ""}`}
+                  >
+                    <TableCell>
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={() => toggleTaskSelection(task.id)}
+                        aria-label={`Select ${task.title}`}
+                      />
+                    </TableCell>
+                    <TableCell className="font-medium">{task.title}</TableCell>
+                    <TableCell>{task.propertyAddress || "-"}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        {task.taskTypes?.map((type: string) => {
+                          const typeConfig = TASK_TYPE_CONFIG[type];
+                          return (
+                            <Badge
+                              key={type}
+                              variant="outline"
+                              className={`${typeConfig?.color || ""} border-0`}
+                            >
+                              {typeConfig?.label || type}
+                            </Badge>
+                          );
+                        })}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {format(new Date(task.dueDate), "MMM d, yyyy")}
+                    </TableCell>
+                    <TableCell>
+                      <Select
+                        value={task.status}
+                        onValueChange={(value) => handleStatusChange(task.id, value)}
+                      >
+                        <SelectTrigger className="w-[140px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={TASK_STATUS.NOT_STARTED}>
+                            Not Started
+                          </SelectItem>
+                          <SelectItem value={TASK_STATUS.PENDING}>
+                            Pending
+                          </SelectItem>
+                          <SelectItem value={TASK_STATUS.COMPLETED}>
+                            Completed
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        {isOverdue && (
+                          <AlertTriangle className="h-4 w-4 text-red-500" />
+                        )}
+                        <span className={isOverdue ? "text-red-600 font-semibold" : ""}>
+                          {daysText}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleDeleteTask(task.id)}
+                        disabled={isDeleting}
+                        className="h-8 w-8"
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
+            )}
+            </TableBody>
+        </Table>
+      </div>
     </div>
   );
 }

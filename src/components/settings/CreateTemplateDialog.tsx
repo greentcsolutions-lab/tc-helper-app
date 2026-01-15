@@ -28,6 +28,7 @@ interface CreateTemplateDialogProps {
   onSuccess?: () => void;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  isAiTemplate?: boolean; // If true, uses AI template endpoint
 }
 
 export default function CreateTemplateDialog({
@@ -36,6 +37,7 @@ export default function CreateTemplateDialog({
   onSuccess,
   open: controlledOpen,
   onOpenChange: controlledOnOpenChange,
+  isAiTemplate = false,
 }: CreateTemplateDialogProps) {
   const [internalOpen, setInternalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -114,10 +116,13 @@ export default function CreateTemplateDialog({
 
     setIsSaving(true);
     try {
-      const url = template
+      // Use different endpoint for AI templates
+      const url = isAiTemplate
+        ? "/api/settings/ai-template"
+        : template
         ? `/api/settings/templates/${template.id}`
         : "/api/settings/templates";
-      const method = template ? "PATCH" : "POST";
+      const method = isAiTemplate ? "POST" : (template ? "PATCH" : "POST");
 
       const response = await fetch(url, {
         method,
@@ -363,3 +368,6 @@ export default function CreateTemplateDialog({
     </Dialog>
   );
 }
+
+// Named export for convenience
+export { CreateTemplateDialog };

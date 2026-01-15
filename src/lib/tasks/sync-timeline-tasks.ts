@@ -6,8 +6,8 @@ import { extractTimelineEvents, TimelineEvent } from '@/lib/dates/extract-timeli
 import { TASK_TYPES, TASK_STATUS, mapTimelineStatusToTaskStatus } from '@/types/task';
 
 /**
- * Syncs timeline events from a parse to Task records
- * This ensures the Tasks page always shows the latest timeline data
+ * Syncs default AI-generated tasks from a parse to Task records
+ * Only creates tasks defined in the user's AI template
  *
  * @param parseId - The parse ID to sync
  * @param userId - The user ID who owns this parse
@@ -27,6 +27,7 @@ export async function syncTimelineTasks(parseId: string, userId: string): Promis
       contingencies: true,
       earnestMoneyDeposit: true,
       status: true,
+      timelineDataStructured: true,
     },
   });
 
@@ -39,91 +40,7 @@ export async function syncTimelineTasks(parseId: string, userId: string): Promis
     return;
   }
 
-  // Extract timeline events
-  const timelineEvents = extractTimelineEvents(parse);
-
-  // Get existing timeline tasks for this parse (tasks that include TIMELINE in their taskTypes)
-  const existingTasks = await db.task.findMany({
-    where: {
-      parseId,
-      taskTypes: {
-        has: TASK_TYPES.TIMELINE,
-      },
-    },
-  });
-
-  // Create a map of existing tasks by timelineEventId
-  const existingTaskMap = new Map(
-    existingTasks.map(task => [task.timelineEventId, task])
-  );
-
-  // Track which timeline events we've processed
-  const processedEventIds = new Set<string>();
-
-  // Upsert tasks for each timeline event (skip acceptance events)
-  for (const event of timelineEvents) {
-    // Skip acceptance events - they're not actionable tasks
-    if (event.type === 'acceptance') {
-      continue;
-    }
-
-    processedEventIds.add(event.id);
-
-    const existingTask = existingTaskMap.get(event.id);
-    const taskStatus = mapTimelineStatusToTaskStatus(event.status);
-
-    // Determine task types based on the event
-    const taskTypes = getEventTaskTypes(event);
-
-    const taskData = {
-      userId,
-      parseId,
-      taskTypes, // Array of task types (can have multiple categories)
-      timelineEventId: event.id,
-      title: event.title,
-      description: getEventDescription(event),
-      propertyAddress: event.propertyAddress || null,
-      amount: getEventAmount(event, parse),
-      dueDate: event.start,
-      dueDateType: 'specific' as const,
-      dueDateValue: null,
-      status: existingTask?.status === TASK_STATUS.COMPLETED
-        ? TASK_STATUS.COMPLETED // Preserve completed status
-        : taskStatus,
-      columnId: existingTask?.columnId || taskStatus,
-      sortOrder: existingTask?.sortOrder || 0,
-      isCustom: false,
-      completedAt: existingTask?.completedAt || null,
-    };
-
-    if (existingTask) {
-      // Update existing task
-      await db.task.update({
-        where: { id: existingTask.id },
-        data: taskData,
-      });
-    } else {
-      // Create new task
-      await db.task.create({
-        data: taskData,
-      });
-    }
-  }
-
-  // Delete timeline tasks that no longer have corresponding timeline events
-  const taskIdsToDelete = existingTasks
-    .filter(task => !processedEventIds.has(task.timelineEventId || ''))
-    .map(task => task.id);
-
-  if (taskIdsToDelete.length > 0) {
-    await db.task.deleteMany({
-      where: {
-        id: { in: taskIdsToDelete },
-      },
-    });
-  }
-
-  // Create default tasks (Escrow Opened and Broker file approved)
+  // Create default AI-generated tasks based on template
   await syncDefaultTasks(parseId, userId, parse);
 }
 
@@ -146,97 +63,181 @@ function addBusinessDays(date: Date, days: number): Date {
 }
 
 /**
- * Syncs default tasks that should be created for every parse
+ * Syncs the 6 default tasks, reading dates from timeline data
+ * These tasks have a read/write relationship with the timeline
  */
 async function syncDefaultTasks(parseId: string, userId: string, parse: any): Promise<void> {
-  const effectiveDate = parse.effectiveDate ? new Date(parse.effectiveDate) : null;
-  const closingDate = parse.closingDate ? new Date(parse.closingDate) : null;
+  // Extract dates from structured timeline data (or fallback to legacy fields)
+  const timelineData = parse.timelineDataStructured || {};
 
-  // Default task 1: Escrow Opened - due 1 business day after acceptance
-  if (effectiveDate) {
+  // Helper to get date from timeline data
+  const getTimelineDate = (eventKey: string): Date | null => {
+    const event = timelineData[eventKey];
+    if (!event?.effectiveDate) return null;
+    const date = new Date(event.effectiveDate);
+    return isNaN(date.getTime()) ? null : date;
+  };
+
+  // Helper to check if event is waived
+  const isWaived = (eventKey: string): boolean => {
+    return timelineData[eventKey]?.waived === true;
+  };
+
+  // Get key dates from timeline
+  const acceptanceDate = getTimelineDate('acceptance') || (parse.effectiveDate ? new Date(parse.effectiveDate) : null);
+  const closingDate = getTimelineDate('closing') || (parse.closingDate ? new Date(parse.closingDate) : null);
+  const initialDepositDate = getTimelineDate('initialDeposit');
+  const inspectionDate = getTimelineDate('inspectionContingency');
+  const appraisalDate = getTimelineDate('appraisalContingency');
+  const loanDate = getTimelineDate('loanContingency');
+
+  // Task 1: Escrow Opened - 1 business day after acceptance
+  if (acceptanceDate) {
     const escrowOpenedEventId = `${parseId}-escrow-opened`;
-    const escrowOpenedDueDate = addBusinessDays(effectiveDate, 1);
+    const escrowOpenedDueDate = addBusinessDays(acceptanceDate, 1);
 
-    const existingEscrowTask = await db.task.findFirst({
-      where: {
-        parseId,
-        timelineEventId: escrowOpenedEventId,
-      },
-    });
-
-    const escrowTaskData = {
-      userId,
-      parseId,
-      taskTypes: [TASK_TYPES.ESCROW],
+    await upsertDefaultTask(parseId, userId, parse, {
       timelineEventId: escrowOpenedEventId,
       title: 'Escrow Opened',
       description: 'Escrow should be opened within 1 business day of acceptance',
-      propertyAddress: parse.propertyAddress || null,
-      amount: null,
+      taskTypes: [TASK_TYPES.ESCROW],
       dueDate: escrowOpenedDueDate,
-      dueDateType: 'specific' as const,
-      dueDateValue: null,
-      status: existingEscrowTask?.status || TASK_STATUS.NOT_STARTED,
-      columnId: existingEscrowTask?.columnId || TASK_STATUS.NOT_STARTED,
-      sortOrder: existingEscrowTask?.sortOrder || 0,
-      isCustom: false,
-      completedAt: existingEscrowTask?.completedAt || null,
-    };
-
-    if (existingEscrowTask) {
-      await db.task.update({
-        where: { id: existingEscrowTask.id },
-        data: escrowTaskData,
-      });
-    } else {
-      await db.task.create({
-        data: escrowTaskData,
-      });
-    }
+    });
   }
 
-  // Default task 2: Broker file approved - due 7 days before closing
+  // Task 2: Initial Deposit - reads from timeline (if not waived)
+  if (initialDepositDate && !isWaived('initialDeposit')) {
+    const initialDepositEventId = `${parseId}-initialDeposit`;
+
+    await upsertDefaultTask(parseId, userId, parse, {
+      timelineEventId: initialDepositEventId,
+      title: 'Initial Deposit Due',
+      description: 'Submit initial earnest money deposit',
+      taskTypes: [TASK_TYPES.ESCROW],
+      dueDate: initialDepositDate,
+      amount: parse.earnestMoneyDeposit?.amount || null,
+    });
+  }
+
+  // Task 3: Inspection Contingency - reads from timeline (if not waived)
+  if (inspectionDate && !isWaived('inspectionContingency')) {
+    const inspectionEventId = `${parseId}-inspectionContingency`;
+
+    await upsertDefaultTask(parseId, userId, parse, {
+      timelineEventId: inspectionEventId,
+      title: 'Inspection Contingency',
+      description: 'Complete inspections and remove inspection contingency',
+      taskTypes: [TASK_TYPES.TIMELINE],
+      dueDate: inspectionDate,
+    });
+  }
+
+  // Task 4: Appraisal Contingency - reads from timeline (if not waived)
+  if (appraisalDate && !isWaived('appraisalContingency')) {
+    const appraisalEventId = `${parseId}-appraisalContingency`;
+
+    await upsertDefaultTask(parseId, userId, parse, {
+      timelineEventId: appraisalEventId,
+      title: 'Appraisal Contingency',
+      description: 'Complete appraisal and remove appraisal contingency',
+      taskTypes: [TASK_TYPES.TIMELINE, TASK_TYPES.LENDER],
+      dueDate: appraisalDate,
+    });
+  }
+
+  // Task 5: Loan Contingency - reads from timeline (if not waived)
+  if (loanDate && !isWaived('loanContingency')) {
+    const loanEventId = `${parseId}-loanContingency`;
+
+    await upsertDefaultTask(parseId, userId, parse, {
+      timelineEventId: loanEventId,
+      title: 'Loan Contingency',
+      description: 'Secure loan approval and remove loan contingency',
+      taskTypes: [TASK_TYPES.TIMELINE, TASK_TYPES.LENDER],
+      dueDate: loanDate,
+    });
+  }
+
+  // Task 6: Close of Escrow - reads from timeline
+  if (closingDate) {
+    const closingEventId = `${parseId}-closing`;
+
+    await upsertDefaultTask(parseId, userId, parse, {
+      timelineEventId: closingEventId,
+      title: 'CLOSING',
+      description: 'Close of escrow',
+      taskTypes: [TASK_TYPES.TIMELINE, TASK_TYPES.ESCROW],
+      dueDate: closingDate,
+    });
+  }
+
+  // Task 7: Broker file approved - 7 days before closing
   if (closingDate) {
     const brokerFileEventId = `${parseId}-broker-file-approved`;
     const brokerFileDueDate = new Date(closingDate);
     brokerFileDueDate.setDate(brokerFileDueDate.getDate() - 7);
 
-    const existingBrokerTask = await db.task.findFirst({
-      where: {
-        parseId,
-        timelineEventId: brokerFileEventId,
-      },
-    });
-
-    const brokerTaskData = {
-      userId,
-      parseId,
-      taskTypes: [TASK_TYPES.BROKER],
+    await upsertDefaultTask(parseId, userId, parse, {
       timelineEventId: brokerFileEventId,
       title: 'Broker file approved',
       description: 'Broker file should be approved at least 7 days before closing',
-      propertyAddress: parse.propertyAddress || null,
-      amount: null,
+      taskTypes: [TASK_TYPES.BROKER],
       dueDate: brokerFileDueDate,
-      dueDateType: 'specific' as const,
-      dueDateValue: null,
-      status: existingBrokerTask?.status || TASK_STATUS.NOT_STARTED,
-      columnId: existingBrokerTask?.columnId || TASK_STATUS.NOT_STARTED,
-      sortOrder: existingBrokerTask?.sortOrder || 0,
-      isCustom: false,
-      completedAt: existingBrokerTask?.completedAt || null,
-    };
+    });
+  }
+}
 
-    if (existingBrokerTask) {
-      await db.task.update({
-        where: { id: existingBrokerTask.id },
-        data: brokerTaskData,
-      });
-    } else {
-      await db.task.create({
-        data: brokerTaskData,
-      });
-    }
+/**
+ * Helper function to upsert a default task
+ */
+async function upsertDefaultTask(
+  parseId: string,
+  userId: string,
+  parse: any,
+  taskInfo: {
+    timelineEventId: string;
+    title: string;
+    description: string;
+    taskTypes: string[];
+    dueDate: Date;
+    amount?: number | null;
+  }
+): Promise<void> {
+  const existingTask = await db.task.findFirst({
+    where: {
+      parseId,
+      timelineEventId: taskInfo.timelineEventId,
+    },
+  });
+
+  const taskData = {
+    userId,
+    parseId,
+    taskTypes: taskInfo.taskTypes,
+    timelineEventId: taskInfo.timelineEventId,
+    title: taskInfo.title,
+    description: taskInfo.description,
+    propertyAddress: parse.propertyAddress || null,
+    amount: taskInfo.amount || null,
+    dueDate: taskInfo.dueDate,
+    dueDateType: 'specific' as const,
+    dueDateValue: null,
+    status: existingTask?.status || TASK_STATUS.NOT_STARTED,
+    columnId: existingTask?.columnId || TASK_STATUS.NOT_STARTED,
+    sortOrder: existingTask?.sortOrder || 0,
+    isCustom: false,
+    completedAt: existingTask?.completedAt || null,
+  };
+
+  if (existingTask) {
+    await db.task.update({
+      where: { id: existingTask.id },
+      data: taskData,
+    });
+  } else {
+    await db.task.create({
+      data: taskData,
+    });
   }
 }
 
@@ -313,6 +314,77 @@ function getEventAmount(event: TimelineEvent, parse: any): number | null {
     return parse.earnestMoneyDeposit.amount || null;
   }
   return null;
+}
+
+/**
+ * Updates timeline when a task with TIMELINE category is modified
+ * This syncs task changes back to the timeline data
+ */
+export async function syncTaskToTimeline(taskId: string): Promise<void> {
+  // Get the task
+  const task = await db.task.findUnique({
+    where: { id: taskId },
+    select: {
+      id: true,
+      parseId: true,
+      timelineEventId: true,
+      taskTypes: true,
+      dueDate: true,
+    },
+  });
+
+  if (!task || !task.parseId || !task.timelineEventId) {
+    return;
+  }
+
+  // Only sync back if task has TIMELINE category
+  if (!task.taskTypes.includes(TASK_TYPES.TIMELINE)) {
+    return;
+  }
+
+  // Map timelineEventId back to timeline event key
+  // Format is "{parseId}-{eventKey}"
+  const eventKey = task.timelineEventId.replace(`${task.parseId}-`, '');
+
+  // Get the parse
+  const parse = await db.parse.findUnique({
+    where: { id: task.parseId },
+    select: {
+      id: true,
+      timelineDataStructured: true,
+    },
+  });
+
+  if (!parse || !parse.timelineDataStructured) {
+    return;
+  }
+
+  const timelineData = parse.timelineDataStructured as any;
+
+  // Check if this event exists in timeline
+  if (!timelineData[eventKey]) {
+    return;
+  }
+
+  // Format date as YYYY-MM-DD for timeline
+  const updatedDate = task.dueDate.toISOString().split('T')[0];
+
+  // Update the effectiveDate in timeline
+  timelineData[eventKey].effectiveDate = updatedDate;
+
+  // If it was a relative date, mark it as specified now
+  if (timelineData[eventKey].dateType === 'relative') {
+    timelineData[eventKey].dateType = 'specified';
+    timelineData[eventKey].specifiedDate = updatedDate;
+  }
+
+  // Save back to database
+  await db.parse.update({
+    where: { id: task.parseId },
+    data: {
+      timelineDataStructured: timelineData,
+    },
+  });
 }
 
 /**

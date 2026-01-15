@@ -457,6 +457,46 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
     }
   }, [tasks]);
 
+  const deleteTasks = useCallback(async (taskIds: string[]) => {
+    // Optimistically remove from UI
+    const previousTasks = tasks;
+    setTasks((prev) => prev.filter((t) => !taskIds.includes(t.id)));
+
+    try {
+      if (taskIds.length === 1) {
+        // Single task deletion - use existing endpoint
+        const response = await fetch(`/api/tasks/${taskIds[0]}`, {
+          method: 'DELETE',
+        });
+
+        if (!response.ok) {
+          setTasks(previousTasks);
+          throw new Error('Failed to delete task');
+        }
+      } else {
+        // Bulk deletion - use bulk endpoint
+        const response = await fetch('/api/tasks/bulk-delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ taskIds }),
+        });
+
+        if (!response.ok) {
+          setTasks(previousTasks);
+          const error = await response.json();
+          throw new Error(error.error || 'Failed to delete tasks');
+        }
+      }
+
+      // Force refresh from server after successful deletion
+      router.refresh();
+    } catch (error) {
+      console.error('Failed to delete tasks:', error);
+      // Rollback already happened above if needed
+      throw error;
+    }
+  }, [tasks, router]);
+
   const toggleColumnVisibility = useCallback((columnId: string) => {
     setColumnVisibility((prev) => ({
       ...prev,
@@ -657,6 +697,7 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
               return true;
             })}
             onUpdateTaskStatus={updateTaskColumn}
+            onDeleteTasks={deleteTasks}
           />
         ) : (
           <DndContext
