@@ -79,7 +79,13 @@ export default function CategoryTimelineContingencies({
   };
 
   // Helper: Check if event is "active" (should be displayed)
-  const isEventActive = (eventKey: string, event: any): boolean => {
+  const isEventActive = (eventKey: string, event: any, isEditingMode: boolean): boolean => {
+    // In edit mode, ALWAYS show all events so user can toggle waived checkbox
+    if (isEditingMode) {
+      return true;
+    }
+
+    // In view mode:
     // Always show the big 3 contingencies (even if waived)
     if (ALWAYS_SHOW_EVENTS.includes(eventKey)) {
       return true;
@@ -134,7 +140,7 @@ export default function CategoryTimelineContingencies({
   }
 
   const timelineEntries: TimelineEventEntry[] = Object.entries(timelineData)
-    .filter(([eventKey, event]) => isEventActive(eventKey, event))
+    .filter(([eventKey, event]) => isEventActive(eventKey, event, isEditing))
     .map(([eventKey, event]) => ({
       eventKey,
       event,
