@@ -10,6 +10,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * Get default AI tasks based on the current implementation
+ * These match the 7 tasks created in syncDefaultTasks
  */
 function getDefaultAITasks() {
   return [
@@ -25,28 +26,35 @@ function getDefaultAITasks() {
       description: "Submit initial earnest money deposit",
       taskTypes: [TASK_TYPES.ESCROW],
       dueDateType: "days_after_acceptance" as const,
-      dueDateValue: 3, // Default to 3 days if not specified in timeline
+      dueDateValue: 3, // Reads from timeline when available
     },
     {
       title: "Inspection Contingency",
       description: "Complete inspections and remove inspection contingency",
       taskTypes: [TASK_TYPES.TIMELINE],
       dueDateType: "days_after_acceptance" as const,
-      dueDateValue: 17, // Default California standard
+      dueDateValue: 17, // Reads from timeline when available
     },
     {
       title: "Appraisal Contingency",
       description: "Complete appraisal and remove appraisal contingency",
-      taskTypes: [TASK_TYPES.LENDER],
+      taskTypes: [TASK_TYPES.TIMELINE, TASK_TYPES.LENDER],
       dueDateType: "days_after_acceptance" as const,
-      dueDateValue: 17,
+      dueDateValue: 17, // Reads from timeline when available
     },
     {
       title: "Loan Contingency",
       description: "Secure loan approval and remove loan contingency",
-      taskTypes: [TASK_TYPES.LENDER],
+      taskTypes: [TASK_TYPES.TIMELINE, TASK_TYPES.LENDER],
       dueDateType: "days_after_acceptance" as const,
-      dueDateValue: 21,
+      dueDateValue: 21, // Reads from timeline when available
+    },
+    {
+      title: "CLOSING",
+      description: "Close of escrow",
+      taskTypes: [TASK_TYPES.TIMELINE, TASK_TYPES.ESCROW],
+      dueDateType: "days_after_acceptance" as const,
+      dueDateValue: 30, // Reads from timeline when available
     },
     {
       title: "Broker file approved",
