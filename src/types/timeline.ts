@@ -75,6 +75,12 @@ export interface TimelineEventData {
    * Optional: description or notes about this timeline event
    */
   description?: string;
+
+  /**
+   * Indicates if this timeline event is waived
+   * Waived events are hidden from display (except big 3 contingencies which always show)
+   */
+  waived?: boolean;
 }
 
 /**

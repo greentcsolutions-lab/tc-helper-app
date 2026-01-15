@@ -29,6 +29,7 @@ export interface FieldConfig {
   type?: 'text' | 'number' | 'date' | 'boolean' | 'select' | 'array';
   options?: { label: string; value: string; disabled?: boolean }[];
   onChange?: (value: any) => void;
+  disabled?: boolean; // NEW: Disable input field (grays it out)
 }
 
 interface CategorySectionProps {
@@ -75,6 +76,7 @@ export default function CategorySection({
                 <Checkbox
                   checked={field.value === true}
                   onCheckedChange={(checked) => handleChange(checked)}
+                  disabled={field.disabled}
                 />
                 <span className="text-sm">{field.value ? 'Yes' : 'No'}</span>
               </div>
@@ -82,6 +84,7 @@ export default function CategorySection({
               <Select
                 value={field.value || ''}
                 onValueChange={handleChange}
+                disabled={field.disabled}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select..." />
@@ -107,6 +110,7 @@ export default function CategorySection({
                   handleChange(arr);
                 }}
                 placeholder="Comma-separated values"
+                disabled={field.disabled}
               />
             ) : (
               <Input
@@ -117,6 +121,7 @@ export default function CategorySection({
                   handleChange(val);
                 }}
                 placeholder={`Enter ${field.label.toLowerCase()}`}
+                disabled={field.disabled}
               />
             )}
           </div>

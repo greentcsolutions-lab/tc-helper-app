@@ -99,11 +99,20 @@ export function extractTimelineEvents(parse: any): TimelineEvent[] {
   if (parse.timelineDataStructured && typeof parse.timelineDataStructured === 'object') {
     const timelineData = parse.timelineDataStructured;
 
+    // Big 3 contingencies that always show (even if waived)
+    const ALWAYS_SHOW_EVENTS = ['inspectionContingency', 'appraisalContingency', 'loanContingency'];
+
     // Calculate all effective dates (handles dependencies)
     const effectiveDates = calculateAllEffectiveDates(timelineData);
 
     // Create timeline events from calculated dates
     for (const [eventKey, eventData] of Object.entries(timelineData)) {
+      // Skip waived events (unless they're in the always-show list)
+      if (eventData.waived && !ALWAYS_SHOW_EVENTS.includes(eventKey)) {
+        console.log(`[extractTimelineEvents] Skipping waived event: ${eventKey}`);
+        continue;
+      }
+
       const effectiveDate = effectiveDates[eventKey];
 
       if (!effectiveDate) {

@@ -1,8 +1,8 @@
 // src/components/CategoryTimelineContingencies.tsx
-// Version: 6.0.0 - 2026-01-15
-// MAJOR REFACTOR: Dynamically displays ALL active timeline events in chronological order
-// UPDATED: Moved Sale of Buyer Property to Purchase Terms
-// UPDATED: Always shows Inspection/Appraisal/Loan contingencies even if waived
+// Version: 7.0.0 - 2026-01-15
+// MAJOR UPDATE: Added "Waived" checkbox for timeline events
+// UPDATED: Waived events hidden from display (except big 3 contingencies which always show)
+// UPDATED: Disabled input fields when waived checkbox is checked
 
 import CategorySection, { FieldConfig } from "./CategorySection";
 import { Calendar } from "lucide-react";
@@ -21,6 +21,12 @@ export default function CategoryTimelineContingencies({
   onDataChange,
 }: CategoryTimelineContingenciesProps) {
   const cont = data.contingencies;
+
+  // Define non-waivable events (these should never show waived checkbox)
+  const NON_WAIVABLE_EVENTS = ['acceptance', 'closing', 'initialDeposit'];
+
+  // Define big 3 contingencies that always show even when waived
+  const ALWAYS_SHOW_EVENTS = ['inspectionContingency', 'appraisalContingency', 'loanContingency'];
 
   // Helper: Format date for display (YYYY-MM-DD → MM/DD/YYYY)
   const formatDate = (value: string | null | undefined): string | null => {
@@ -47,6 +53,11 @@ export default function CategoryTimelineContingencies({
       return null;
     }
 
+    // If waived, show "Waived" text
+    if (event.waived) {
+      return "Waived";
+    }
+
     // Format the effective date
     const displayDate = formatDate(event.effectiveDate);
     if (!displayDate) return null;
@@ -69,10 +80,14 @@ export default function CategoryTimelineContingencies({
 
   // Helper: Check if event is "active" (should be displayed)
   const isEventActive = (eventKey: string, event: any): boolean => {
-    // Always show the big 3 universal contingencies
-    const alwaysShow = ['inspectionContingency', 'appraisalContingency', 'loanContingency'];
-    if (alwaysShow.includes(eventKey)) {
+    // Always show the big 3 contingencies (even if waived)
+    if (ALWAYS_SHOW_EVENTS.includes(eventKey)) {
       return true;
+    }
+
+    // Hide waived events (unless they're in the always-show list above)
+    if (event?.waived) {
+      return false;
     }
 
     // For other events, show if they have an effectiveDate
@@ -83,12 +98,14 @@ export default function CategoryTimelineContingencies({
     label: string,
     value: any,
     type: 'text' | 'number' | 'date' | 'boolean' | 'array' = 'text',
-    onChange?: (val: any) => void
+    onChange?: (val: any) => void,
+    disabled?: boolean
   ): FieldConfig => ({
     label,
     value,
     type,
     onChange,
+    disabled,
   });
 
   // === DYNAMIC TIMELINE FIELD GENERATION ===
@@ -133,12 +150,16 @@ export default function CategoryTimelineContingencies({
   for (const entry of timelineEntries) {
     const { eventKey, event, displayName } = entry;
 
+    // Check if this event is waivable
+    const isWaivable = !NON_WAIVABLE_EVENTS.includes(eventKey);
+    const isWaived = event.waived === true;
+
     // Get display value
     let displayValue: string | null = null;
     let editValue: any = '';
 
     if (!isEditing) {
-      // View mode: show formatted date with source
+      // View mode: show formatted date with source or "Waived"
       displayValue = getTimelineEventDisplay(event);
     } else {
       // Edit mode: need to map to the appropriate edit field
@@ -167,7 +188,7 @@ export default function CategoryTimelineContingencies({
       }
     }
 
-    // Create onChange handler
+    // Create onChange handler for the main field
     const handleChange = (val: any) => {
       if (!onDataChange) return;
 
@@ -211,14 +232,49 @@ export default function CategoryTimelineContingencies({
       }
     };
 
+    // Create onChange handler for waived checkbox
+    const handleWaivedChange = (waived: boolean) => {
+      if (!onDataChange) return;
+
+      const updatedTimeline = {
+        ...timelineData,
+        [eventKey]: {
+          ...event,
+          waived,
+        },
+      };
+      onDataChange({
+        ...data,
+        timelineDataStructured: updatedTimeline as any,
+      });
+    };
+
+    // Build field with waived checkbox if in edit mode and event is waivable
+    const fieldLabel = displayName;
+    const fieldValue = isEditing ? editValue : displayValue;
+    const fieldDisabled = isEditing && isWaived;
+
     fields.push(
       createField(
-        displayName,
-        isEditing ? editValue : displayValue,
+        fieldLabel,
+        fieldValue,
         'text',
-        handleChange
+        handleChange,
+        fieldDisabled
       )
     );
+
+    // Add waived checkbox as a separate field if in edit mode and event is waivable
+    if (isEditing && isWaivable) {
+      fields.push(
+        createField(
+          `  ↳ Waived`,
+          isWaived,
+          'boolean',
+          handleWaivedChange
+        )
+      );
+    }
   }
 
   if (fields.length === 0) return null;
