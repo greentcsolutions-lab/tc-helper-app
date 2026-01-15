@@ -44,18 +44,31 @@ export default function CategoryTimelineContingencies({
 
   // Helper: Get formatted timeline event from structured data
   const getTimelineEventDisplay = (eventKey: string): string | null => {
+    console.log(`[getTimelineEventDisplay] Looking for event key: ${eventKey}`);
+    console.log(`[getTimelineEventDisplay] timelineDataStructured type:`, typeof data.timelineDataStructured);
+    console.log(`[getTimelineEventDisplay] timelineDataStructured:`, data.timelineDataStructured);
+
     if (!data.timelineDataStructured || typeof data.timelineDataStructured !== 'object') {
+      console.log(`[getTimelineEventDisplay] No structured data found`);
       return null;
     }
 
     const event = (data.timelineDataStructured as any)[eventKey];
+    console.log(`[getTimelineEventDisplay] Event for ${eventKey}:`, event);
+
     if (!event || !event.effectiveDate) {
+      console.log(`[getTimelineEventDisplay] Event or effectiveDate missing for ${eventKey}`);
       return null;
     }
 
     // Format the effective date
     const displayDate = formatDate(event.effectiveDate);
-    if (!displayDate) return null;
+    console.log(`[getTimelineEventDisplay] displayDate for ${eventKey}:`, displayDate);
+
+    if (!displayDate) {
+      console.log(`[getTimelineEventDisplay] displayDate is null for ${eventKey}`);
+      return null;
+    }
 
     const shortDate = toShortYear(displayDate);
 
@@ -70,7 +83,9 @@ export default function CategoryTimelineContingencies({
       source = `${event.relativeDays} ${dayType} ${direction} ${anchor}`;
     }
 
-    return `${shortDate} (${source})`;
+    const result = `${shortDate} (${source})`;
+    console.log(`[getTimelineEventDisplay] Returning for ${eventKey}:`, result);
+    return result;
   };
 
   // Helper: Format contingency field with calculated date and origin
@@ -115,34 +130,11 @@ export default function CategoryTimelineContingencies({
   // === Close of Escrow ===
   const closingDisplay = !isEditing ? getTimelineEventDisplay('closing') : null;
 
-  if (closingDisplay || data.closingDate || isEditing) {
-    let display: string | null = closingDisplay;
-
-    // Fallback to old format if no structured data
-    if (!display && !isEditing) {
-      if (typeof data.closingDate === 'number') {
-        const formatted = formatTimelineField(data.closingDate, data.effectiveDate, false);
-        if (formatted.displayDate) {
-          const shortDate = toShortYear(formatted.displayDate);
-          display = `${shortDate} (${data.closingDate} days after acceptance)`;
-        } else {
-          display = `${data.closingDate} days after acceptance`;
-        }
-      } else if (typeof data.closingDate === 'string') {
-        const formatted = formatTimelineField(data.closingDate, data.effectiveDate, false);
-        if (formatted.displayDate) {
-          const shortDate = toShortYear(formatted.displayDate);
-          display = `${shortDate} (specified)`;
-        } else {
-          display = formatDate(data.closingDate);
-        }
-      }
-    }
-
+  if (closingDisplay || isEditing) {
     fields.push(
       createField(
         "Close of Escrow",
-        isEditing ? data.closingDate ?? '' : display,
+        isEditing ? data.closingDate ?? '' : closingDisplay,
         'date',
         (val) => onDataChange?.({ ...data, closingDate: val })
       )
@@ -152,34 +144,11 @@ export default function CategoryTimelineContingencies({
   // === Initial Deposit Due Date ===
   const depositDisplay = !isEditing ? getTimelineEventDisplay('initialDeposit') : null;
 
-  if (depositDisplay || data.initialDepositDueDate || isEditing) {
-    let display: string | null = depositDisplay;
-
-    // Fallback to old format if no structured data
-    if (!display && !isEditing) {
-      if (typeof data.initialDepositDueDate === 'number') {
-        const formatted = formatTimelineField(data.initialDepositDueDate, data.effectiveDate, false);
-        if (formatted.displayDate) {
-          const shortDate = toShortYear(formatted.displayDate);
-          display = `${shortDate} (${data.initialDepositDueDate} days after acceptance)`;
-        } else {
-          display = `${data.initialDepositDueDate} days after acceptance`;
-        }
-      } else if (typeof data.initialDepositDueDate === 'string') {
-        const formatted = formatTimelineField(data.initialDepositDueDate, data.effectiveDate, false);
-        if (formatted.displayDate) {
-          const shortDate = toShortYear(formatted.displayDate);
-          display = `${shortDate} (specified)`;
-        } else {
-          display = formatDate(data.initialDepositDueDate);
-        }
-      }
-    }
-
+  if (depositDisplay || isEditing) {
     fields.push(
       createField(
         "Initial Deposit Due Date",
-        isEditing ? data.initialDepositDueDate ?? '' : display,
+        isEditing ? data.initialDepositDueDate ?? '' : depositDisplay,
         'date',
         (val) => onDataChange?.({ ...data, initialDepositDueDate: val })
       )
@@ -189,34 +158,11 @@ export default function CategoryTimelineContingencies({
   // === Seller Delivery of Disclosures ===
   const sellerDisclosuresDisplay = !isEditing ? getTimelineEventDisplay('sellerDisclosures') : null;
 
-  if (sellerDisclosuresDisplay || data.sellerDeliveryOfDisclosuresDate || isEditing) {
-    let display: string | null = sellerDisclosuresDisplay;
-
-    // Fallback to old format if no structured data
-    if (!display && !isEditing) {
-      if (typeof data.sellerDeliveryOfDisclosuresDate === 'number') {
-        const formatted = formatTimelineField(data.sellerDeliveryOfDisclosuresDate, data.effectiveDate, false);
-        if (formatted.displayDate) {
-          const shortDate = toShortYear(formatted.displayDate);
-          display = `${shortDate} (${data.sellerDeliveryOfDisclosuresDate} days after acceptance)`;
-        } else {
-          display = `${data.sellerDeliveryOfDisclosuresDate} days after acceptance`;
-        }
-      } else if (typeof data.sellerDeliveryOfDisclosuresDate === 'string') {
-        const formatted = formatTimelineField(data.sellerDeliveryOfDisclosuresDate, data.effectiveDate, false);
-        if (formatted.displayDate) {
-          const shortDate = toShortYear(formatted.displayDate);
-          display = `${shortDate} (specified)`;
-        } else {
-          display = formatDate(data.sellerDeliveryOfDisclosuresDate);
-        }
-      }
-    }
-
+  if (sellerDisclosuresDisplay || isEditing) {
     fields.push(
       createField(
         "Seller Delivery of Disclosures",
-        isEditing ? data.sellerDeliveryOfDisclosuresDate ?? '' : display,
+        isEditing ? data.sellerDeliveryOfDisclosuresDate ?? '' : sellerDisclosuresDisplay,
         'date',
         (val) => onDataChange?.({ ...data, sellerDeliveryOfDisclosuresDate: val })
       )
