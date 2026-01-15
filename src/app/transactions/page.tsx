@@ -67,6 +67,7 @@ export default async function TransactionsPage() {
       // === RICH JSON FIELDS ===
       extractionDetails: true,
       timelineEvents: true,
+      timelineDataStructured: true,  // NEW: Structured timeline data with calculation metadata
 
       // === THUMBNAILS / PREVIEWS ===
       renderZipUrl: true,
@@ -87,6 +88,7 @@ export default async function TransactionsPage() {
     brokers: parse.brokers as ParseResult['brokers'],
     extractionDetails: parse.extractionDetails as ParseResult['extractionDetails'],
     timelineEvents: parse.timelineEvents as ParseResult['timelineEvents'],
+    timelineDataStructured: parse.timelineDataStructured as ParseResult['timelineDataStructured'],
     lowResZipUrl: parse.renderZipUrl ?? null,
   }));
 

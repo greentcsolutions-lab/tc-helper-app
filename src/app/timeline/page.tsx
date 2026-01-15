@@ -35,6 +35,7 @@ export default async function TimelinePage() {
       sellerDeliveryOfDisclosuresDate: true,
       earnestMoneyDeposit: true,
       contingencies: true,
+      timelineDataStructured: true, // NEW: Include structured timeline data
       createdAt: true,
     },
   });

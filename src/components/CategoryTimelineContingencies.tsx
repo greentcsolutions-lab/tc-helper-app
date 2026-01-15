@@ -1,15 +1,13 @@
 // src/components/CategoryTimelineContingencies.tsx
-// Version: 4.5.0 - 2026-01-08
-// FIXED: Matches current ParseResult (no closeOfEscrowDate or calculated deadlines)
-//         Displays calculated/actual dates with origin information (e.g., "01/26/26 (17 days after acceptance OR specified)")
-//         Full editing support
-// FIXED: Date formatting - displays dates as MM/DD/YY with source information
+// Version: 8.0.0 - 2026-01-15
+// FIXED: Waived checkbox now inline with input field, always visible
+// UPDATED: Waived events hidden from view mode (except big 3 contingencies which always show)
+// UPDATED: Disabled input fields when waived checkbox is checked
 
 import CategorySection, { FieldConfig } from "./CategorySection";
 import { Calendar } from "lucide-react";
 import { ParseResult } from "@/types";
 import { formatDisplayDate } from "@/lib/date-utils";
-import { formatTimelineField } from "@/lib/timeline/timeline-formatter";
 
 interface CategoryTimelineContingenciesProps {
   data: ParseResult;
@@ -23,6 +21,12 @@ export default function CategoryTimelineContingencies({
   onDataChange,
 }: CategoryTimelineContingenciesProps) {
   const cont = data.contingencies;
+
+  // Define non-waivable events (these should never show waived checkbox)
+  const NON_WAIVABLE_EVENTS = ['acceptance', 'closing', 'initialDeposit'];
+
+  // Define big 3 contingencies that always show even when waived
+  const ALWAYS_SHOW_EVENTS = ['inspectionContingency', 'appraisalContingency', 'loanContingency'];
 
   // Helper: Format date for display (YYYY-MM-DD → MM/DD/YYYY)
   const formatDate = (value: string | null | undefined): string | null => {
@@ -43,218 +47,235 @@ export default function CategoryTimelineContingencies({
     return dateStr;
   };
 
-  // Helper: Format contingency field with calculated date and origin
-  const formatContingencyDisplay = (
-    days: string | number | null | undefined,
-    label: string
-  ): string | null => {
-    if (days == null) return null;
-
-    // Convert to number if it's a string
-    const daysNum = typeof days === 'string' ? parseInt(days, 10) : days;
-    if (isNaN(daysNum)) return String(days);
-
-    const formatted = formatTimelineField(daysNum, data.effectiveDate, false);
-
-    if (!formatted.displayDate) {
-      // No acceptance date available, show just the days
-      return `${daysNum} days after acceptance`;
+  // Helper: Get formatted timeline event from structured data
+  const getTimelineEventDisplay = (event: any): string | null => {
+    if (!event || !event.effectiveDate) {
+      return null;
     }
 
-    // Convert to 2-digit year format
-    const shortDate = toShortYear(formatted.displayDate);
+    // If waived, show "Waived" text
+    if (event.waived) {
+      return "Waived";
+    }
 
-    // Format: "01/26/26 (17 days after acceptance OR specified)"
-    return `${shortDate} (${daysNum} days after acceptance)`;
+    // Format the effective date
+    const displayDate = formatDate(event.effectiveDate);
+    if (!displayDate) return null;
+
+    const shortDate = toShortYear(displayDate);
+
+    // Build source description
+    let source = '';
+    if (event.dateType === 'specified') {
+      source = 'specified';
+    } else if (event.dateType === 'relative') {
+      const dayType = event.dayType === 'business' ? 'business days' : 'days';
+      const direction = event.direction === 'before' ? 'before' : 'after';
+      const anchor = event.anchorPoint || 'acceptance';
+      source = `${event.relativeDays} ${dayType} ${direction} ${anchor}`;
+    }
+
+    return `${shortDate} (${source})`;
+  };
+
+  // Helper: Check if event is "active" (should be displayed)
+  const isEventActive = (eventKey: string, event: any, isEditingMode: boolean): boolean => {
+    // In edit mode, ALWAYS show all events so user can toggle waived checkbox
+    if (isEditingMode) {
+      return true;
+    }
+
+    // In view mode:
+    // Always show the big 3 contingencies (even if waived)
+    if (ALWAYS_SHOW_EVENTS.includes(eventKey)) {
+      return true;
+    }
+
+    // Hide waived events (unless they're in the always-show list above)
+    if (event?.waived) {
+      return false;
+    }
+
+    // For other events, show if they have an effectiveDate
+    return event?.effectiveDate != null;
   };
 
   const createField = (
     label: string,
     value: any,
     type: 'text' | 'number' | 'date' | 'boolean' | 'array' = 'text',
-    onChange?: (val: any) => void
+    onChange?: (val: any) => void,
+    disabled?: boolean,
+    waived?: boolean,
+    onWaivedChange?: (waived: boolean) => void,
+    showWaivedCheckbox?: boolean
   ): FieldConfig => ({
     label,
     value,
     type,
     onChange,
+    disabled,
+    waived,
+    onWaivedChange,
+    showWaivedCheckbox,
   });
 
+  // === DYNAMIC TIMELINE FIELD GENERATION ===
   const fields: FieldConfig[] = [];
 
-  // === Close of Escrow (legacy closingDate) ===
-  if (data.closingDate || isEditing) {
-    let display: string | null = null;
+  if (!data.timelineDataStructured || typeof data.timelineDataStructured !== 'object') {
+    // No structured data available, component won't render anything
+    return null;
+  }
+
+  const timelineData = data.timelineDataStructured as Record<string, any>;
+
+  // Create array of timeline events with their data
+  interface TimelineEventEntry {
+    eventKey: string;
+    event: any;
+    displayName: string;
+    effectiveDate: string | null;
+    sortDate: Date | null;
+  }
+
+  const timelineEntries: TimelineEventEntry[] = Object.entries(timelineData)
+    .filter(([eventKey, event]) => isEventActive(eventKey, event, isEditing))
+    .map(([eventKey, event]) => ({
+      eventKey,
+      event,
+      displayName: event.displayName || eventKey,
+      effectiveDate: event.effectiveDate,
+      sortDate: event.effectiveDate ? new Date(event.effectiveDate) : null,
+    }));
+
+  // Sort chronologically by effectiveDate
+  timelineEntries.sort((a, b) => {
+    // Put null dates at the end
+    if (!a.sortDate && !b.sortDate) return 0;
+    if (!a.sortDate) return 1;
+    if (!b.sortDate) return -1;
+    return a.sortDate.getTime() - b.sortDate.getTime();
+  });
+
+  // Generate fields for each timeline event
+  for (const entry of timelineEntries) {
+    const { eventKey, event, displayName } = entry;
+
+    // Check if this event is waivable
+    const isWaivable = !NON_WAIVABLE_EVENTS.includes(eventKey);
+    const isWaived = event.waived === true;
+
+    // Get display value
+    let displayValue: string | null = null;
+    let editValue: any = '';
 
     if (!isEditing) {
-      if (typeof data.closingDate === 'number') {
-        // It's days after acceptance
-        const formatted = formatTimelineField(data.closingDate, data.effectiveDate, false);
-        if (formatted.displayDate) {
-          const shortDate = toShortYear(formatted.displayDate);
-          display = `${shortDate} (${data.closingDate} days after acceptance)`;
-        } else {
-          display = `${data.closingDate} days after acceptance`;
-        }
-      } else if (typeof data.closingDate === 'string') {
-        // It's a specific date
-        const formatted = formatTimelineField(data.closingDate, data.effectiveDate, false);
-        if (formatted.displayDate) {
-          const shortDate = toShortYear(formatted.displayDate);
-          display = `${shortDate} (specified)`;
-        } else {
-          display = formatDate(data.closingDate);
+      // View mode: show formatted date with source or "Waived"
+      displayValue = getTimelineEventDisplay(event);
+    } else {
+      // Edit mode: need to map to the appropriate edit field
+      // For the big 3 contingencies, use the contingencies object
+      // For other timeline events, we'll need different logic
+
+      if (eventKey === 'inspectionContingency') {
+        editValue = cont?.inspectionDays ?? '';
+      } else if (eventKey === 'appraisalContingency') {
+        editValue = cont?.appraisalDays ?? '';
+      } else if (eventKey === 'loanContingency') {
+        editValue = cont?.loanDays ?? '';
+      } else if (eventKey === 'closing') {
+        editValue = data.closingDate ?? '';
+      } else if (eventKey === 'initialDeposit') {
+        editValue = data.initialDepositDueDate ?? '';
+      } else if (eventKey === 'sellerDisclosures') {
+        editValue = data.sellerDeliveryOfDisclosuresDate ?? '';
+      } else {
+        // For other events, show the effectiveDate or relativeDays
+        if (event.dateType === 'specified') {
+          editValue = event.specifiedDate ?? '';
+        } else if (event.dateType === 'relative') {
+          editValue = event.relativeDays ?? '';
         }
       }
     }
 
-    fields.push(
-      createField(
-        "Close of Escrow",
-        isEditing ? data.closingDate ?? '' : display,
-        'date',
-        (val) => onDataChange?.({ ...data, closingDate: val })
-      )
-    );
-  }
+    // Create onChange handler for the main field
+    const handleChange = (val: any) => {
+      if (!onDataChange) return;
 
-  // === Initial Deposit Due Date (Earnest Money) ===
-  if (data.initialDepositDueDate || isEditing) {
-    let display: string | null = null;
-
-    if (!isEditing) {
-      if (typeof data.initialDepositDueDate === 'number') {
-        // It's days after acceptance
-        const formatted = formatTimelineField(data.initialDepositDueDate, data.effectiveDate, false);
-        if (formatted.displayDate) {
-          const shortDate = toShortYear(formatted.displayDate);
-          display = `${shortDate} (${data.initialDepositDueDate} days after acceptance)`;
-        } else {
-          display = `${data.initialDepositDueDate} days after acceptance`;
-        }
-      } else if (typeof data.initialDepositDueDate === 'string') {
-        // It's a specific date
-        const formatted = formatTimelineField(data.initialDepositDueDate, data.effectiveDate, false);
-        if (formatted.displayDate) {
-          const shortDate = toShortYear(formatted.displayDate);
-          display = `${shortDate} (specified)`;
-        } else {
-          display = formatDate(data.initialDepositDueDate);
-        }
-      }
-    }
-
-    fields.push(
-      createField(
-        "Initial Deposit Due Date",
-        isEditing ? data.initialDepositDueDate ?? '' : display,
-        'date',
-        (val) => onDataChange?.({ ...data, initialDepositDueDate: val })
-      )
-    );
-  }
-
-  // === Seller Delivery of Disclosures Date ===
-  if (data.sellerDeliveryOfDisclosuresDate || isEditing) {
-    let display: string | null = null;
-
-    if (!isEditing) {
-      if (typeof data.sellerDeliveryOfDisclosuresDate === 'number') {
-        // It's days after acceptance
-        const formatted = formatTimelineField(data.sellerDeliveryOfDisclosuresDate, data.effectiveDate, false);
-        if (formatted.displayDate) {
-          const shortDate = toShortYear(formatted.displayDate);
-          display = `${shortDate} (${data.sellerDeliveryOfDisclosuresDate} days after acceptance)`;
-        } else {
-          display = `${data.sellerDeliveryOfDisclosuresDate} days after acceptance`;
-        }
-      } else if (typeof data.sellerDeliveryOfDisclosuresDate === 'string') {
-        // It's a specific date
-        const formatted = formatTimelineField(data.sellerDeliveryOfDisclosuresDate, data.effectiveDate, false);
-        if (formatted.displayDate) {
-          const shortDate = toShortYear(formatted.displayDate);
-          display = `${shortDate} (specified)`;
-        } else {
-          display = formatDate(data.sellerDeliveryOfDisclosuresDate);
-        }
-      }
-    }
-
-    fields.push(
-      createField(
-        "Seller Delivery of Disclosures",
-        isEditing ? data.sellerDeliveryOfDisclosuresDate ?? '' : display,
-        'date',
-        (val) => onDataChange?.({ ...data, sellerDeliveryOfDisclosuresDate: val })
-      )
-    );
-  }
-
-  // === Inspection Contingency ===
-  if (cont?.inspectionDays != null || isEditing) {
-    const display = formatContingencyDisplay(cont?.inspectionDays, "Inspection Contingency");
-
-    fields.push(
-      createField(
-        "Inspection Contingency",
-        isEditing ? cont?.inspectionDays ?? '' : display,
-        'text',
-        (val) => onDataChange?.({
+      // Map back to the appropriate field for database update
+      if (eventKey === 'inspectionContingency') {
+        onDataChange({
           ...data,
           contingencies: { ...cont!, inspectionDays: val },
-        })
-  
-      )
-    );
-  }
-
-  // === Appraisal Contingency ===
-  if (cont?.appraisalDays != null || isEditing) {
-    const display = formatContingencyDisplay(cont?.appraisalDays, "Appraisal Contingency");
-
-    fields.push(
-      createField(
-        "Appraisal Contingency",
-        isEditing ? cont?.appraisalDays ?? '' : display,
-        'text',
-        (val) => onDataChange?.({
+        });
+      } else if (eventKey === 'appraisalContingency') {
+        onDataChange({
           ...data,
           contingencies: { ...cont!, appraisalDays: val },
-        })
-      )
-    );
-  }
-
-  // === Loan Contingency ===
-  if (cont?.loanDays != null || isEditing) {
-    const display = formatContingencyDisplay(cont?.loanDays, "Loan Contingency");
-
-    fields.push(
-      createField(
-        "Loan Contingency",
-        isEditing ? cont?.loanDays ?? '' : display,
-        'text',
-        (val) => onDataChange?.({
+        });
+      } else if (eventKey === 'loanContingency') {
+        onDataChange({
           ...data,
           contingencies: { ...cont!, loanDays: val },
-        })
-      )
-    );
-  }
+        });
+      } else if (eventKey === 'closing') {
+        onDataChange({ ...data, closingDate: val });
+      } else if (eventKey === 'initialDeposit') {
+        onDataChange({ ...data, initialDepositDueDate: val });
+      } else if (eventKey === 'sellerDisclosures') {
+        onDataChange({ ...data, sellerDeliveryOfDisclosuresDate: val });
+      } else {
+        // For other timeline events, we need to update timelineDataStructured
+        const updatedTimeline = {
+          ...timelineData,
+          [eventKey]: {
+            ...event,
+            ...(event.dateType === 'specified'
+              ? { specifiedDate: val }
+              : { relativeDays: parseInt(val, 10) || 0 }),
+          },
+        };
+        onDataChange({
+          ...data,
+          timelineDataStructured: updatedTimeline as any,
+        });
+      }
+    };
 
-  // === Sale of Buyer Property Contingency ===
-  if (cont?.saleOfBuyerProperty !== undefined || isEditing) {
-    const display = cont?.saleOfBuyerProperty ? "Active" : "Waived";
+    // Create onChange handler for waived checkbox
+    const handleWaivedChange = (waived: boolean) => {
+      if (!onDataChange) return;
+
+      const updatedTimeline = {
+        ...timelineData,
+        [eventKey]: {
+          ...event,
+          waived,
+        },
+      };
+      onDataChange({
+        ...data,
+        timelineDataStructured: updatedTimeline as any,
+      });
+    };
+
+    // Build field with inline waived checkbox if event is waivable
+    const fieldLabel = displayName;
+    const fieldValue = isEditing ? editValue : displayValue;
+    const fieldDisabled = isEditing && isWaived;
 
     fields.push(
       createField(
-        "Sale of Buyer Property Contingency",
-        isEditing ? cont?.saleOfBuyerProperty : display,
-        'boolean',
-        (val) => onDataChange?.({
-          ...data,
-          contingencies: { ...cont!, saleOfBuyerProperty: val as boolean },
-        })
+        fieldLabel,
+        fieldValue,
+        'text',
+        handleChange,
+        fieldDisabled,
+        isWaived,
+        handleWaivedChange,
+        isWaivable // Show waived checkbox for waivable events
       )
     );
   }

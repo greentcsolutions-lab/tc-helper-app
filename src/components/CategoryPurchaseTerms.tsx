@@ -192,6 +192,15 @@ export default function CategoryPurchaseTerms({
       (val) => onDataChange?.({ ...data, escrowHolder: val })
     ),
     createField(
+      "Contingent on Sale of Buyer's Property?",
+      isEditing ? data.contingencies?.saleOfBuyerProperty : formatBoolean(data.contingencies?.saleOfBuyerProperty),
+      'boolean',
+      (val) => onDataChange?.({
+        ...data,
+        contingencies: { ...data.contingencies, saleOfBuyerProperty: val },
+      })
+    ),
+    createField(
       "Personal Property Included",
       isEditing ? data.personalPropertyIncluded : formatArray(data.personalPropertyIncluded),
       'array',

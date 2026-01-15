@@ -1,7 +1,9 @@
 // src/lib/timeline/timeline-formatter.ts
-// Utility for formatting timeline dates with their sources
+// Version: 2.0.0 - 2026-01-15
+// Updated to work with structured timeline data
 
-import { calculateTimelineDate, formatDisplayDate } from '@/lib/date-utils';
+import { calculateTimelineDate, formatDisplayDate, calculateEffectiveDate } from '@/lib/date-utils';
+import type { TimelineEventData, TimelineDataStructured } from '@/types/timeline';
 
 export interface TimelineFieldSource {
   type: 'days' | 'specified' | 'not_set';
@@ -131,6 +133,63 @@ export function formatAllTimelineFields(
       timeline.acceptanceDate,
       field.useBusinessDays
     );
+  }
+
+  return result;
+}
+
+/**
+ * Format a timeline event from structured data
+ * @param eventData - The structured timeline event data
+ * @param effectiveDate - The calculated effective date (YYYY-MM-DD)
+ * @returns Display text like "01/24/2026 (3 business days after acceptance)"
+ */
+export function formatStructuredTimelineEvent(
+  eventData: TimelineEventData,
+  effectiveDate: string | null
+): string {
+  if (!effectiveDate) {
+    return 'Not set';
+  }
+
+  // Format the date as MM/DD/YYYY
+  const displayDate = formatDisplayDate(effectiveDate);
+
+  // Build the source description
+  let sourceDescription = '';
+
+  if (eventData.dateType === 'specified') {
+    sourceDescription = 'specified';
+  } else if (eventData.dateType === 'relative' && eventData.relativeDays !== undefined) {
+    const dayTypeText = eventData.dayType === 'business' ? 'business days' : 'days';
+    const directionText = eventData.direction === 'before' ? 'before' : 'after';
+    const anchorText = eventData.anchorPoint || 'acceptance';
+
+    sourceDescription = `${eventData.relativeDays} ${dayTypeText} ${directionText} ${anchorText}`;
+  }
+
+  return `${displayDate} (${sourceDescription})`;
+}
+
+/**
+ * Format all structured timeline events with their calculated dates
+ * @param timelineData - The structured timeline data
+ * @param effectiveDates - Map of event keys to calculated dates
+ * @returns Map of event keys to formatted display text
+ */
+export function formatAllStructuredTimelineEvents(
+  timelineData: TimelineDataStructured | null | undefined,
+  effectiveDates: Record<string, string>
+): Record<string, string> {
+  if (!timelineData) {
+    return {};
+  }
+
+  const result: Record<string, string> = {};
+
+  for (const [eventKey, eventData] of Object.entries(timelineData)) {
+    const effectiveDate = effectiveDates[eventKey] || null;
+    result[eventKey] = formatStructuredTimelineEvent(eventData, effectiveDate);
   }
 
   return result;

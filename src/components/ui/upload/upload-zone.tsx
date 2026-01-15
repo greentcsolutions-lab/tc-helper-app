@@ -128,6 +128,7 @@ export default function UploadZone() {
           personalPropertyIncluded: data.personalPropertyIncluded || [],
           effectiveDate: data.effectiveDate || null,
           escrowHolder: data.escrowHolder || null,
+          timelineDataStructured: data.timelineDataStructured || null,
         });
 
         console.log("[upload-zone] ✓ Preview images are available for debugging");

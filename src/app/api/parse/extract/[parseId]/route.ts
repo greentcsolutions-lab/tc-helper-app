@@ -5,25 +5,13 @@ import { db } from "@/lib/prisma";
 import { mapExtractionToParseResult } from "@/lib/parse/map-to-parse-result";
 import * as ParseLogger from "@/lib/debug/parse-logger";
 
-// LLM Processes
-import { extractWithGemini } from "@/lib/extraction/gemini/extractPdf";
-import { extractWithClaude } from "@/lib/extraction/Claude/extractPdf";
-import { checkClaudeAvailability } from "@/lib/extraction/Claude/extractPdf";
+// LLM Processes - NEW: Unified AI racing system
+import { extractWithFastestAI } from "@/lib/extraction/shared/ai-race";
 
 const { logStep, logSuccess, logError, logWarn } = ParseLogger;
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
-
-// Timeout helper
-const timeoutPromise = (ms: number, label = "Operation") =>
-  new Promise<never>((_, reject) =>
-    setTimeout(() => reject(new Error(`${label} timeout`)), ms)
-  );
-
-const PING_TIMEOUT_MS = 4500;
-const CLAUDE_FULL_TIMEOUT_MS = 85000;
-const GEMINI_FALLBACK_TIMEOUT_MS = 110000;
 
 export async function POST(
   request: NextRequest,
@@ -36,15 +24,9 @@ export async function POST(
     const { parseId } = await params;
     console.log(`[extract] START parseId=${parseId} at ${new Date().toISOString()}`);
 
-    let parse;
-    let extractionResult;
-
-    const PRIMARY_MODEL = "claude-haiku-4-5-20251001";
-    const FALLBACK_MODEL = "gemini-3-flash-preview";
-
     // 1. Load parse record
     logStep("EXTRACT:1", "Loading parse record...");
-    parse = await db.parse.findUnique({
+    const parse = await db.parse.findUnique({
       where: { id: parseId },
       select: {
         id: true,
@@ -66,48 +48,17 @@ export async function POST(
     console.log(`[extract] Document: ${parse.pageCount} pages`);
     logSuccess("EXTRACT:1", `Loaded ${parse.pageCount}-page document`);
 
-    // 2. LLM Extraction Logic (Primary with Fallback)
-    try {
-      logStep("EXTRACT:2", `Trying primary: ${PRIMARY_MODEL}`);
-      
-      const isClaudeResponsive = await Promise.race([
-        checkClaudeAvailability(),
-        timeoutPromise(PING_TIMEOUT_MS, "Claude ping")
-      ]).catch(() => false);
+    // 2. LLM Extraction Logic (Unified AI Racing System)
+    logStep("EXTRACT:2", "Racing all available AI providers...");
 
-      if (!isClaudeResponsive) {
-        throw new Error("Claude ping failed or timed out");
-      }
+    const extractionResult = await extractWithFastestAI(parse.pdfPublicUrl, parse.pageCount);
 
-      extractionResult = await Promise.race([
-        extractWithClaude(parse.pdfPublicUrl, parse.pageCount, PRIMARY_MODEL),
-        timeoutPromise(CLAUDE_FULL_TIMEOUT_MS, "Claude extraction")
-      ]);
-
-      console.log(`[extract] Primary (${PRIMARY_MODEL}) SUCCESS`);
-    } catch (err: any) {
-      console.warn("EXTRACT:FALLBACK", `Primary failed: ${err.message}. Falling back to ${FALLBACK_MODEL}`);
-
-      try {
-        extractionResult = await Promise.race([
-          extractWithGemini(parse.pdfPublicUrl, parse.pageCount, FALLBACK_MODEL),
-          timeoutPromise(GEMINI_FALLBACK_TIMEOUT_MS, "Gemini fallback")
-        ]);
-        extractionResult = { ...extractionResult, fromFallback: true };
-        console.log(`[extract] Fallback (${FALLBACK_MODEL}) SUCCESS`);
-      } catch (fallbackErr: any) {
-        console.error(`[extract] Fallback failed too: ${fallbackErr.message}`);
-        throw fallbackErr;
-      }
-    }
-
-    // 3. Process Results
     if (!extractionResult) {
-      throw new Error("No extraction result from any provider");
+      throw new Error("No AI providers available for extraction");
     }
 
-    const modelUsed = extractionResult.modelUsed ||
-      (extractionResult.fromFallback ? FALLBACK_MODEL : PRIMARY_MODEL);
+    const modelUsed = extractionResult.modelUsed;
+    console.log(`[extract] Extraction complete via ${modelUsed}`);
 
     logStep("EXTRACT:3", "Mapping to Parse fields...");
     const mappedFields = mapExtractionToParseResult({
