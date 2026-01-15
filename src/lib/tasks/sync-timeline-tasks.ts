@@ -27,6 +27,7 @@ export async function syncTimelineTasks(parseId: string, userId: string): Promis
       contingencies: true,
       earnestMoneyDeposit: true,
       status: true,
+      timelineDataStructured: true,
     },
   });
 
@@ -147,52 +148,45 @@ function addBusinessDays(date: Date, days: number): Date {
 
 /**
  * Syncs default tasks that should be created for every parse
+ * These are AI-generated tasks based on timeline events
  */
 async function syncDefaultTasks(parseId: string, userId: string, parse: any): Promise<void> {
-  const effectiveDate = parse.effectiveDate ? new Date(parse.effectiveDate) : null;
-  const closingDate = parse.closingDate ? new Date(parse.closingDate) : null;
+  // Extract dates from structured timeline data (or fallback to legacy fields)
+  const timelineData = parse.timelineDataStructured || {};
+
+  // Helper to get date from timeline data
+  const getTimelineDate = (eventKey: string): Date | null => {
+    const event = timelineData[eventKey];
+    if (!event?.effectiveDate) return null;
+    const date = new Date(event.effectiveDate);
+    return isNaN(date.getTime()) ? null : date;
+  };
+
+  // Helper to check if event is waived
+  const isWaived = (eventKey: string): boolean => {
+    return timelineData[eventKey]?.waived === true;
+  };
+
+  // Get key dates
+  const acceptanceDate = getTimelineDate('acceptance') || (parse.effectiveDate ? new Date(parse.effectiveDate) : null);
+  const closingDate = getTimelineDate('closing') || (parse.closingDate ? new Date(parse.closingDate) : null);
+  const initialDepositDate = getTimelineDate('initialDeposit');
+  const inspectionDate = getTimelineDate('inspectionContingency');
+  const appraisalDate = getTimelineDate('appraisalContingency');
+  const loanDate = getTimelineDate('loanContingency');
 
   // Default task 1: Escrow Opened - due 1 business day after acceptance
-  if (effectiveDate) {
+  if (acceptanceDate) {
     const escrowOpenedEventId = `${parseId}-escrow-opened`;
-    const escrowOpenedDueDate = addBusinessDays(effectiveDate, 1);
+    const escrowOpenedDueDate = addBusinessDays(acceptanceDate, 1);
 
-    const existingEscrowTask = await db.task.findFirst({
-      where: {
-        parseId,
-        timelineEventId: escrowOpenedEventId,
-      },
-    });
-
-    const escrowTaskData = {
-      userId,
-      parseId,
-      taskTypes: [TASK_TYPES.ESCROW],
+    await upsertDefaultTask(parseId, userId, parse, {
       timelineEventId: escrowOpenedEventId,
       title: 'Escrow Opened',
       description: 'Escrow should be opened within 1 business day of acceptance',
-      propertyAddress: parse.propertyAddress || null,
-      amount: null,
+      taskTypes: [TASK_TYPES.ESCROW],
       dueDate: escrowOpenedDueDate,
-      dueDateType: 'specific' as const,
-      dueDateValue: null,
-      status: existingEscrowTask?.status || TASK_STATUS.NOT_STARTED,
-      columnId: existingEscrowTask?.columnId || TASK_STATUS.NOT_STARTED,
-      sortOrder: existingEscrowTask?.sortOrder || 0,
-      isCustom: false,
-      completedAt: existingEscrowTask?.completedAt || null,
-    };
-
-    if (existingEscrowTask) {
-      await db.task.update({
-        where: { id: existingEscrowTask.id },
-        data: escrowTaskData,
-      });
-    } else {
-      await db.task.create({
-        data: escrowTaskData,
-      });
-    }
+    });
   }
 
   // Default task 2: Broker file approved - due 7 days before closing
@@ -201,42 +195,120 @@ async function syncDefaultTasks(parseId: string, userId: string, parse: any): Pr
     const brokerFileDueDate = new Date(closingDate);
     brokerFileDueDate.setDate(brokerFileDueDate.getDate() - 7);
 
-    const existingBrokerTask = await db.task.findFirst({
-      where: {
-        parseId,
-        timelineEventId: brokerFileEventId,
-      },
-    });
-
-    const brokerTaskData = {
-      userId,
-      parseId,
-      taskTypes: [TASK_TYPES.BROKER],
+    await upsertDefaultTask(parseId, userId, parse, {
       timelineEventId: brokerFileEventId,
       title: 'Broker file approved',
       description: 'Broker file should be approved at least 7 days before closing',
-      propertyAddress: parse.propertyAddress || null,
-      amount: null,
+      taskTypes: [TASK_TYPES.BROKER],
       dueDate: brokerFileDueDate,
-      dueDateType: 'specific' as const,
-      dueDateValue: null,
-      status: existingBrokerTask?.status || TASK_STATUS.NOT_STARTED,
-      columnId: existingBrokerTask?.columnId || TASK_STATUS.NOT_STARTED,
-      sortOrder: existingBrokerTask?.sortOrder || 0,
-      isCustom: false,
-      completedAt: existingBrokerTask?.completedAt || null,
-    };
+    });
+  }
 
-    if (existingBrokerTask) {
-      await db.task.update({
-        where: { id: existingBrokerTask.id },
-        data: brokerTaskData,
-      });
-    } else {
-      await db.task.create({
-        data: brokerTaskData,
-      });
-    }
+  // Default task 3: Initial Deposit - if not waived
+  if (initialDepositDate && !isWaived('initialDeposit')) {
+    const initialDepositEventId = `${parseId}-initial-deposit`;
+
+    await upsertDefaultTask(parseId, userId, parse, {
+      timelineEventId: initialDepositEventId,
+      title: 'Initial Deposit Due',
+      description: 'Submit initial earnest money deposit',
+      taskTypes: [TASK_TYPES.ESCROW],
+      dueDate: initialDepositDate,
+      amount: parse.earnestMoneyDeposit?.amount || null,
+    });
+  }
+
+  // Default task 4: Inspection Contingency - if not waived
+  if (inspectionDate && !isWaived('inspectionContingency')) {
+    const inspectionEventId = `${parseId}-inspection-contingency`;
+
+    await upsertDefaultTask(parseId, userId, parse, {
+      timelineEventId: inspectionEventId,
+      title: 'Inspection Contingency',
+      description: 'Complete inspections and remove inspection contingency',
+      taskTypes: [TASK_TYPES.TIMELINE],
+      dueDate: inspectionDate,
+    });
+  }
+
+  // Default task 5: Appraisal Contingency - if not waived
+  if (appraisalDate && !isWaived('appraisalContingency')) {
+    const appraisalEventId = `${parseId}-appraisal-contingency`;
+
+    await upsertDefaultTask(parseId, userId, parse, {
+      timelineEventId: appraisalEventId,
+      title: 'Appraisal Contingency',
+      description: 'Complete appraisal and remove appraisal contingency',
+      taskTypes: [TASK_TYPES.LENDER],
+      dueDate: appraisalDate,
+    });
+  }
+
+  // Default task 6: Loan Contingency - if not waived
+  if (loanDate && !isWaived('loanContingency')) {
+    const loanEventId = `${parseId}-loan-contingency`;
+
+    await upsertDefaultTask(parseId, userId, parse, {
+      timelineEventId: loanEventId,
+      title: 'Loan Contingency',
+      description: 'Secure loan approval and remove loan contingency',
+      taskTypes: [TASK_TYPES.LENDER],
+      dueDate: loanDate,
+    });
+  }
+}
+
+/**
+ * Helper function to upsert a default task
+ */
+async function upsertDefaultTask(
+  parseId: string,
+  userId: string,
+  parse: any,
+  taskInfo: {
+    timelineEventId: string;
+    title: string;
+    description: string;
+    taskTypes: string[];
+    dueDate: Date;
+    amount?: number | null;
+  }
+): Promise<void> {
+  const existingTask = await db.task.findFirst({
+    where: {
+      parseId,
+      timelineEventId: taskInfo.timelineEventId,
+    },
+  });
+
+  const taskData = {
+    userId,
+    parseId,
+    taskTypes: taskInfo.taskTypes,
+    timelineEventId: taskInfo.timelineEventId,
+    title: taskInfo.title,
+    description: taskInfo.description,
+    propertyAddress: parse.propertyAddress || null,
+    amount: taskInfo.amount || null,
+    dueDate: taskInfo.dueDate,
+    dueDateType: 'specific' as const,
+    dueDateValue: null,
+    status: existingTask?.status || TASK_STATUS.NOT_STARTED,
+    columnId: existingTask?.columnId || TASK_STATUS.NOT_STARTED,
+    sortOrder: existingTask?.sortOrder || 0,
+    isCustom: false,
+    completedAt: existingTask?.completedAt || null,
+  };
+
+  if (existingTask) {
+    await db.task.update({
+      where: { id: existingTask.id },
+      data: taskData,
+    });
+  } else {
+    await db.task.create({
+      data: taskData,
+    });
   }
 }
 

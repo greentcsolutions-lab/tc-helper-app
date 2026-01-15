@@ -116,6 +116,7 @@ export interface UserTaskTemplate {
   description: string | null;
   fileType: FileType; // "listing" or "escrow"
   isDefaultForNewFiles: boolean; // Auto-generate tasks from this template on new files
+  isAiGenerated: boolean; // Special AI-generated template (doesn't count against limits)
 
   // Task Collection
   tasks: TemplateTask[];

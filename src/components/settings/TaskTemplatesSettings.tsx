@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { Plus, Trash2, Edit2, FileText } from "lucide-react";
 import { UserTaskTemplate } from "@/types/task";
 import CreateTemplateDialog from "./CreateTemplateDialog";
+import AIGeneratedTasksSettings from "./AIGeneratedTasksSettings";
 
 export default function TaskTemplatesSettings() {
   const [isLoading, setIsLoading] = useState(true);
@@ -90,14 +91,18 @@ export default function TaskTemplatesSettings() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
+      {/* AI Generated Tasks Section */}
+      <AIGeneratedTasksSettings />
+
+      {/* Regular Templates Section */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle>Task Templates</CardTitle>
+              <CardTitle>Custom Task Templates</CardTitle>
               <CardDescription>
-                Create reusable task templates for your transactions
+                Create your own reusable task templates for transactions
                 {planInfo && (
                   <span className="block mt-1">
                     {planInfo.templateCount} / {planInfo.templateLimit} templates used

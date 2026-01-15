@@ -23,8 +23,12 @@ export async function GET() {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
+    // Exclude AI-generated templates from regular template list
     const templates = await db.userTaskTemplate.findMany({
-      where: { userId: user.id },
+      where: {
+        userId: user.id,
+        isAiGenerated: false,
+      },
       orderBy: { createdAt: "desc" },
     });
 
