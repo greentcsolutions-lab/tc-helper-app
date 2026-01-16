@@ -14,6 +14,7 @@ interface ExtractionCategoriesProps {
   isEditing?: boolean;
   onDataChange?: (updatedData: ParseResult) => void;
   viewContext?: "left" | "right";
+  refetchTrigger?: number;
 }
 
 export default function ExtractionCategories({
@@ -21,6 +22,7 @@ export default function ExtractionCategories({
   isEditing = false,
   onDataChange,
   viewContext,
+  refetchTrigger = 0,
 }: ExtractionCategoriesProps) {
   
   if (viewContext === "left") {
@@ -49,6 +51,7 @@ export default function ExtractionCategories({
           data={data}
           isEditing={isEditing}
           onDataChange={onDataChange}
+          refetchTrigger={refetchTrigger}
         />
         <CategoryRepresentingParties
           data={data}
@@ -70,6 +73,7 @@ export default function ExtractionCategories({
         data={data}
         isEditing={isEditing}
         onDataChange={onDataChange}
+        refetchTrigger={refetchTrigger}
       />
       <CategoryRepresentingParties
         data={data}

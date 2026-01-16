@@ -40,6 +40,7 @@ export default function TransactionTable({
   const [editedData, setEditedData] = useState<ParseResult | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [refetchTrigger, setRefetchTrigger] = useState(0);
 
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -106,6 +107,9 @@ export default function TransactionTable({
       setEditedData(null);
 
       toast.success('Transaction updated successfully');
+
+      // Trigger tasks refetch in Timeline Component
+      setRefetchTrigger(prev => prev + 1);
 
       // Use Next.js router.refresh() for a smooth server-side refetch
       // This refreshes the data without a full page reload
@@ -232,6 +236,7 @@ export default function TransactionTable({
                               isEditing={isEditing}
                               onDataChange={handleDataChange}
                               viewContext="left"
+                              refetchTrigger={refetchTrigger}
                             />
                           </div>
                           <div className="space-y-6 md:border-l md:pl-8">
@@ -240,6 +245,7 @@ export default function TransactionTable({
                               isEditing={isEditing}
                               onDataChange={handleDataChange}
                               viewContext="right"
+                              refetchTrigger={refetchTrigger}
                             />
                             
                             {!isEditing && (
