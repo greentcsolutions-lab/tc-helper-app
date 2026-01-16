@@ -71,16 +71,23 @@ export async function syncCalendarToApp(userId: string): Promise<{
       if (!event.id) continue;
 
       // Check if this is an app-created event
-      const isAppEvent = event.extendedProperties?.private?.tcHelperId;
+      const isAppEvent = event.extendedProperties?.private?.tcHelperId ||
+                         event.extendedProperties?.private?.tcHelperParseId ||
+                         event.summary?.startsWith('[TC Helper]');
 
       if (isAppEvent) {
         // This is an app event - sync changes back to task
+        console.log(`[Calendar→App] Syncing app event: ${event.summary}`);
         await syncAppEventChanges(userId, event);
         totalUpdated++;
       } else {
         // This is an external event - check if it should be synced
+        console.log(`[Calendar→App] Processing external event: ${event.summary}`);
         const shouldSync = await shouldSyncExternalEvent(userId, event);
+        console.log(`[Calendar→App] Should sync "${event.summary}"? ${shouldSync}`);
+
         if (shouldSync) {
+          console.log(`[Calendar→App] Syncing external event: ${event.summary}`);
           await syncExternalEvent(userId, event);
           totalCreated++;
         } else {
@@ -226,8 +233,16 @@ async function shouldSyncExternalEvent(
   const description = event.description || '';
   const searchText = `${title} ${description}`.toLowerCase();
 
+  console.log(`[shouldSync] Checking event "${title}" with text: "${searchText}"`);
+
   // Try to match property address
   const match = await matchPropertyAddress(userId, searchText);
+
+  console.log(`[shouldSync] Match result for "${title}":`, {
+    confidence: match.confidence,
+    propertyAddress: match.propertyAddress,
+    matchScore: match.matchScore,
+  });
 
   return match.confidence !== 'none';
 }

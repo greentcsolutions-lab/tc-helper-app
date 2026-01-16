@@ -25,7 +25,11 @@ export async function matchPropertyAddress(
       },
     });
 
+    console.log(`[PropertyMatcher] Found ${parses.length} properties for user`);
+    console.log(`[PropertyMatcher] Searching text: "${text}"`);
+
     if (parses.length === 0) {
+      console.log(`[PropertyMatcher] No properties found for user`);
       return { propertyAddress: '', parseId: '', confidence: 'none' };
     }
 
@@ -54,10 +58,12 @@ export async function matchPropertyAddress(
       matchScore: 0,
     };
 
+    console.log(`[PropertyMatcher] Trying fuzzy matching...`);
     for (const parse of parses) {
       if (!parse.propertyAddress) continue;
 
       const score = fuzzyMatchAddress(textLower, parse.propertyAddress);
+      console.log(`[PropertyMatcher] Fuzzy score for "${parse.propertyAddress}": ${score}`);
 
       if (score > 70 && score > (bestMatch.matchScore || 0)) {
         bestMatch = {
@@ -69,6 +75,7 @@ export async function matchPropertyAddress(
       }
     }
 
+    console.log(`[PropertyMatcher] Best match:`, bestMatch);
     return bestMatch;
   } catch (error) {
     console.error('Error matching property address:', error);

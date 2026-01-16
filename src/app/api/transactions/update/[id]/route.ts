@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { currentUser } from '@clerk/nextjs/server';
 import { db } from '@/lib/prisma';
+import { syncTimelineEventsToCalendar } from '@/lib/google-calendar/sync-timeline-events';
 
 export async function PATCH(
   req: NextRequest,
@@ -46,6 +47,16 @@ export async function PATCH(
       where: { id: parseId },
       data: updates,
     });
+
+    // Trigger Google Calendar sync if timeline data was updated
+    if (updates.timelineDataStructured || updates.closingDate || updates.effectiveDate ||
+        updates.initialDepositDueDate || updates.sellerDeliveryOfDisclosuresDate ||
+        updates.contingencies) {
+      // Sync in background - don't wait for it
+      syncTimelineEventsToCalendar(parseId, dbUser.id).catch((error) => {
+        console.error('Failed to sync timeline events to calendar after update:', error);
+      });
+    }
 
     return NextResponse.json({
       success: true,
