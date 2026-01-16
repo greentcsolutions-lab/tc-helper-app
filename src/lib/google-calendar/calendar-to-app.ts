@@ -71,7 +71,8 @@ export async function syncCalendarToApp(userId: string): Promise<{
       if (!event.id) continue;
 
       // Check if this is an app-created event
-      const isAppEvent = event.extendedProperties?.private?.tcHelperId ||
+      const isAppEvent = event.extendedProperties?.private?.tcHelperTaskId ||
+                         event.extendedProperties?.private?.tcHelperId ||
                          event.extendedProperties?.private?.tcHelperParseId ||
                          event.summary?.startsWith('[TC Helper]');
 
@@ -151,62 +152,39 @@ export async function syncCalendarToApp(userId: string): Promise<{
 }
 
 /**
- * Syncs changes from a Google Calendar event back to the corresponding task or timeline event
+ * Syncs changes from a Google Calendar event back to the corresponding task
+ * Now we only update TASKS, not timelineDataStructured (which is immutable)
  */
 async function syncAppEventChanges(
   userId: string,
   event: calendar_v3.Schema$Event
 ): Promise<void> {
-  const taskId = event.extendedProperties?.private?.tcHelperId;
-  const parseId = event.extendedProperties?.private?.tcHelperParseId;
-  const eventKey = event.extendedProperties?.private?.tcHelperTimelineEventKey;
+  // Get taskId from new extended property format
+  const taskId = event.extendedProperties?.private?.tcHelperTaskId;
 
   // Parse dates
   const startDate = event.start?.date || event.start?.dateTime;
   if (!startDate) return;
 
-  // Extract title (remove [TC Helper] prefix if present)
+  // Extract title (no [TC Helper] prefix in new system, but handle legacy)
   let title = event.summary || '';
   if (title.startsWith('[TC Helper] ')) {
     title = title.substring(12);
   }
 
-  // Update timeline event if this is a timeline event
-  if (parseId && eventKey) {
-    try {
-      const parse = await prisma.parse.findUnique({
-        where: { id: parseId },
-        select: { userId: true, timelineDataStructured: true },
-      });
-
-      if (parse && parse.userId === userId) {
-        const timelineData = (parse.timelineDataStructured as any) || {};
-
-        if (timelineData[eventKey]) {
-          // Update the timeline event
-          timelineData[eventKey].effectiveDate = new Date(startDate).toISOString().split('T')[0];
-          timelineData[eventKey].displayName = title || timelineData[eventKey].displayName;
-          timelineData[eventKey].description = event.description || timelineData[eventKey].description;
-
-          // Save updated timeline data
-          await prisma.parse.update({
-            where: { id: parseId },
-            data: { timelineDataStructured: timelineData },
-          });
-        }
-      }
-    } catch (error) {
-      console.error('Error updating timeline event from calendar:', error);
-    }
-  }
-
-  // Update task if this event is linked to a task
+  // Update task if we have a taskId
   if (taskId) {
     const task = await prisma.task.findUnique({
       where: { id: taskId },
+      select: {
+        id: true,
+        userId: true,
+        description: true,
+      },
     });
 
     if (task && task.userId === userId) {
+      console.log(`[syncAppEventChanges] Updating task ${taskId} from calendar event`);
       // Update task
       await prisma.task.update({
         where: { id: taskId },
@@ -217,6 +195,64 @@ async function syncAppEventChanges(
           lastSyncedAt: new Date(),
         },
       });
+    } else {
+      console.log(`[syncAppEventChanges] Task ${taskId} not found or unauthorized`);
+    }
+  } else {
+    // Legacy event without tcHelperTaskId - try to find by old properties
+    const legacyTaskId = event.extendedProperties?.private?.tcHelperId;
+    const parseId = event.extendedProperties?.private?.tcHelperParseId;
+    const eventKey = event.extendedProperties?.private?.tcHelperTimelineEventKey;
+
+    if (legacyTaskId) {
+      // Old format with task ID
+      const task = await prisma.task.findUnique({
+        where: { id: legacyTaskId },
+        select: {
+          id: true,
+          userId: true,
+          description: true,
+        },
+      });
+
+      if (task && task.userId === userId) {
+        console.log(`[syncAppEventChanges] Updating legacy task ${legacyTaskId}`);
+        await prisma.task.update({
+          where: { id: legacyTaskId },
+          data: {
+            title,
+            dueDate: new Date(startDate),
+            description: event.description || task.description,
+            lastSyncedAt: new Date(),
+          },
+        });
+      }
+    } else if (parseId && eventKey) {
+      // Old timeline format - find task by parseId + timelineEventKey
+      const task = await prisma.task.findFirst({
+        where: {
+          parseId,
+          timelineEventKey: eventKey,
+          userId,
+        },
+        select: {
+          id: true,
+          description: true,
+        },
+      });
+
+      if (task) {
+        console.log(`[syncAppEventChanges] Updating task via parseId+eventKey: ${task.id}`);
+        await prisma.task.update({
+          where: { id: task.id },
+          data: {
+            title,
+            dueDate: new Date(startDate),
+            description: event.description || task.description,
+            lastSyncedAt: new Date(),
+          },
+        });
+      }
     }
   }
 }

@@ -1,14 +1,13 @@
 // src/lib/google-calendar/sync-timeline-events.ts
-// Syncs timeline events from Parse to Google Calendar
+// Syncs ALL tasks from database to Google Calendar
 
 import { getGoogleCalendarClient } from './client';
 import { prisma } from '@/lib/prisma';
-import { TimelineDataStructured, TimelineEventData, STANDARD_TIMELINE_EVENTS } from '@/types/timeline';
 import { EVENT_COLORS } from '@/types/calendar';
 
 /**
- * Syncs all timeline events from a parse to Google Calendar
- * This creates a 1:1 mirror of the timeline view in Google Calendar
+ * Syncs all tasks for a parse to Google Calendar
+ * Google Calendar now mirrors the TASKS database, not timelineDataStructured
  */
 export async function syncTimelineEventsToCalendar(
   parseId: string,
@@ -28,14 +27,12 @@ export async function syncTimelineEventsToCalendar(
       return { success: false, eventsSynced: 0, error: 'Calendar sync not enabled' };
     }
 
-    // Get the parse with timeline data
+    // Get the parse to check status
     const parse = await prisma.parse.findUnique({
       where: { id: parseId },
       select: {
         id: true,
         userId: true,
-        propertyAddress: true,
-        timelineDataStructured: true,
         status: true,
       },
     });
@@ -49,49 +46,55 @@ export async function syncTimelineEventsToCalendar(
       return { success: true, eventsSynced: 0 };
     }
 
-    const timelineData = (parse.timelineDataStructured as TimelineDataStructured) || {};
+    // Get ALL tasks for this parse (not just timeline tasks)
+    // Google Calendar syncs with ALL tasks now
+    const tasks = await prisma.task.findMany({
+      where: {
+        parseId,
+        userId,
+        archived: false,
+      },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        dueDate: true,
+        propertyAddress: true,
+        taskTypes: true,
+        googleCalendarEventId: true,
+        timelineEventKey: true,
+      },
+    });
+
+    console.log(`[syncTimelineEventsToCalendar] Syncing ${tasks.length} tasks for parse ${parseId}`);
+
     let eventsSynced = 0;
 
-    // Iterate through all timeline events
-    for (const [eventKey, eventData] of Object.entries(timelineData)) {
-      // Skip waived events
-      if (eventData.waived) {
-        continue;
-      }
-
-      // Skip events without dates
-      if (!eventData.effectiveDate) {
-        continue;
-      }
-
-      // Create or update calendar event
-      const result = await syncSingleTimelineEvent(
+    // Iterate through all tasks and sync to calendar
+    for (const task of tasks) {
+      const result = await syncSingleTaskToCalendar(
         calendar,
         settings.primaryCalendarId,
-        parse.propertyAddress || 'Unknown Property',
-        eventKey,
-        eventData,
-        parseId
+        task
       );
 
       if (result.googleEventId) {
-        // Store the calendar event ID back in the timeline data
-        eventData.googleCalendarEventId = result.googleEventId;
+        // Update the task with the calendar event ID
+        await prisma.task.update({
+          where: { id: task.id },
+          data: {
+            googleCalendarEventId: result.googleEventId,
+            syncedToCalendar: true,
+            lastSyncedAt: new Date(),
+          },
+        });
         eventsSynced++;
       }
     }
 
-    // Save updated timeline data with calendar event IDs
-    await prisma.parse.update({
-      where: { id: parseId },
-      data: {
-        timelineDataStructured: timelineData,
-      },
-    });
-
     return { success: true, eventsSynced };
   } catch (error) {
-    console.error('Error syncing timeline events to calendar:', error);
+    console.error('Error syncing tasks to calendar:', error);
     return {
       success: false,
       eventsSynced: 0,
@@ -101,41 +104,50 @@ export async function syncTimelineEventsToCalendar(
 }
 
 /**
- * Syncs a single timeline event to Google Calendar
+ * Syncs a single task to Google Calendar
+ * NO [TC Helper] prefix - events go to a separate TC Helper calendar
  */
-async function syncSingleTimelineEvent(
+async function syncSingleTaskToCalendar(
   calendar: any,
   calendarId: string,
-  propertyAddress: string,
-  eventKey: string,
-  eventData: TimelineEventData & { googleCalendarEventId?: string },
-  parseId: string
+  task: {
+    id: string;
+    title: string;
+    description: string | null;
+    dueDate: Date;
+    propertyAddress: string | null;
+    taskTypes: string[];
+    googleCalendarEventId: string | null;
+    timelineEventKey: string | null;
+  }
 ): Promise<{ googleEventId?: string; error?: string }> {
   try {
-    const eventDate = new Date(eventData.effectiveDate!);
+    const eventDate = new Date(task.dueDate);
     const endDate = new Date(eventDate);
     endDate.setHours(23, 59, 59, 999);
 
-    // Get display name for the event
-    const displayName = getDisplayNameForEvent(eventKey, eventData);
-
-    // Build title
-    const title = `[TC Helper] ${displayName}`;
+    // Build title - NO [TC Helper] prefix
+    const title = task.title;
 
     // Build description
-    let description = `Property: ${propertyAddress}\n`;
-    if (eventData.description) {
-      description += `${eventData.description}\n`;
+    let description = '';
+    if (task.propertyAddress) {
+      description += `Property: ${task.propertyAddress}\n`;
+    }
+    if (task.description) {
+      description += `${task.description}\n`;
     }
 
-    // Determine color based on event type
+    // Determine color based on task types
     let colorId: string = EVENT_COLORS.TIMELINE;
-    if (eventKey.includes('contingency') || eventKey.includes('Contingency')) {
+    if (task.taskTypes.includes('escrow')) {
+      colorId = EVENT_COLORS.ESCROW;
+    } else if (task.taskTypes.includes('lender')) {
+      colorId = EVENT_COLORS.LENDER;
+    } else if (task.taskTypes.includes('broker')) {
+      colorId = EVENT_COLORS.BROKER;
+    } else if (task.timelineEventKey?.toLowerCase().includes('contingency')) {
       colorId = EVENT_COLORS.CUSTOM; // Cyan for contingencies
-    } else if (eventKey === STANDARD_TIMELINE_EVENTS.CLOSING || eventKey === 'closing') {
-      colorId = EVENT_COLORS.ESCROW; // Green for closing
-    } else if (eventKey.includes('deposit') || eventKey.includes('Deposit')) {
-      colorId = EVENT_COLORS.ESCROW; // Green for deposits
     }
 
     const calendarEvent = {
@@ -150,83 +162,71 @@ async function syncSingleTimelineEvent(
       colorId,
       extendedProperties: {
         private: {
-          tcHelperParseId: parseId,
-          tcHelperTimelineEventKey: eventKey,
-          tcHelperType: 'timeline',
+          tcHelperTaskId: task.id, // Store taskId instead of parseId/eventKey
+          tcHelperType: 'task',
         },
       },
     };
 
     // Check if event already exists in calendar
-    if (eventData.googleCalendarEventId) {
+    if (task.googleCalendarEventId) {
       try {
         // Update existing event
         const response = await calendar.events.update({
           calendarId,
-          eventId: eventData.googleCalendarEventId,
+          eventId: task.googleCalendarEventId,
           requestBody: calendarEvent,
         });
 
+        console.log(`[syncSingleTask] Updated calendar event for task ${task.id}`);
         return { googleEventId: response.data.id || undefined };
       } catch (updateError: any) {
         // If update fails (event might not exist), fall through to search/create
         if (updateError?.code === 404) {
-          // Event ID is invalid, clear it and search for existing event
-          eventData.googleCalendarEventId = undefined;
+          console.log(`[syncSingleTask] Event ${task.googleCalendarEventId} not found, will search/create`);
         } else {
           throw updateError;
         }
       }
     }
 
-    // Search for existing event by title and date before creating
+    // Search for existing event by taskId before creating
     // This prevents duplicates when googleCalendarEventId is missing or stale
-    if (!eventData.googleCalendarEventId) {
-      try {
-        // Search for all TC Helper events on this date
-        const searchResponse = await calendar.events.list({
+    try {
+      // Search for events on this date
+      const searchResponse = await calendar.events.list({
+        calendarId,
+        timeMin: eventDate.toISOString(),
+        timeMax: endDate.toISOString(),
+        singleEvents: true,
+        maxResults: 50,
+      });
+
+      const existingEvents = searchResponse.data.items || [];
+
+      // Try to find matching event by taskId
+      const matchingEvent = existingEvents.find((event: any) => {
+        return event.extendedProperties?.private?.tcHelperTaskId === task.id;
+      });
+
+      if (matchingEvent?.id) {
+        console.log(`[syncSingleTask] Found existing event for task ${task.id}, updating`);
+        // Found existing event - update it instead of creating new
+        const response = await calendar.events.update({
           calendarId,
-          timeMin: eventDate.toISOString(),
-          timeMax: endDate.toISOString(),
-          singleEvents: true,
-          maxResults: 50,
+          eventId: matchingEvent.id,
+          requestBody: calendarEvent,
         });
 
-        const existingEvents = searchResponse.data.items || [];
-
-        // Try to find matching event by multiple criteria
-        const matchingEvent = existingEvents.find((event: any) => {
-          // Must be a TC Helper event
-          if (!event.summary?.startsWith('[TC Helper]')) return false;
-
-          // Check if this event matches our criteria
-          const isSameTitle = event.summary === title;
-          const isSameParse = event.extendedProperties?.private?.tcHelperParseId === parseId;
-          const isSameEventKey = event.extendedProperties?.private?.tcHelperTimelineEventKey === eventKey;
-
-          // Match if title is the same AND (parse matches OR eventKey matches)
-          return isSameTitle && (isSameParse || isSameEventKey);
-        });
-
-        if (matchingEvent?.id) {
-          console.log(`Found existing event for ${eventKey}, updating instead of creating`);
-          // Found existing event - update it instead of creating new
-          const response = await calendar.events.update({
-            calendarId,
-            eventId: matchingEvent.id,
-            requestBody: calendarEvent,
-          });
-
-          return { googleEventId: response.data.id || undefined };
-        }
-      } catch (searchError) {
-        console.error('Error searching for existing event:', searchError);
-        // Continue to create new event if search fails
+        return { googleEventId: response.data.id || undefined };
       }
+    } catch (searchError) {
+      console.error('Error searching for existing event:', searchError);
+      // Continue to create new event if search fails
     }
 
     // No existing event found - create new one
-    console.log(`Creating new calendar event for ${eventKey}`);
+    console.log(`[syncSingleTask] Creating new calendar event for task ${task.id}`);
     const response = await calendar.events.insert({
       calendarId,
       requestBody: calendarEvent,
@@ -234,49 +234,13 @@ async function syncSingleTimelineEvent(
 
     return { googleEventId: response.data.id || undefined };
   } catch (error) {
-    console.error(`Error syncing timeline event ${eventKey}:`, error);
+    console.error(`Error syncing task ${task.id}:`, error);
     return { error: error instanceof Error ? error.message : 'Unknown error' };
   }
 }
 
 /**
- * Gets a user-friendly display name for a timeline event
- */
-function getDisplayNameForEvent(eventKey: string, eventData: TimelineEventData): string {
-  // Use displayName if provided
-  if (eventData.displayName) {
-    return eventData.displayName;
-  }
-
-  // Map common event keys to display names
-  const displayNames: Record<string, string> = {
-    acceptance: 'Acceptance',
-    initialDeposit: 'Initial Deposit Due',
-    sellerDisclosures: 'Seller Disclosures Delivery',
-    buyerReviewPeriod: 'Buyer Review Period Ends',
-    inspectionContingency: 'Inspection Contingency',
-    appraisalContingency: 'Appraisal Contingency',
-    loanContingency: 'Loan Contingency',
-    closing: 'Closing',
-  };
-
-  return displayNames[eventKey] || formatEventKey(eventKey);
-}
-
-/**
- * Formats an event key into a readable display name
- * e.g., "inspectionContingency" -> "Inspection Contingency"
- */
-function formatEventKey(key: string): string {
-  // Insert spaces before capitals and capitalize first letter
-  return key
-    .replace(/([A-Z])/g, ' $1')
-    .replace(/^./, (str) => str.toUpperCase())
-    .trim();
-}
-
-/**
- * Deletes all timeline calendar events for a parse
+ * Deletes all task calendar events for a parse
  * Called when a parse is deleted or archived
  */
 export async function deleteTimelineEventsFromCalendar(
@@ -297,41 +261,48 @@ export async function deleteTimelineEventsFromCalendar(
       return { success: true, eventsDeleted: 0 };
     }
 
-    // Get the parse with timeline data
-    const parse = await prisma.parse.findUnique({
-      where: { id: parseId },
+    // Get all tasks for this parse
+    const tasks = await prisma.task.findMany({
+      where: {
+        parseId,
+        googleCalendarEventId: { not: null },
+      },
       select: {
-        timelineDataStructured: true,
+        id: true,
+        googleCalendarEventId: true,
       },
     });
 
-    if (!parse) {
-      return { success: false, eventsDeleted: 0, error: 'Parse not found' };
-    }
-
-    const timelineData = (parse.timelineDataStructured as TimelineDataStructured) || {};
     let eventsDeleted = 0;
 
     // Delete each calendar event
-    for (const eventData of Object.values(timelineData)) {
-      const typedEventData = eventData as TimelineEventData & { googleCalendarEventId?: string };
-
-      if (typedEventData.googleCalendarEventId) {
+    for (const task of tasks) {
+      if (task.googleCalendarEventId) {
         try {
           await calendar.events.delete({
             calendarId: settings.primaryCalendarId,
-            eventId: typedEventData.googleCalendarEventId,
+            eventId: task.googleCalendarEventId,
           });
+
+          // Clear the calendar event ID from the task
+          await prisma.task.update({
+            where: { id: task.id },
+            data: {
+              googleCalendarEventId: null,
+              syncedToCalendar: false,
+            },
+          });
+
           eventsDeleted++;
         } catch (error) {
-          console.error(`Failed to delete calendar event ${typedEventData.googleCalendarEventId}:`, error);
+          console.error(`Failed to delete calendar event ${task.googleCalendarEventId}:`, error);
         }
       }
     }
 
     return { success: true, eventsDeleted };
   } catch (error) {
-    console.error('Error deleting timeline events from calendar:', error);
+    console.error('Error deleting task calendar events:', error);
     return {
       success: false,
       eventsDeleted: 0,
