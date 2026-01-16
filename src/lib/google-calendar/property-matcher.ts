@@ -79,38 +79,61 @@ export async function matchPropertyAddress(
 /**
  * Fuzzy matching algorithm for addresses
  * Returns a score from 0-100
+ *
+ * Handles partial matches like:
+ * - "El Lobo Center" matches "21759 El Lobo Ctr"
+ * - "Main Street" matches "123 Main St, Sacramento, CA"
  */
 function fuzzyMatchAddress(text: string, address: string): number {
   const addressLower = address.toLowerCase();
 
-  // Extract street number and name from address
-  const addressMatch = addressLower.match(/^(\d+)\s+([a-z\s]+)/);
+  // Normalize both text and address for better matching
+  const normalizedText = normalizeAddress(text);
+  const normalizedAddress = normalizeAddress(address);
+
+  // Extract components from address
+  const addressMatch = addressLower.match(/^(\d+)?\s*([a-z\s]+?)(?:,|$)/);
   if (!addressMatch) return 0;
 
-  const streetNumber = addressMatch[1];
+  const streetNumber = addressMatch[1] || '';
   const streetName = addressMatch[2].trim();
 
-  // Check if text contains street number
-  const hasStreetNumber = text.includes(streetNumber);
-  if (!hasStreetNumber) return 0;
+  // Split street name into significant words (> 2 chars)
+  const streetNameWords = streetName
+    .split(/\s+/)
+    .filter((w) => w.length > 2 && !['the', 'and', 'for'].includes(w));
 
-  // Check for street name match
-  const streetNameWords = streetName.split(/\s+/).filter((w) => w.length > 2);
+  if (streetNameWords.length === 0) return 0;
+
+  let score = 0;
   let matchedWords = 0;
 
+  // Check for street name words in text
   for (const word of streetNameWords) {
-    if (text.includes(word)) {
+    if (normalizedText.includes(word)) {
       matchedWords++;
     }
   }
 
-  // Calculate score
-  const streetNumberScore = 40; // Street number match is worth 40 points
-  const streetNameScore = streetNameWords.length > 0
-    ? (matchedWords / streetNameWords.length) * 60
-    : 0; // Street name match is worth up to 60 points
+  // Calculate street name match score (0-70 points)
+  const streetNameMatchRatio = matchedWords / streetNameWords.length;
+  score += streetNameMatchRatio * 70;
 
-  return streetNumberScore + streetNameScore;
+  // Bonus points for street number match (0-30 points)
+  if (streetNumber && normalizedText.includes(streetNumber)) {
+    score += 30;
+  }
+
+  // Bonus for matching multiple consecutive words (indicates stronger match)
+  if (streetNameWords.length >= 2 && matchedWords >= 2) {
+    // Check if words appear consecutively in text
+    const streetNamePhrase = streetNameWords.join(' ');
+    if (normalizedText.includes(streetNamePhrase)) {
+      score += 10; // Bonus for consecutive word match
+    }
+  }
+
+  return Math.min(100, score);
 }
 
 /**
@@ -134,10 +157,12 @@ export function extractPotentialAddresses(text: string): string[] {
 
 /**
  * Normalizes an address for better matching
+ * Converts common variations to standard forms
  */
 export function normalizeAddress(address: string): string {
   return address
     .toLowerCase()
+    // Street type abbreviations
     .replace(/\bstreet\b/g, 'st')
     .replace(/\bavenue\b/g, 'ave')
     .replace(/\broad\b/g, 'rd')
@@ -148,6 +173,21 @@ export function normalizeAddress(address: string): string {
     .replace(/\bcircle\b/g, 'cir')
     .replace(/\bplace\b/g, 'pl')
     .replace(/\bway\b/g, 'wy')
+    // Handle "center" variations
+    .replace(/\bcenter\b/g, 'ctr')
+    .replace(/\bcentre\b/g, 'ctr')
+    // Handle "parkway" variations
+    .replace(/\bparkway\b/g, 'pkwy')
+    // Handle directional abbreviations
+    .replace(/\bnorth\b/g, 'n')
+    .replace(/\bsouth\b/g, 's')
+    .replace(/\beast\b/g, 'e')
+    .replace(/\bwest\b/g, 'w')
+    .replace(/\bnortheast\b/g, 'ne')
+    .replace(/\bnorthwest\b/g, 'nw')
+    .replace(/\bsoutheast\b/g, 'se')
+    .replace(/\bsouthwest\b/g, 'sw')
+    // Remove punctuation and extra spaces
     .replace(/[,\.]/g, '')
     .replace(/\s+/g, ' ')
     .trim();

@@ -180,27 +180,36 @@ async function syncSingleTimelineEvent(
     }
 
     // Search for existing event by title and date before creating
+    // This prevents duplicates when googleCalendarEventId is missing or stale
     if (!eventData.googleCalendarEventId) {
       try {
+        // Search for all TC Helper events on this date
         const searchResponse = await calendar.events.list({
           calendarId,
           timeMin: eventDate.toISOString(),
           timeMax: endDate.toISOString(),
-          q: title,
           singleEvents: true,
+          maxResults: 50,
         });
 
         const existingEvents = searchResponse.data.items || [];
+
+        // Try to find matching event by multiple criteria
         const matchingEvent = existingEvents.find((event: any) => {
-          // Check if this event matches our title and has our extended properties
+          // Must be a TC Helper event
+          if (!event.summary?.startsWith('[TC Helper]')) return false;
+
+          // Check if this event matches our criteria
           const isSameTitle = event.summary === title;
           const isSameParse = event.extendedProperties?.private?.tcHelperParseId === parseId;
           const isSameEventKey = event.extendedProperties?.private?.tcHelperTimelineEventKey === eventKey;
 
+          // Match if title is the same AND (parse matches OR eventKey matches)
           return isSameTitle && (isSameParse || isSameEventKey);
         });
 
         if (matchingEvent?.id) {
+          console.log(`Found existing event for ${eventKey}, updating instead of creating`);
           // Found existing event - update it instead of creating new
           const response = await calendar.events.update({
             calendarId,
@@ -217,6 +226,7 @@ async function syncSingleTimelineEvent(
     }
 
     // No existing event found - create new one
+    console.log(`Creating new calendar event for ${eventKey}`);
     const response = await calendar.events.insert({
       calendarId,
       requestBody: calendarEvent,

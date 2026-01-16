@@ -273,23 +273,33 @@ async function syncExternalEvent(
     taskTypes = inference.taskTypes.length > 0 ? inference.taskTypes : ['timeline'];
   }
 
-  // Create task
-  const task = await prisma.task.create({
-    data: {
-      userId,
-      parseId: match.parseId || null,
-      title,
-      description,
-      propertyAddress: match.propertyAddress,
-      dueDate: new Date(startDate),
-      dueDateType: 'specific',
-      status: TASK_STATUS.NOT_STARTED,
-      taskTypes, // Array of task types
-      isCustom: true,
-      googleCalendarEventId: event.id,
-      syncedToCalendar: true,
-      lastSyncedAt: new Date(),
-    },
+  // Create task and increment custom task count in a transaction
+  const task = await prisma.$transaction(async (tx) => {
+    const newTask = await tx.task.create({
+      data: {
+        userId,
+        parseId: match.parseId || null,
+        title,
+        description,
+        propertyAddress: match.propertyAddress,
+        dueDate: new Date(startDate),
+        dueDateType: 'specific',
+        status: TASK_STATUS.NOT_STARTED,
+        taskTypes, // Array of task types
+        isCustom: true, // External events count toward custom task limit
+        googleCalendarEventId: event.id,
+        syncedToCalendar: true,
+        lastSyncedAt: new Date(),
+      },
+    });
+
+    // Increment custom task count (external events count as custom tasks)
+    await tx.user.update({
+      where: { id: userId },
+      data: { customTaskCount: { increment: 1 } },
+    });
+
+    return newTask;
   });
 
   // Add event to Parse timeline if we have a parseId match
