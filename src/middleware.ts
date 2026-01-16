@@ -1,11 +1,10 @@
 // src/middleware.ts
-// Updated 2026-01-08 – Safe Clerk auth handling + Prisma Postgres/Accelerate compatibility
-// Protects routes, redirects unauth to sign-in, forces onboarding if no DB user
-// Uses auth().userId (always reliable) – avoids accessing .user object (can be undefined on cold starts)
+// Updated 2026-01-16 – Lightweight middleware with no DB calls
+// Protects routes, redirects unauth to sign-in
+// Onboarding checks moved to individual pages for performance
 
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
-import { db } from "@/lib/prisma";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -36,16 +35,8 @@ export default clerkMiddleware(async (auth, req) => {
       return NextResponse.redirect(new URL("/sign-in", req.url));
     }
 
-    // Signed in – check if DB record exists
-    const user = await db.user.findUnique({
-      where: { clerkId: userId },
-      select: { id: true },
-    });
-
-    // No DB record → force onboarding (except when already on onboarding)
-    if (!user && req.nextUrl.pathname !== "/onboarding") {
-      return NextResponse.redirect(new URL("/onboarding", req.url));
-    }
+    // Note: Onboarding check removed from middleware for performance
+    // Individual pages will handle onboarding redirect as needed
   }
 });
 
