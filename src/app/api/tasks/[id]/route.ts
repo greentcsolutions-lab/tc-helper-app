@@ -114,16 +114,19 @@ export async function PATCH(
     });
 
     // Sync to Google Calendar (async, don't wait for completion)
-    if (wasArchived) {
-      // Move to archived calendar
-      archiveTaskInCalendar(dbUser.id, id).catch((error) => {
-        console.error('Failed to archive task in calendar:', error);
-      });
-    } else {
-      // Regular update sync
-      syncTaskToCalendar(dbUser.id, id).catch((error) => {
-        console.error('Failed to sync task to calendar:', error);
-      });
+    // Only sync timeline tasks automatically
+    if (updatedTask.taskTypes.includes('timeline')) {
+      if (wasArchived) {
+        // Move to archived calendar
+        archiveTaskInCalendar(dbUser.id, id).catch((error) => {
+          console.error('Failed to archive task in calendar:', error);
+        });
+      } else {
+        // Regular update sync
+        syncTaskToCalendar(dbUser.id, id).catch((error) => {
+          console.error('Failed to sync task to calendar:', error);
+        });
+      }
     }
 
     // Sync task changes back to timeline (if task has TIMELINE category and dueDate changed)
@@ -172,7 +175,7 @@ export async function DELETE(
     // Verify task belongs to user
     const task = await db.task.findUnique({
       where: { id },
-      select: { userId: true, isCustom: true },
+      select: { userId: true, isCustom: true, taskTypes: true },
     });
 
     if (!task) {
@@ -184,10 +187,13 @@ export async function DELETE(
     }
 
     // Delete from Google Calendar first (before deleting from database)
-    await deleteTaskFromCalendar(dbUser.id, id).catch((error) => {
-      console.error('Failed to delete task from calendar:', error);
-      // Continue with deletion even if calendar sync fails
-    });
+    // Only delete if it's a timeline task (only timeline tasks sync to calendar)
+    if (task.taskTypes.includes('timeline')) {
+      await deleteTaskFromCalendar(dbUser.id, id).catch((error) => {
+        console.error('Failed to delete task from calendar:', error);
+        // Continue with deletion even if calendar sync fails
+      });
+    }
 
     // Delete the task and decrement custom task count if it's a custom task
     await db.$transaction(async (tx) => {

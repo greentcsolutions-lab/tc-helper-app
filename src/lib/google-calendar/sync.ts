@@ -228,15 +228,18 @@ export async function performInitialSync(userId: string): Promise<SyncResult> {
       };
     }
 
-    // Get all non-archived tasks
+    // Get all non-archived timeline tasks only
     const tasks = await prisma.task.findMany({
       where: {
         userId,
         archived: false,
+        taskTypes: {
+          has: 'timeline', // Only sync timeline tasks automatically
+        },
       },
     });
 
-    // Sync each task
+    // Sync each timeline task
     for (const task of tasks) {
       const result = await syncTaskToCalendar(userId, task.id);
 

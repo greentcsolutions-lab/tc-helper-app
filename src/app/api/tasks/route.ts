@@ -209,11 +209,14 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Sync to Google Calendar (async, don't wait for completion)
-    syncTaskToCalendar(dbUser.id, result.id).catch((error) => {
-      console.error('Failed to sync task to calendar:', error);
-      // Don't fail the request if calendar sync fails
-    });
+    // Only auto-sync timeline tasks to Google Calendar
+    // Custom tasks can opt-in via UI (future feature)
+    if (taskTypes.includes('timeline')) {
+      syncTaskToCalendar(dbUser.id, result.id).catch((error) => {
+        console.error('Failed to sync task to calendar:', error);
+        // Don't fail the request if calendar sync fails
+      });
+    }
 
     return NextResponse.json({ task: result }, { status: 201 });
   } catch (error) {
