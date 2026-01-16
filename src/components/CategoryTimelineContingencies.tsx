@@ -25,12 +25,14 @@ interface CategoryTimelineContingenciesProps {
   data: ParseResult;
   isEditing?: boolean;
   onDataChange?: (updatedData: ParseResult) => void;
+  refetchTrigger?: number; // Increment this to trigger a refetch
 }
 
 export default function CategoryTimelineContingencies({
   data,
   isEditing = false,
   onDataChange,
+  refetchTrigger = 0,
 }: CategoryTimelineContingenciesProps) {
   const cont = data.contingencies;
   const [timelineTasks, setTimelineTasks] = useState<TimelineTask[]>([]);
@@ -65,7 +67,7 @@ export default function CategoryTimelineContingencies({
     }
 
     fetchTimelineTasks();
-  }, [data.id]);
+  }, [data.id, refetchTrigger]); // Refetch when parseId or refetchTrigger changes
 
   // Define non-waivable events (these should never show waived checkbox)
   const NON_WAIVABLE_EVENTS = ['acceptance', 'closing', 'initialDeposit'];
@@ -296,6 +298,17 @@ export default function CategoryTimelineContingencies({
 
       // Get the task to preserve other metadata
       const task = timelineTasks.find(t => t.timelineEventKey === eventKey);
+
+      // Optimistically update local task state for immediate UI feedback
+      if (task && val) {
+        setTimelineTasks(prev =>
+          prev.map(t =>
+            t.timelineEventKey === eventKey
+              ? { ...t, dueDate: val } // Update the dueDate
+              : t
+          )
+        );
+      }
 
       // Update timelineDataStructured with new effectiveDate
       // The API will intercept this and update the task instead

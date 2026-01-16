@@ -123,8 +123,15 @@ async function syncSingleTaskToCalendar(
 ): Promise<{ googleEventId?: string; error?: string }> {
   try {
     const eventDate = new Date(task.dueDate);
-    const endDate = new Date(eventDate);
-    endDate.setHours(23, 59, 59, 999);
+
+    // For all-day events, use simple date strings without time manipulation
+    // Google Calendar end date is EXCLUSIVE, so add 1 day using UTC to avoid timezone issues
+    const startDateStr = eventDate.toISOString().split('T')[0];
+    const endDateObj = new Date(eventDate);
+    endDateObj.setUTCDate(endDateObj.getUTCDate() + 1); // Add 1 day in UTC
+    const endDateStr = endDateObj.toISOString().split('T')[0];
+
+    console.log(`[syncSingleTask] Task ${task.id} - dueDate: ${task.dueDate}, startDateStr: ${startDateStr}, endDateStr: ${endDateStr}`);
 
     // Build title - NO [TC Helper] prefix
     const title = task.title;
@@ -154,10 +161,10 @@ async function syncSingleTaskToCalendar(
       summary: title,
       description: description.trim() || undefined,
       start: {
-        date: eventDate.toISOString().split('T')[0],
+        date: startDateStr,
       },
       end: {
-        date: endDate.toISOString().split('T')[0],
+        date: endDateStr,
       },
       colorId,
       extendedProperties: {

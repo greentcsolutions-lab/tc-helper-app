@@ -68,30 +68,39 @@ export async function syncCalendarToApp(userId: string): Promise<{
     for (const event of events) {
       totalProcessed++;
 
-      if (!event.id) continue;
+      if (!event.id) {
+        console.log(`[Calendar→App] Skipping event with no ID`);
+        continue;
+      }
 
       // Check if this is an app-created event
-      const isAppEvent = event.extendedProperties?.private?.tcHelperTaskId ||
-                         event.extendedProperties?.private?.tcHelperId ||
-                         event.extendedProperties?.private?.tcHelperParseId ||
-                         event.summary?.startsWith('[TC Helper]');
+      const hasTaskId = !!event.extendedProperties?.private?.tcHelperTaskId;
+      const hasLegacyId = !!event.extendedProperties?.private?.tcHelperId;
+      const hasParseId = !!event.extendedProperties?.private?.tcHelperParseId;
+      const hasPrefix = event.summary?.startsWith('[TC Helper]');
+
+      const isAppEvent = hasTaskId || hasLegacyId || hasParseId || hasPrefix;
+
+      console.log(`[Calendar→App] Processing event "${event.summary}" (ID: ${event.id})`);
+      console.log(`[Calendar→App]   isAppEvent: ${isAppEvent} (taskId: ${hasTaskId}, legacyId: ${hasLegacyId}, parseId: ${hasParseId}, prefix: ${hasPrefix})`);
 
       if (isAppEvent) {
         // This is an app event - sync changes back to task
-        console.log(`[Calendar→App] Syncing app event: ${event.summary}`);
+        console.log(`[Calendar→App]   → App event - syncing changes back to task`);
         await syncAppEventChanges(userId, event);
         totalUpdated++;
       } else {
         // This is an external event - check if it should be synced
-        console.log(`[Calendar→App] Processing external event: ${event.summary}`);
+        console.log(`[Calendar→App]   → External event - checking if should sync`);
         const shouldSync = await shouldSyncExternalEvent(userId, event);
-        console.log(`[Calendar→App] Should sync "${event.summary}"? ${shouldSync}`);
+        console.log(`[Calendar→App]   → shouldSync result: ${shouldSync}`);
 
         if (shouldSync) {
-          console.log(`[Calendar→App] Syncing external event: ${event.summary}`);
+          console.log(`[Calendar→App]   → Syncing external event to app`);
           await syncExternalEvent(userId, event);
           totalCreated++;
         } else {
+          console.log(`[Calendar→App]   → Not syncing - storing as non-app event for display`);
           // Store as CalendarEvent for grayed-out display
           await storeNonAppEvent(userId, event, settings.primaryCalendarId);
         }
@@ -269,18 +278,26 @@ async function shouldSyncExternalEvent(
   const description = event.description || '';
   const searchText = `${title} ${description}`.toLowerCase();
 
-  console.log(`[shouldSync] Checking event "${title}" with text: "${searchText}"`);
+  console.log(`[shouldSync] ================================================`);
+  console.log(`[shouldSync] Evaluating external event: "${title}"`);
+  console.log(`[shouldSync] Event ID: ${event.id}`);
+  console.log(`[shouldSync] Description: "${description}"`);
+  console.log(`[shouldSync] Search text: "${searchText}"`);
 
   // Try to match property address
   const match = await matchPropertyAddress(userId, searchText);
 
-  console.log(`[shouldSync] Match result for "${title}":`, {
-    confidence: match.confidence,
-    propertyAddress: match.propertyAddress,
-    matchScore: match.matchScore,
-  });
+  console.log(`[shouldSync] Property match result:`);
+  console.log(`[shouldSync]   - Confidence: ${match.confidence}`);
+  console.log(`[shouldSync]   - Property: ${match.propertyAddress || 'none'}`);
+  console.log(`[shouldSync]   - Parse ID: ${match.parseId || 'none'}`);
+  console.log(`[shouldSync]   - Match score: ${match.matchScore}`);
 
-  return match.confidence !== 'none';
+  const shouldSync = match.confidence !== 'none';
+  console.log(`[shouldSync] DECISION: ${shouldSync ? 'SYNC' : 'DO NOT SYNC'}`);
+  console.log(`[shouldSync] ================================================`);
+
+  return shouldSync;
 }
 
 /**
@@ -290,7 +307,12 @@ async function syncExternalEvent(
   userId: string,
   event: calendar_v3.Schema$Event
 ): Promise<void> {
-  if (!event.id || !event.start) return;
+  console.log(`[syncExternalEvent] Starting sync for event: ${event.summary} (${event.id})`);
+
+  if (!event.id || !event.start) {
+    console.log(`[syncExternalEvent] Missing event ID or start date - skipping`);
+    return;
+  }
 
   // Check if we've already synced this event
   const existingEvent = await prisma.calendarEvent.findUnique({
@@ -298,19 +320,34 @@ async function syncExternalEvent(
   });
 
   if (existingEvent && existingEvent.isAppEvent) {
+    console.log(`[syncExternalEvent] Event already synced as app event - skipping`);
     return; // Already synced
   }
+
+  console.log(`[syncExternalEvent] Event not yet synced - proceeding with creation`);
 
   const title = event.summary || 'Untitled Event';
   const description = event.description || null;
   const startDate = event.start.date || event.start.dateTime;
-  if (!startDate) return;
+
+  console.log(`[syncExternalEvent] Title: ${title}`);
+  console.log(`[syncExternalEvent] Start date: ${startDate}`);
+
+  if (!startDate) {
+    console.log(`[syncExternalEvent] No start date - skipping`);
+    return;
+  }
 
   // Match property address
   const searchText = `${title} ${description || ''}`.toLowerCase();
+  console.log(`[syncExternalEvent] Matching property for: "${searchText}"`);
+
   const match = await matchPropertyAddress(userId, searchText);
 
+  console.log(`[syncExternalEvent] Property match result: confidence=${match.confidence}, property=${match.propertyAddress}`);
+
   if (match.confidence === 'none') {
+    console.log(`[syncExternalEvent] No property match - skipping task creation`);
     return; // No property match
   }
 
@@ -318,13 +355,26 @@ async function syncExternalEvent(
   const user = await prisma.user.findUnique({ where: { id: userId } });
   let taskTypes = ['timeline']; // Default
 
+  console.log(`[syncExternalEvent] User plan: ${(user as any)?.planType || 'unknown'}`);
+
   // AI inference for BASIC plan users
   if (user && (user as any).planType === 'BASIC') {
+    console.log(`[syncExternalEvent] Running AI inference for task types`);
     const inference = await inferTaskTypes(title, description || '', match.propertyAddress);
     taskTypes = inference.taskTypes.length > 0 ? inference.taskTypes : ['timeline'];
+    console.log(`[syncExternalEvent] Inferred task types: ${taskTypes.join(', ')}`);
+  } else {
+    console.log(`[syncExternalEvent] Using default task types: timeline`);
   }
 
   // Create task and increment custom task count in a transaction
+  console.log(`[syncExternalEvent] Creating task in database...`);
+  console.log(`[syncExternalEvent]   - Title: ${title}`);
+  console.log(`[syncExternalEvent]   - Property: ${match.propertyAddress}`);
+  console.log(`[syncExternalEvent]   - ParseId: ${match.parseId || 'none'}`);
+  console.log(`[syncExternalEvent]   - Due date: ${startDate}`);
+  console.log(`[syncExternalEvent]   - Task types: ${taskTypes.join(', ')}`);
+
   const task = await prisma.$transaction(async (tx) => {
     const newTask = await tx.task.create({
       data: {
@@ -344,14 +394,20 @@ async function syncExternalEvent(
       },
     });
 
+    console.log(`[syncExternalEvent] Task created with ID: ${newTask.id}`);
+
     // Increment custom task count (external events count as custom tasks)
     await tx.user.update({
       where: { id: userId },
       data: { customTaskCount: { increment: 1 } },
     });
 
+    console.log(`[syncExternalEvent] Custom task count incremented`);
+
     return newTask;
   });
+
+  console.log(`[syncExternalEvent] Transaction completed successfully`);
 
   // Add event to Parse timeline if we have a parseId match
   if (match.parseId) {
