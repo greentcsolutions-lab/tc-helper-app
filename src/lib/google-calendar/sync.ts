@@ -6,6 +6,7 @@ import { getGoogleCalendarClient } from './client';
 import { prisma } from '@/lib/prisma';
 import { GoogleCalendarEvent, SyncResult, SyncOperation, EVENT_COLORS } from '@/types/calendar';
 import { Task } from '@prisma/client';
+import { syncTimelineEventsToCalendar } from './sync-timeline-events';
 
 /**
  * Syncs a task to Google Calendar (create or update)
@@ -255,6 +256,23 @@ export async function performInitialSync(userId: string): Promise<SyncResult> {
         totalSynced++;
       } else {
         totalErrors++;
+      }
+    }
+
+    // Sync all timeline events from all parses
+    // This ensures Google Calendar mirrors the timeline view
+    const parses = await prisma.parse.findMany({
+      where: {
+        userId,
+        status: { in: ['COMPLETED', 'NEEDS_REVIEW'] },
+      },
+      select: { id: true },
+    });
+
+    for (const parse of parses) {
+      const timelineResult = await syncTimelineEventsToCalendar(parse.id, userId);
+      if (timelineResult.success) {
+        totalSynced += timelineResult.eventsSynced;
       }
     }
 

@@ -81,6 +81,11 @@ export interface TimelineEventData {
    * Waived events are hidden from display (except big 3 contingencies which always show)
    */
   waived?: boolean;
+
+  /**
+   * Google Calendar event ID (if synced to calendar)
+   */
+  googleCalendarEventId?: string;
 }
 
 /**

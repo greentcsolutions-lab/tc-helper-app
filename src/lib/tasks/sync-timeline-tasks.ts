@@ -5,6 +5,7 @@ import { db } from '@/lib/prisma';
 import { extractTimelineEvents, TimelineEvent } from '@/lib/dates/extract-timeline-events';
 import { TASK_TYPES, TASK_STATUS, mapTimelineStatusToTaskStatus } from '@/types/task';
 import { syncTaskToCalendar } from '@/lib/google-calendar/sync';
+import { syncTimelineEventsToCalendar } from '@/lib/google-calendar/sync-timeline-events';
 
 /**
  * Syncs default AI-generated tasks from a parse to Task records
@@ -43,6 +44,13 @@ export async function syncTimelineTasks(parseId: string, userId: string): Promis
 
   // Create default AI-generated tasks based on template
   await syncDefaultTasks(parseId, userId, parse);
+
+  // Sync all timeline events to Google Calendar
+  // This ensures the calendar is a mirror of the timeline view
+  syncTimelineEventsToCalendar(parseId, userId).catch((error) => {
+    console.error('Failed to sync timeline events to calendar:', error);
+    // Don't fail the request if calendar sync fails
+  });
 }
 
 /**
