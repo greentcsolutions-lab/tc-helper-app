@@ -1,8 +1,9 @@
 // src/components/transactions/TransactionTable.tsx
-// Version 3.0.0 MAJOR UI UPDATE - F shape layout 
+// Version 3.0.0 MAJOR UI UPDATE - F shape layout
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +32,7 @@ export default function TransactionTable({
   onDelete,
   onArchive,
 }: TransactionTableProps) {
+  const router = useRouter();
   const [expandedRows, setExpandedRows] = useState<Set<string>>(
     new Set(latestId ? [latestId] : [])
   );
@@ -90,14 +92,28 @@ export default function TransactionTable({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(editedData),
       });
-      if (!response.ok) throw new Error();
-      toast.success('Transaction updated successfully');
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to update');
+      }
+
+      const result = await response.json();
+
+      // Clear the unsaved changes flag and exit edit mode
+      setHasUnsavedChanges(false);
       setEditingId(null);
       setEditedData(null);
-      setHasUnsavedChanges(false);
-      window.location.reload();
+
+      toast.success('Transaction updated successfully');
+
+      // Use Next.js router.refresh() for a smooth server-side refetch
+      // This refreshes the data without a full page reload
+      router.refresh();
+
     } catch (error) {
-      toast.error('Failed to update transaction');
+      console.error('Save error:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to update transaction');
     } finally {
       setIsSaving(false);
     }

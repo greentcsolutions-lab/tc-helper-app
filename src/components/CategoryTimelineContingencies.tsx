@@ -109,20 +109,23 @@ export default function CategoryTimelineContingencies({
     if (!fetchFailed) {
       const task = timelineTasks.find(t => t.timelineEventKey === eventKey);
       if (task?.dueDate) {
-        effectiveDate = task.dueDate;
+        // Extract date-only part to avoid timezone issues
+        // task.dueDate comes as ISO string like "2026-01-06T00:00:00.000Z"
+        // We want just "2026-01-06" to avoid timezone conversion
+        effectiveDate = task.dueDate.split('T')[0];
       }
     }
 
     // Fallback: read from timelineDataStructured if tasks unavailable
     if (!effectiveDate && event?.effectiveDate) {
-      effectiveDate = event.effectiveDate;
+      effectiveDate = event.effectiveDate.split('T')[0]; // Also extract date part
     }
 
     if (!effectiveDate) {
       return null;
     }
 
-    // Format the date
+    // Format the date (now receives date-only string YYYY-MM-DD)
     const displayDate = formatDate(effectiveDate);
     if (!displayDate) return null;
 
@@ -274,18 +277,19 @@ export default function CategoryTimelineContingencies({
       if (!fetchFailed) {
         const task = timelineTasks.find(t => t.timelineEventKey === eventKey);
         if (task?.dueDate) {
-          dueDate = task.dueDate;
+          // Extract date-only part (YYYY-MM-DD) to avoid timezone conversion
+          dueDate = task.dueDate.split('T')[0];
         }
       }
 
       // Fallback to effectiveDate from timelineDataStructured
       if (!dueDate && event?.effectiveDate) {
-        dueDate = event.effectiveDate;
+        dueDate = event.effectiveDate.split('T')[0];
       }
 
       if (dueDate) {
-        // Convert ISO string to YYYY-MM-DD for date input
-        editValue = dueDate.split('T')[0];
+        // Already in YYYY-MM-DD format for date input
+        editValue = dueDate;
       } else {
         editValue = '';
       }
