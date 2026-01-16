@@ -113,21 +113,9 @@ export async function PATCH(
       },
     });
 
-    // Sync to Google Calendar (async, don't wait for completion)
-    // Only sync timeline tasks automatically
-    if (updatedTask.taskTypes.includes('timeline')) {
-      if (wasArchived) {
-        // Move to archived calendar
-        archiveTaskInCalendar(dbUser.id, id).catch((error) => {
-          console.error('Failed to archive task in calendar:', error);
-        });
-      } else {
-        // Regular update sync
-        syncTaskToCalendar(dbUser.id, id).catch((error) => {
-          console.error('Failed to sync task to calendar:', error);
-        });
-      }
-    }
+    // Note: We do NOT sync tasks to Google Calendar
+    // Google Calendar mirrors timeline events (from timelineDataStructured), not tasks
+    // Tasks are internal tracking only
 
     // Sync task changes back to timeline (if task has TIMELINE category and dueDate changed)
     if (body.dueDate !== undefined) {
@@ -186,14 +174,9 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
-    // Delete from Google Calendar first (before deleting from database)
-    // Only delete if it's a timeline task (only timeline tasks sync to calendar)
-    if (task.taskTypes.includes('timeline')) {
-      await deleteTaskFromCalendar(dbUser.id, id).catch((error) => {
-        console.error('Failed to delete task from calendar:', error);
-        // Continue with deletion even if calendar sync fails
-      });
-    }
+    // Note: We do NOT delete from Google Calendar when deleting tasks
+    // Google Calendar mirrors timeline events (from timelineDataStructured), not tasks
+    // Tasks are internal tracking only
 
     // Delete the task and decrement custom task count if it's a custom task
     await db.$transaction(async (tx) => {

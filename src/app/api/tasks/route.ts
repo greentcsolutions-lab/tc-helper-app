@@ -209,14 +209,9 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Only auto-sync timeline tasks to Google Calendar
-    // Custom tasks can opt-in via UI (future feature)
-    if (taskTypes.includes('timeline')) {
-      syncTaskToCalendar(dbUser.id, result.id).catch((error) => {
-        console.error('Failed to sync task to calendar:', error);
-        // Don't fail the request if calendar sync fails
-      });
-    }
+    // Note: We do NOT sync tasks to Google Calendar
+    // Google Calendar mirrors timeline events (from timelineDataStructured), not tasks
+    // Tasks are internal tracking only
 
     return NextResponse.json({ task: result }, { status: 201 });
   } catch (error) {

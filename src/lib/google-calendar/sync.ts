@@ -229,38 +229,9 @@ export async function performInitialSync(userId: string): Promise<SyncResult> {
       };
     }
 
-    // Get all non-archived timeline tasks only
-    const tasks = await prisma.task.findMany({
-      where: {
-        userId,
-        archived: false,
-        taskTypes: {
-          has: 'timeline', // Only sync timeline tasks automatically
-        },
-      },
-    });
-
-    // Sync each timeline task
-    for (const task of tasks) {
-      const result = await syncTaskToCalendar(userId, task.id);
-
-      operations.push({
-        type: 'create',
-        taskId: task.id,
-        googleEventId: result.googleEventId,
-        success: result.success,
-        error: result.error,
-      });
-
-      if (result.success) {
-        totalSynced++;
-      } else {
-        totalErrors++;
-      }
-    }
-
     // Sync all timeline events from all parses
-    // This ensures Google Calendar mirrors the timeline view
+    // Note: We do NOT sync tasks individually - tasks are internal tracking only
+    // Google Calendar should mirror the timeline view (timeline events from timelineDataStructured)
     const parses = await prisma.parse.findMany({
       where: {
         userId,

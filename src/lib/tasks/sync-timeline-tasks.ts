@@ -253,11 +253,9 @@ async function upsertDefaultTask(
     taskId = newTask.id;
   }
 
-  // Sync to Google Calendar (async, don't wait for completion)
-  syncTaskToCalendar(userId, taskId).catch((error) => {
-    console.error('Failed to sync timeline task to calendar:', error);
-    // Don't fail the request if calendar sync fails
-  });
+  // Note: We do NOT sync tasks to Google Calendar here
+  // Timeline events are synced separately via syncTimelineEventsToCalendar()
+  // Tasks are just internal tracking, calendar mirrors the timeline view
 }
 
 /**
