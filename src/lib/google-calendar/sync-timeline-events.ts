@@ -169,26 +169,60 @@ async function syncSingleTimelineEvent(
 
         return { googleEventId: response.data.id || undefined };
       } catch (updateError: any) {
-        // If update fails (event might not exist), create new one
+        // If update fails (event might not exist), fall through to search/create
         if (updateError?.code === 404) {
-          const response = await calendar.events.insert({
+          // Event ID is invalid, clear it and search for existing event
+          eventData.googleCalendarEventId = undefined;
+        } else {
+          throw updateError;
+        }
+      }
+    }
+
+    // Search for existing event by title and date before creating
+    if (!eventData.googleCalendarEventId) {
+      try {
+        const searchResponse = await calendar.events.list({
+          calendarId,
+          timeMin: eventDate.toISOString(),
+          timeMax: endDate.toISOString(),
+          q: title,
+          singleEvents: true,
+        });
+
+        const existingEvents = searchResponse.data.items || [];
+        const matchingEvent = existingEvents.find((event: any) => {
+          // Check if this event matches our title and has our extended properties
+          const isSameTitle = event.summary === title;
+          const isSameParse = event.extendedProperties?.private?.tcHelperParseId === parseId;
+          const isSameEventKey = event.extendedProperties?.private?.tcHelperTimelineEventKey === eventKey;
+
+          return isSameTitle && (isSameParse || isSameEventKey);
+        });
+
+        if (matchingEvent?.id) {
+          // Found existing event - update it instead of creating new
+          const response = await calendar.events.update({
             calendarId,
+            eventId: matchingEvent.id,
             requestBody: calendarEvent,
           });
 
           return { googleEventId: response.data.id || undefined };
         }
-        throw updateError;
+      } catch (searchError) {
+        console.error('Error searching for existing event:', searchError);
+        // Continue to create new event if search fails
       }
-    } else {
-      // Create new event
-      const response = await calendar.events.insert({
-        calendarId,
-        requestBody: calendarEvent,
-      });
-
-      return { googleEventId: response.data.id || undefined };
     }
+
+    // No existing event found - create new one
+    const response = await calendar.events.insert({
+      calendarId,
+      requestBody: calendarEvent,
+    });
+
+    return { googleEventId: response.data.id || undefined };
   } catch (error) {
     console.error(`Error syncing timeline event ${eventKey}:`, error);
     return { error: error instanceof Error ? error.message : 'Unknown error' };

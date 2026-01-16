@@ -144,41 +144,74 @@ export async function syncCalendarToApp(userId: string): Promise<{
 }
 
 /**
- * Syncs changes from a Google Calendar event back to the corresponding task
+ * Syncs changes from a Google Calendar event back to the corresponding task or timeline event
  */
 async function syncAppEventChanges(
   userId: string,
   event: calendar_v3.Schema$Event
 ): Promise<void> {
   const taskId = event.extendedProperties?.private?.tcHelperId;
-  if (!taskId) return;
-
-  const task = await prisma.task.findUnique({
-    where: { id: taskId },
-  });
-
-  if (!task || task.userId !== userId) return;
+  const parseId = event.extendedProperties?.private?.tcHelperParseId;
+  const eventKey = event.extendedProperties?.private?.tcHelperTimelineEventKey;
 
   // Parse dates
   const startDate = event.start?.date || event.start?.dateTime;
   if (!startDate) return;
 
   // Extract title (remove [TC Helper] prefix if present)
-  let title = event.summary || task.title;
+  let title = event.summary || '';
   if (title.startsWith('[TC Helper] ')) {
     title = title.substring(12);
   }
 
-  // Update task
-  await prisma.task.update({
-    where: { id: taskId },
-    data: {
-      title,
-      dueDate: new Date(startDate),
-      description: event.description || task.description,
-      lastSyncedAt: new Date(),
-    },
-  });
+  // Update timeline event if this is a timeline event
+  if (parseId && eventKey) {
+    try {
+      const parse = await prisma.parse.findUnique({
+        where: { id: parseId },
+        select: { userId: true, timelineDataStructured: true },
+      });
+
+      if (parse && parse.userId === userId) {
+        const timelineData = (parse.timelineDataStructured as any) || {};
+
+        if (timelineData[eventKey]) {
+          // Update the timeline event
+          timelineData[eventKey].effectiveDate = new Date(startDate).toISOString().split('T')[0];
+          timelineData[eventKey].displayName = title || timelineData[eventKey].displayName;
+          timelineData[eventKey].description = event.description || timelineData[eventKey].description;
+
+          // Save updated timeline data
+          await prisma.parse.update({
+            where: { id: parseId },
+            data: { timelineDataStructured: timelineData },
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error updating timeline event from calendar:', error);
+    }
+  }
+
+  // Update task if this event is linked to a task
+  if (taskId) {
+    const task = await prisma.task.findUnique({
+      where: { id: taskId },
+    });
+
+    if (task && task.userId === userId) {
+      // Update task
+      await prisma.task.update({
+        where: { id: taskId },
+        data: {
+          title,
+          dueDate: new Date(startDate),
+          description: event.description || task.description,
+          lastSyncedAt: new Date(),
+        },
+      });
+    }
+  }
 }
 
 /**
@@ -258,6 +291,43 @@ async function syncExternalEvent(
       lastSyncedAt: new Date(),
     },
   });
+
+  // Add event to Parse timeline if we have a parseId match
+  if (match.parseId) {
+    try {
+      const parse = await prisma.parse.findUnique({
+        where: { id: match.parseId },
+        select: { timelineDataStructured: true },
+      });
+
+      if (parse) {
+        const timelineData = (parse.timelineDataStructured as any) || {};
+
+        // Create a unique key for this external event
+        const eventKey = `external_${event.id}`;
+
+        // Add to timeline data
+        timelineData[eventKey] = {
+          dateType: 'specified',
+          effectiveDate: new Date(startDate).toISOString().split('T')[0],
+          specifiedDate: new Date(startDate).toISOString().split('T')[0],
+          displayName: title,
+          description: description || undefined,
+          waived: false,
+          googleCalendarEventId: event.id,
+        };
+
+        // Save updated timeline data
+        await prisma.parse.update({
+          where: { id: match.parseId },
+          data: { timelineDataStructured: timelineData },
+        });
+      }
+    } catch (error) {
+      console.error('Error adding external event to timeline:', error);
+      // Don't fail the sync if timeline update fails
+    }
+  }
 
   // Update CalendarEvent record
   await prisma.calendarEvent.upsert({
