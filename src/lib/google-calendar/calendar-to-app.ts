@@ -3,7 +3,7 @@
 
 import { calendar_v3 } from 'googleapis';
 import { getGoogleCalendarClient } from './client';
-import { db as prisma } from '@/lib/prisma';
+import { prisma } from '@/lib/prisma';
 import { matchPropertyAddress } from './property-matcher';
 import { inferTaskTypes } from './ai-inference';
 import { TASK_STATUS } from '@/types/task';
@@ -234,7 +234,8 @@ async function syncExternalEvent(
   const user = await prisma.user.findUnique({ where: { id: userId } });
   let taskTypes = ['timeline']; // Default
 
-  if (user && user.planType === 'BASIC') {
+  // AI inference for BASIC plan users
+  if (user && (user as any).planType === 'BASIC') {
     const inference = await inferTaskTypes(title, description || '', match.propertyAddress);
     taskTypes = inference.taskTypes.length > 0 ? inference.taskTypes : ['timeline'];
   }
@@ -250,7 +251,7 @@ async function syncExternalEvent(
       dueDate: new Date(startDate),
       dueDateType: 'specific',
       status: TASK_STATUS.NOT_STARTED,
-      taskTypes,
+      taskTypes, // Array of task types
       isCustom: true,
       googleCalendarEventId: event.id,
       syncedToCalendar: true,
@@ -296,9 +297,10 @@ async function storeNonAppEvent(
   const title = event.summary || 'Busy';
   const description = event.description || null;
   const startDate = event.start.date || event.start.dateTime;
-  const endDate = event.end?.date || event.end?.dateTime || startDate;
 
   if (!startDate) return;
+
+  const endDate = event.end?.date || event.end?.dateTime || startDate;
 
   await prisma.calendarEvent.upsert({
     where: { googleEventId: event.id },

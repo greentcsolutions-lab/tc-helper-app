@@ -1,7 +1,7 @@
 // src/lib/google-calendar/property-matcher.ts
 // Fuzzy matching of property addresses in calendar events
 
-import { db as prisma } from '@/lib/prisma';
+import { prisma } from '@/lib/prisma';
 import { PropertyMatch } from '@/types/calendar';
 
 /**
@@ -13,11 +13,10 @@ export async function matchPropertyAddress(
   text: string
 ): Promise<PropertyMatch> {
   try {
-    // Get all active parses (non-archived transactions)
+    // Get all active parses with property addresses
     const parses = await prisma.parse.findMany({
       where: {
         userId,
-        archived: false,
         propertyAddress: { not: null },
       },
       select: {

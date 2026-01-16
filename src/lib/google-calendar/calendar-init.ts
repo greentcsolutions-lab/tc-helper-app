@@ -3,7 +3,7 @@
 
 import { calendar_v3 } from 'googleapis';
 import { getGoogleCalendarClient } from './client';
-import { db as prisma } from '@/lib/prisma';
+import { prisma } from '@/lib/prisma';
 import { CALENDAR_COLORS } from '@/types/calendar';
 
 /**
@@ -82,14 +82,14 @@ export async function initializeCalendars(userId: string): Promise<{
     await prisma.calendarSettings.update({
       where: { userId },
       data: {
-        primaryCalendarId,
-        archivedCalendarId,
+        primaryCalendarId: primaryCalendarId || null,
+        archivedCalendarId: archivedCalendarId || null,
       },
     });
 
     return {
-      primaryCalendarId,
-      archivedCalendarId,
+      primaryCalendarId: primaryCalendarId || null,
+      archivedCalendarId: archivedCalendarId || null,
     };
   } catch (error) {
     console.error('Error initializing calendars:', error);

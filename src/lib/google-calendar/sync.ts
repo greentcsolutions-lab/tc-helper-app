@@ -3,9 +3,9 @@
 
 import { calendar_v3 } from 'googleapis';
 import { getGoogleCalendarClient } from './client';
-import { db as prisma } from '@/lib/prisma';
+import { prisma } from '@/lib/prisma';
 import { GoogleCalendarEvent, SyncResult, SyncOperation, EVENT_COLORS } from '@/types/calendar';
-import { Task } from '@/types/task';
+import { Task } from '@prisma/client';
 
 /**
  * Syncs a task to Google Calendar (create or update)
@@ -59,7 +59,7 @@ export async function syncTaskToCalendar(
           },
         });
 
-        return { success: true, googleEventId: response.data.id };
+        return { success: true, googleEventId: response.data.id ?? undefined };
       } catch (error) {
         console.error('Error updating event:', error);
         return { success: false, error: 'Failed to update event' };
@@ -81,7 +81,7 @@ export async function syncTaskToCalendar(
           },
         });
 
-        return { success: true, googleEventId: response.data.id };
+        return { success: true, googleEventId: response.data.id ?? undefined };
       } catch (error) {
         console.error('Error creating event:', error);
         return { success: false, error: 'Failed to create event' };
@@ -314,7 +314,7 @@ function buildEventFromTask(
   }
 
   // Determine color based on task type and status
-  let colorId = EVENT_COLORS.CUSTOM;
+  let colorId: string = EVENT_COLORS.CUSTOM;
   if (task.status === 'completed') {
     colorId = EVENT_COLORS.TIMELINE; // Blue for completed
   } else if (new Date(task.dueDate) < new Date()) {

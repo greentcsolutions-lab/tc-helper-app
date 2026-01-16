@@ -3,31 +3,7 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import { getGoogleCalendarClient } from './client';
-import { db as prisma } from '@/lib/prisma';
-
-/**
- * Ensures a URL uses HTTPS protocol for production domains (non-localhost)
- * Google Calendar webhooks require HTTPS for production domains
- */
-function ensureHttpsForProduction(url: string | undefined): string {
-  if (!url) {
-    throw new Error('URL is required');
-  }
-
-  try {
-    const urlObj = new URL(url);
-
-    // Only allow HTTP for localhost
-    if (urlObj.protocol === 'http:' && !urlObj.hostname.includes('localhost') && urlObj.hostname !== '127.0.0.1') {
-      urlObj.protocol = 'https:';
-      console.warn(`⚠️ Automatically upgraded ${url} to HTTPS for production use`);
-    }
-
-    return urlObj.toString();
-  } catch (error) {
-    throw new Error(`Invalid URL: ${url}`);
-  }
-}
+import { prisma } from '@/lib/prisma';
 
 /**
  * Sets up a webhook (push notification channel) for a user's calendar
@@ -61,8 +37,7 @@ export async function setupWebhook(userId: string): Promise<{
 
     // Create new channel
     const channelId = uuidv4();
-    const baseUrl = ensureHttpsForProduction(process.env.NEXT_PUBLIC_APP_URL);
-    const webhookUrl = `${baseUrl}/api/google-calendar/webhook`;
+    const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/google-calendar/webhook`;
 
     try {
       const response = await calendar.events.watch({
