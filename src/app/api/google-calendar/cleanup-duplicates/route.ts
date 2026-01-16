@@ -46,32 +46,83 @@ export async function POST(request: NextRequest) {
 
     const events = response.data.items || [];
 
-    // Group events by title and start date
-    const eventGroups = new Map<string, any[]>();
+    // Get all timeline tasks from database
+    const tasks = await prisma.task.findMany({
+      where: {
+        userId: user.id,
+        taskTypes: {
+          has: 'timeline',
+        },
+        archived: false,
+      },
+      select: {
+        id: true,
+        title: true,
+        dueDate: true,
+        googleCalendarEventId: true,
+      },
+    });
+
+    // Group events by task ID (from extended properties) or by title+date
+    const eventsByTask = new Map<string, any[]>();
+    const unmatchedEvents: any[] = [];
 
     for (const event of events) {
       if (!event.summary?.startsWith('[TC Helper]')) continue;
 
-      const startDate = event.start?.date || event.start?.dateTime;
-      if (!startDate) continue;
+      const taskId = event.extendedProperties?.private?.tcHelperId;
 
-      const key = `${event.summary}-${startDate}`;
-      if (!eventGroups.has(key)) {
-        eventGroups.set(key, []);
+      if (taskId) {
+        // Event has task ID - group by task
+        if (!eventsByTask.has(taskId)) {
+          eventsByTask.set(taskId, []);
+        }
+        eventsByTask.get(taskId)!.push(event);
+      } else {
+        // Event doesn't have task ID - try to match by title and date
+        const eventTitle = event.summary.replace('[TC Helper] ', '');
+        const startDate = event.start?.date || event.start?.dateTime;
+
+        if (!startDate) continue;
+
+        // Find matching task by title and date
+        const matchingTask = tasks.find(t => {
+          const taskDate = new Date(t.dueDate).toISOString().split('T')[0];
+          const eventDate = startDate.split('T')[0];
+          return t.title === eventTitle && taskDate === eventDate;
+        });
+
+        if (matchingTask) {
+          if (!eventsByTask.has(matchingTask.id)) {
+            eventsByTask.set(matchingTask.id, []);
+          }
+          eventsByTask.get(matchingTask.id)!.push(event);
+        } else {
+          unmatchedEvents.push(event);
+        }
       }
-      eventGroups.get(key)!.push(event);
     }
 
-    // Find and delete duplicates
+    // Find and delete duplicates, keeping one event per task
     let duplicatesDeleted = 0;
-    let eventsKept = 0;
+    let tasksFixed = 0;
 
-    for (const [key, group] of eventGroups) {
-      if (group.length > 1) {
-        // Keep the first one, delete the rest
-        const [keep, ...duplicates] = group;
-        eventsKept++;
+    for (const [taskId, taskEvents] of eventsByTask) {
+      if (taskEvents.length > 1) {
+        // Multiple events for same task - keep the first one, delete the rest
+        const [keep, ...duplicates] = taskEvents;
 
+        // Update task to point to the kept event
+        await prisma.task.update({
+          where: { id: taskId },
+          data: {
+            googleCalendarEventId: keep.id || null,
+            syncedToCalendar: true,
+            lastSyncedAt: new Date(),
+          },
+        });
+
+        // Delete duplicate events
         for (const duplicate of duplicates) {
           if (duplicate.id) {
             try {
@@ -80,37 +131,51 @@ export async function POST(request: NextRequest) {
                 eventId: duplicate.id,
               });
               duplicatesDeleted++;
-              console.log(`Deleted duplicate event: ${duplicate.summary} on ${duplicate.start?.date || duplicate.start?.dateTime}`);
+              console.log(`Deleted duplicate event: ${duplicate.summary}`);
             } catch (error) {
               console.error(`Failed to delete event ${duplicate.id}:`, error);
             }
           }
         }
-      } else {
-        eventsKept++;
+
+        tasksFixed++;
+      } else if (taskEvents.length === 1) {
+        // Task has exactly one event - ensure it's properly linked
+        const event = taskEvents[0];
+        await prisma.task.update({
+          where: { id: taskId },
+          data: {
+            googleCalendarEventId: event.id || null,
+            syncedToCalendar: true,
+            lastSyncedAt: new Date(),
+          },
+        });
       }
     }
 
-    // Reset all tasks to not synced so they can be synced fresh
-    await prisma.task.updateMany({
-      where: {
-        userId: user.id,
-        taskTypes: {
-          has: 'timeline',
-        },
-      },
-      data: {
-        googleCalendarEventId: null,
-        syncedToCalendar: false,
-        lastSyncedAt: null,
-      },
-    });
+    // Delete unmatched events (orphaned events with no corresponding task)
+    let orphansDeleted = 0;
+    for (const event of unmatchedEvents) {
+      if (event.id) {
+        try {
+          await calendar.events.delete({
+            calendarId: settings.primaryCalendarId,
+            eventId: event.id,
+          });
+          orphansDeleted++;
+          console.log(`Deleted orphaned event: ${event.summary}`);
+        } catch (error) {
+          console.error(`Failed to delete event ${event.id}:`, error);
+        }
+      }
+    }
 
     return NextResponse.json({
       success: true,
       duplicatesDeleted,
-      eventsKept,
-      message: `Removed ${duplicatesDeleted} duplicate events. ${eventsKept} unique events remain. Run a manual sync to recreate fresh links.`,
+      orphansDeleted,
+      tasksFixed,
+      message: `Cleaned up ${duplicatesDeleted} duplicate events and ${orphansDeleted} orphaned events. Fixed ${tasksFixed} tasks with multiple calendar entries.`,
     });
   } catch (error) {
     console.error('Error cleaning up duplicates:', error);
