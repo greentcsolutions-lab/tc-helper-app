@@ -4,6 +4,7 @@
 import { db } from '@/lib/prisma';
 import { extractTimelineEvents, TimelineEvent } from '@/lib/dates/extract-timeline-events';
 import { TASK_TYPES, TASK_STATUS, mapTimelineStatusToTaskStatus } from '@/types/task';
+import { syncTaskToCalendar } from '@/lib/google-calendar/sync';
 
 /**
  * Syncs default AI-generated tasks from a parse to Task records
@@ -229,16 +230,26 @@ async function upsertDefaultTask(
     completedAt: existingTask?.completedAt || null,
   };
 
+  let taskId: string;
+
   if (existingTask) {
     await db.task.update({
       where: { id: existingTask.id },
       data: taskData,
     });
+    taskId = existingTask.id;
   } else {
-    await db.task.create({
+    const newTask = await db.task.create({
       data: taskData,
     });
+    taskId = newTask.id;
   }
+
+  // Sync to Google Calendar (async, don't wait for completion)
+  syncTaskToCalendar(userId, taskId).catch((error) => {
+    console.error('Failed to sync timeline task to calendar:', error);
+    // Don't fail the request if calendar sync fails
+  });
 }
 
 /**
