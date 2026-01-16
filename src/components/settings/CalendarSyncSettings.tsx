@@ -32,6 +32,7 @@ export default function CalendarSyncSettings() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isCleaningUp, setIsCleaningUp] = useState(false);
   const [settings, setSettings] = useState<CalendarSettings>({
     syncEnabled: true,
     includeFullDetails: true,
@@ -164,6 +165,32 @@ export default function CalendarSyncSettings() {
     }
   }
 
+  async function handleCleanupDuplicates() {
+    if (!confirm('This will remove duplicate calendar events. Continue?')) {
+      return;
+    }
+
+    setIsCleaningUp(true);
+    try {
+      const response = await fetch('/api/google-calendar/cleanup-duplicates', {
+        method: 'POST',
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        toast.success(data.message);
+        await loadSettings();
+      } else {
+        toast.error('Failed to cleanup duplicates');
+      }
+    } catch (error) {
+      console.error('Error cleaning up duplicates:', error);
+      toast.error('Failed to cleanup duplicates');
+    } finally {
+      setIsCleaningUp(false);
+    }
+  }
+
   if (isLoading) {
     return (
       <Card>
@@ -253,19 +280,30 @@ export default function CalendarSyncSettings() {
                       : 'Never'}
                   </p>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleManualSync}
-                  disabled={isSyncing}
-                >
-                  {isSyncing ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                  )}
-                  Sync Now
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleManualSync}
+                    disabled={isSyncing || isCleaningUp}
+                  >
+                    {isSyncing ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                    )}
+                    Sync Now
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCleanupDuplicates}
+                    disabled={isSyncing || isCleaningUp}
+                  >
+                    {isCleaningUp && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Remove Duplicates
+                  </Button>
+                </div>
               </div>
 
               {settings.lastSyncError && (
