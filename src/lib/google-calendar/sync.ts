@@ -229,9 +229,8 @@ export async function performInitialSync(userId: string): Promise<SyncResult> {
       };
     }
 
-    // Sync all timeline events from all parses
-    // Note: We do NOT sync tasks individually - tasks are internal tracking only
-    // Google Calendar should mirror the timeline view (timeline events from timelineDataStructured)
+    // Sync all tasks from all parses
+    // Google Calendar now mirrors the TASKS database (all tasks are synced to calendar)
     const parses = await prisma.parse.findMany({
       where: {
         userId,

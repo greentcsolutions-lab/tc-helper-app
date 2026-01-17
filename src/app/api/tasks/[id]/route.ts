@@ -113,9 +113,8 @@ export async function PATCH(
       },
     });
 
-    // Note: We do NOT sync tasks to Google Calendar
-    // Google Calendar mirrors timeline events (from timelineDataStructured), not tasks
-    // Tasks are internal tracking only
+    // Note: Tasks ARE synced to Google Calendar
+    // Google Calendar now mirrors the TASKS database (all tasks are synced to calendar)
 
     // Sync task changes back to timeline (if task has TIMELINE category and dueDate changed)
     if (body.dueDate !== undefined) {

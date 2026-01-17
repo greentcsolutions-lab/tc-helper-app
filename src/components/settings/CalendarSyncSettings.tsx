@@ -44,17 +44,31 @@ export default function CalendarSyncSettings() {
   });
 
   // Check if user is in beta testing whitelist
-  const isBetaTester = user?.primaryEmailAddress?.emailAddress &&
-    BETA_TESTER_EMAILS.includes(user.primaryEmailAddress.emailAddress);
+  const userEmail = user?.primaryEmailAddress?.emailAddress;
+  const isBetaTester = userEmail ? BETA_TESTER_EMAILS.includes(userEmail) : false;
+
+  // Debug logging for beta tester check
+  useEffect(() => {
+    if (userEmail) {
+      console.log('[CalendarSync] User email:', userEmail);
+      console.log('[CalendarSync] Is beta tester:', isBetaTester);
+      console.log('[CalendarSync] Beta whitelist:', BETA_TESTER_EMAILS);
+    }
+  }, [userEmail, isBetaTester]);
 
   // Load settings on mount
   useEffect(() => {
+    if (!user) {
+      // User not loaded yet
+      return;
+    }
+
     if (isBetaTester) {
       loadSettings();
     } else {
       setIsLoading(false);
     }
-  }, [isBetaTester]);
+  }, [isBetaTester, user]);
 
   async function loadSettings() {
     try {
@@ -207,9 +221,14 @@ export default function CalendarSyncSettings() {
         <CardTitle className="flex items-center gap-2">
           <Calendar className="h-5 w-5" />
           Google Calendar Sync
+          {isBetaTester && (
+            <Badge variant="outline" className="ml-2 text-xs font-normal bg-blue-50 text-blue-700 border-blue-200">
+              Testing Beta
+            </Badge>
+          )}
         </CardTitle>
         <CardDescription>
-          Sync your tasks and timeline events with Google Calendar
+          Sync your tasks with Google Calendar
         </CardDescription>
       </CardHeader>
 

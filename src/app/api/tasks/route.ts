@@ -223,9 +223,8 @@ export async function POST(request: NextRequest) {
       return task;
     });
 
-    // Note: We do NOT sync tasks to Google Calendar
-    // Google Calendar mirrors timeline events (from timelineDataStructured), not tasks
-    // Tasks are internal tracking only
+    // Note: Tasks ARE synced to Google Calendar
+    // Google Calendar now mirrors the TASKS database (all tasks are synced to calendar)
 
     return NextResponse.json({ task: result }, { status: 201 });
   } catch (error) {
