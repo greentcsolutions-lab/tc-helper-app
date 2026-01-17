@@ -4,6 +4,7 @@
 import { db } from '@/lib/prisma';
 import { extractTimelineEvents, TimelineEvent } from '@/lib/dates/extract-timeline-events';
 import { TASK_TYPES, TASK_STATUS, mapTimelineStatusToTaskStatus } from '@/types/task';
+import { formatDateForProperty, parseDateInTimezone, getTimezoneForAddress } from '@/lib/dates/timezone-utils';
 
 /**
  * Syncs default AI-generated tasks from a parse to Task records
@@ -72,6 +73,10 @@ async function syncAllTimelineEvents(parseId: string, userId: string, parse: any
 
   console.log(`[syncAllTimelineEvents] Processing ${Object.keys(timelineData).length} timeline events for parse ${parseId}`);
 
+  // Get the timezone for this property
+  const timezone = getTimezoneForAddress(parse.propertyAddress);
+  console.log(`[syncAllTimelineEvents] Using timezone ${timezone} for property ${parse.propertyAddress}`);
+
   // Iterate through all timeline events and create tasks
   for (const [eventKey, eventData] of Object.entries(timelineData)) {
     const event = eventData as any;
@@ -88,8 +93,9 @@ async function syncAllTimelineEvents(parseId: string, userId: string, parse: any
       continue;
     }
 
-    // Parse the date
-    const dueDate = new Date(event.effectiveDate);
+    // Parse the date in the property's timezone
+    // We parse at noon to avoid DST and timezone edge cases
+    const dueDate = parseDateInTimezone(event.effectiveDate, timezone);
     if (isNaN(dueDate.getTime())) {
       console.log(`[syncAllTimelineEvents] Skipping ${eventKey} - invalid date: ${event.effectiveDate}`);
       continue;
@@ -461,6 +467,7 @@ export async function syncTaskToTimeline(taskId: string): Promise<void> {
       timelineEventId: true,
       taskTypes: true,
       dueDate: true,
+      propertyAddress: true,
     },
   });
 
@@ -487,6 +494,7 @@ export async function syncTaskToTimeline(taskId: string): Promise<void> {
       effectiveDate: true,
       closingDate: true,
       timelineDataStructured: true,
+      propertyAddress: true,
     },
   });
 
@@ -497,20 +505,25 @@ export async function syncTaskToTimeline(taskId: string): Promise<void> {
 
   const timelineData = parse.timelineDataStructured as any;
 
+  // Get the timezone for this property
+  const timezone = getTimezoneForAddress(parse.propertyAddress);
+  console.log(`[syncTaskToTimeline] Using timezone ${timezone} for ${eventKey}`);
+
   // Check if this event exists in timeline
   if (!timelineData[eventKey]) {
     console.log(`[syncTaskToTimeline] Creating new event ${eventKey} in timeline`);
     // Event doesn't exist - create it as specified
+    const formattedDate = formatDateForProperty(task.dueDate, parse.propertyAddress);
     timelineData[eventKey] = {
       dateType: 'specified',
-      specifiedDate: task.dueDate.toISOString().split('T')[0],
-      effectiveDate: task.dueDate.toISOString().split('T')[0],
+      specifiedDate: formattedDate,
+      effectiveDate: formattedDate,
       displayName: eventKey,
     };
   } else {
     // Event exists - preserve calculation method
     const event = timelineData[eventKey];
-    const updatedDate = task.dueDate.toISOString().split('T')[0];
+    const updatedDate = formatDateForProperty(task.dueDate, parse.propertyAddress);
 
     console.log(`[syncTaskToTimeline] Updating ${eventKey}: ${event.effectiveDate} → ${updatedDate}`);
 
@@ -520,19 +533,20 @@ export async function syncTaskToTimeline(taskId: string): Promise<void> {
       const direction = event.direction || 'after';
       const dayType = event.dayType || 'calendar';
 
-      // Get anchor date
+      // Get anchor date (parse in property's timezone)
       let anchorDate: Date | null = null;
       if (anchorPoint === 'acceptance' && parse.effectiveDate) {
-        anchorDate = new Date(parse.effectiveDate);
+        anchorDate = parseDateInTimezone(parse.effectiveDate, timezone);
       } else if (anchorPoint === 'closing' && parse.closingDate) {
-        anchorDate = new Date(parse.closingDate);
+        anchorDate = parseDateInTimezone(parse.closingDate, timezone);
       } else if (timelineData[anchorPoint]?.effectiveDate) {
         // Anchor to another timeline event
-        anchorDate = new Date(timelineData[anchorPoint].effectiveDate);
+        anchorDate = parseDateInTimezone(timelineData[anchorPoint].effectiveDate, timezone);
       }
 
       if (anchorDate && !isNaN(anchorDate.getTime())) {
-        const newDueDate = new Date(task.dueDate);
+        // Calculate difference in days
+        const newDueDate = task.dueDate;
         const diffMs = newDueDate.getTime() - anchorDate.getTime();
         let diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
 
