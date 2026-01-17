@@ -17,7 +17,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { ChevronRight } from "lucide-react"; // Swapped to Right
+import { ChevronRight, CheckCircle } from "lucide-react"; // Swapped to Right
 import CopyAllButton from "@/components/ui/CopyAllButton";
 import CopyFieldRow from "@/components/ui/CopyFieldRow";
 import { ReactNode } from "react";
@@ -33,6 +33,7 @@ export interface FieldConfig {
   waived?: boolean; // NEW: Waived state for timeline events
   onWaivedChange?: (waived: boolean) => void; // NEW: Handler for waived checkbox
   showWaivedCheckbox?: boolean; // NEW: Whether to show inline waived checkbox
+  isCompleted?: boolean; // NEW: Show completion status (green checkmark) for timeline tasks
 }
 
 interface CategorySectionProps {
@@ -58,7 +59,7 @@ export default function CategorySection({
 
   const renderEditableField = (field: FieldConfig, index: number) => {
     if (!isEditing) {
-      return <CopyFieldRow key={index} label={field.label} value={field.value} />;
+      return <CopyFieldRow key={index} label={field.label} value={field.value} isCompleted={field.isCompleted} />;
     }
 
     const handleChange = (newValue: any) => {
@@ -70,8 +71,14 @@ export default function CategorySection({
     return (
       <div key={index} className="py-3 first:pt-0 last:pb-0">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2 items-center">
-          <label className="text-sm font-medium text-muted-foreground">
+          <label className="text-sm font-medium text-muted-foreground flex items-center gap-2">
             {field.label}
+            {field.isCompleted && (
+              <span className="flex items-center gap-1 text-green-600">
+                <CheckCircle className="h-4 w-4" />
+                <span className="text-xs font-medium">Complete</span>
+              </span>
+            )}
           </label>
           <div className="flex items-center gap-2">
             <div className="flex-1">

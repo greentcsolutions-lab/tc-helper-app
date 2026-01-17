@@ -98,11 +98,42 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
   const [searchQuery, setSearchQuery] = useState("");
   const [isMobile, setIsMobile] = useState(false);
   const [viewMode, setViewMode] = useState<"cards" | "table">("cards");
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [taskDialogMode, setTaskDialogMode] = useState<'create' | 'edit' | 'view'>('create');
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const handleRefresh = () => {
     router.refresh();
   };
+
+  const handleViewTask = useCallback((task: Task) => {
+    setEditingTask(task);
+    setTaskDialogMode('view');
+    setEditDialogOpen(true);
+  }, []);
+
+  const handleEditTask = useCallback((task: Task) => {
+    setEditingTask(task);
+    setTaskDialogMode('edit');
+    setEditDialogOpen(true);
+  }, []);
+
+  const handleEditDialogClose = useCallback((open: boolean) => {
+    setEditDialogOpen(open);
+    if (!open) {
+      // Clear editing task after dialog animation completes
+      setTimeout(() => {
+        setEditingTask(null);
+        setTaskDialogMode('create');
+      }, 150);
+    }
+  }, []);
+
+  const handleTaskUpdated = useCallback(() => {
+    // Refresh the page to get updated data
+    router.refresh();
+  }, [router]);
 
   // Detect screen size changes
   useEffect(() => {
@@ -559,6 +590,7 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
                       <div key={task.id} className="flex-shrink-0 w-[85vw] snap-start">
                         <TaskCard
                           task={task}
+                          onEdit={handleEditTask}
                           onShiftLeft={columnIndex > 0 ? () => shiftTask(task.id, 'left') : undefined}
                           onShiftRight={columnIndex < COLUMNS.length - 1 ? () => shiftTask(task.id, 'right') : undefined}
                           disableDrag={true}
@@ -581,7 +613,7 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
         </TabsContent>
       </Tabs>
     </div>
-  ), [tasksByColumn, columnVisibility, taskCounts, parses, tasks, shiftTask]);
+  ), [tasksByColumn, columnVisibility, taskCounts, parses, tasks, shiftTask, handleEditTask]);
 
   // Desktop Layout with Sidebar (memoized to prevent search input losing focus)
   const DesktopLayout = useMemo(() => (
@@ -698,6 +730,8 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
             })}
             onUpdateTaskStatus={updateTaskColumn}
             onDeleteTasks={deleteTasks}
+            onViewTask={handleViewTask}
+            onEditTask={handleEditTask}
           />
         ) : (
           <DndContext
@@ -737,6 +771,7 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
                           <TaskCard
                             key={task.id}
                             task={task}
+                            onEdit={handleEditTask}
                             onShiftLeft={columnIndex > 0 ? () => shiftTask(task.id, 'left') : undefined}
                             onShiftRight={columnIndex < COLUMNS.length - 1 ? () => shiftTask(task.id, 'right') : undefined}
                           />
@@ -785,8 +820,24 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
     shiftTask,
     viewMode,
     updateTaskColumn,
+    deleteTasks,
+    handleViewTask,
+    handleEditTask,
   ]);
 
   // Conditionally render only one layout to avoid duplicate DOM elements
-  return isMobile ? MobileLayout : DesktopLayout;
+  return (
+    <>
+      {isMobile ? MobileLayout : DesktopLayout}
+      {/* Edit Dialog - Rendered outside layouts to avoid duplication */}
+      <NewTaskDialog
+        parses={parses}
+        editTask={editingTask}
+        open={editDialogOpen}
+        onOpenChange={handleEditDialogClose}
+        onTaskUpdated={handleTaskUpdated}
+        mode={taskDialogMode}
+      />
+    </>
+  );
 }

@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -36,24 +36,81 @@ type Parse = {
   closingDate: Date | string | null;
 };
 
+type Task = any; // Use Prisma-generated type
+
 interface NewTaskDialogProps {
   parses: Parse[];
+  editTask?: Task | null; // Optional task to edit
+  open?: boolean; // Controlled open state
+  onOpenChange?: (open: boolean) => void; // Controlled open state handler
+  onTaskUpdated?: () => void; // Callback when task is updated
+  mode?: 'create' | 'edit' | 'view'; // Dialog mode
 }
 
-export default function NewTaskDialog({ parses }: NewTaskDialogProps) {
+export default function NewTaskDialog({
+  parses,
+  editTask = null,
+  open: controlledOpen,
+  onOpenChange,
+  onTaskUpdated,
+  mode: initialMode,
+}: NewTaskDialogProps) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dialogMode, setDialogMode] = useState<'create' | 'edit' | 'view'>(initialMode || 'create');
 
-  // Form state
-  const [title, setTitle] = useState("");
-  const [parseId, setParseId] = useState<string>("");
-  const [taskTypes, setTaskTypes] = useState<string[]>(["broker"]); // Now an array
-  const [dueDateType, setDueDateType] = useState<"specific" | "days_after_acceptance" | "days_from_close">("specific");
-  const [specificDate, setSpecificDate] = useState("");
-  const [relativeDays, setRelativeDays] = useState("");
-  const [status, setStatus] = useState<"not_started" | "pending" | "completed">("not_started");
+  // Use controlled open state if provided, otherwise use internal state
+  const open = controlledOpen !== undefined ? controlledOpen : internalOpen;
+  const setOpen = onOpenChange || setInternalOpen;
+
+  // Update dialog mode when initialMode or editTask changes
+  useEffect(() => {
+    if (initialMode) {
+      setDialogMode(initialMode);
+    } else if (editTask) {
+      setDialogMode('edit');
+    } else {
+      setDialogMode('create');
+    }
+  }, [initialMode, editTask]);
+
+  const isEditMode = dialogMode === 'edit';
+  const isViewMode = dialogMode === 'view';
+  const isReadOnly = isViewMode;
+
+  // Form state - initialize from editTask if in edit mode
+  const [title, setTitle] = useState(editTask?.title || "");
+  const [parseId, setParseId] = useState<string>(editTask?.parseId || "");
+  const [taskTypes, setTaskTypes] = useState<string[]>(editTask?.taskTypes || ["broker"]);
+  const [dueDateType, setDueDateType] = useState<"specific" | "days_after_acceptance" | "days_from_close">(
+    editTask?.dueDateType || "specific"
+  );
+  const [specificDate, setSpecificDate] = useState(
+    editTask?.dueDate ? new Date(editTask.dueDate).toISOString().split('T')[0] : ""
+  );
+  const [relativeDays, setRelativeDays] = useState(
+    editTask?.dueDateValue ? String(editTask.dueDateValue) : ""
+  );
+  const [status, setStatus] = useState<"not_started" | "pending" | "completed">(
+    editTask?.status || "not_started"
+  );
+
+  // Update form when editTask changes
+  useEffect(() => {
+    if (editTask) {
+      setTitle(editTask.title || "");
+      setParseId(editTask.parseId || "");
+      setTaskTypes(editTask.taskTypes || ["broker"]);
+      setDueDateType(editTask.dueDateType || "specific");
+      setSpecificDate(
+        editTask.dueDate ? new Date(editTask.dueDate).toISOString().split('T')[0] : ""
+      );
+      setRelativeDays(editTask.dueDateValue ? String(editTask.dueDateValue) : "");
+      setStatus(editTask.status || "not_started");
+    }
+  }, [editTask]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -104,9 +161,12 @@ export default function NewTaskDialog({ parses }: NewTaskDialogProps) {
         dueDate.setDate(dueDate.getDate() + dueDateValue);
       }
 
-      // Create the task
-      const response = await fetch("/api/tasks", {
-        method: "POST",
+      // Create or update the task
+      const url = isEditMode ? `/api/tasks/${editTask.id}` : "/api/tasks";
+      const method = isEditMode ? "PATCH" : "POST";
+
+      const response = await fetch(url, {
+        method,
         headers: {
           "Content-Type": "application/json",
         },
@@ -119,18 +179,26 @@ export default function NewTaskDialog({ parses }: NewTaskDialogProps) {
           dueDateValue,
           status,
           columnId: status,
-          isCustom: true,
+          ...(!isEditMode && { isCustom: true }), // Only set isCustom for new tasks
         }),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to create task");
+        throw new Error(errorData.error || `Failed to ${isEditMode ? 'update' : 'create'} task`);
       }
 
       // Success! Close dialog and refresh
       setOpen(false);
-      resetForm();
+      if (!isEditMode) {
+        resetForm();
+      }
+
+      // Call the callback if provided (for optimistic updates)
+      if (onTaskUpdated) {
+        onTaskUpdated();
+      }
+
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred");
@@ -165,20 +233,50 @@ export default function NewTaskDialog({ parses }: NewTaskDialogProps) {
     }
   };
 
+  // Check if this is a timeline task (categories are locked)
+  const isTimelineTask = editTask?.taskTypes?.includes('timeline');
+
+  // Check if this is an anchor point task (Acceptance or Closing)
+  const isAnchorPoint = editTask?.timelineEventId?.endsWith('-acceptance') ||
+                        editTask?.timelineEventId?.endsWith('-closing');
+  const isTitleLocked = isAnchorPoint;
+
+  const handleSwitchToEdit = () => {
+    setDialogMode('edit');
+  };
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>
-        <Button>
-          <Plus className="mr-2 h-4 w-4" />
-          New Task
-        </Button>
-      </DialogTrigger>
+      {dialogMode === 'create' && (
+        <DialogTrigger asChild>
+          <Button>
+            <Plus className="mr-2 h-4 w-4" />
+            New Task
+          </Button>
+        </DialogTrigger>
+      )}
       <DialogContent className="sm:max-w-[500px]">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>Create New Task</DialogTitle>
+            <DialogTitle>
+              {isViewMode ? 'View Task' : (isEditMode ? 'Edit Task' : 'Create New Task')}
+            </DialogTitle>
             <DialogDescription>
-              Add a custom task to your workflow. Fill in the details below.
+              {isViewMode
+                ? 'View task details below. Click Edit to make changes.'
+                : (isEditMode
+                  ? 'Update the task details below.'
+                  : 'Add a custom task to your workflow. Fill in the details below.')}
+              {isTimelineTask && !isViewMode && (
+                <div className="mt-2 text-sm text-orange-600 dark:text-orange-400">
+                  Note: Timeline tasks cannot change categories
+                </div>
+              )}
+              {isTitleLocked && !isViewMode && (
+                <div className="mt-2 text-sm text-orange-600 dark:text-orange-400">
+                  Note: Timeline anchor points (Acceptance, Closing) cannot change names
+                </div>
+              )}
             </DialogDescription>
           </DialogHeader>
 
@@ -192,13 +290,15 @@ export default function NewTaskDialog({ parses }: NewTaskDialogProps) {
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="e.g., Follow up with lender"
                 required
+                disabled={isReadOnly || isTitleLocked}
+                className={isTitleLocked ? 'opacity-60 cursor-not-allowed' : ''}
               />
             </div>
 
             {/* Transaction */}
             <div className="grid gap-3">
               <Label htmlFor="parse">Transaction</Label>
-              <Select value={parseId} onValueChange={setParseId}>
+              <Select value={parseId} onValueChange={setParseId} disabled={isReadOnly}>
                 <SelectTrigger id="parse">
                   <SelectValue placeholder="Select a transaction (optional)" />
                 </SelectTrigger>
@@ -227,8 +327,9 @@ export default function NewTaskDialog({ parses }: NewTaskDialogProps) {
                     id="type-broker"
                     checked={taskTypes.includes("broker")}
                     onCheckedChange={() => toggleTaskType("broker")}
+                    disabled={isReadOnly || isTimelineTask}
                   />
-                  <Label htmlFor="type-broker" className="font-normal cursor-pointer">
+                  <Label htmlFor="type-broker" className={`font-normal ${(isReadOnly || isTimelineTask) ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
                     Broker
                   </Label>
                 </div>
@@ -237,8 +338,9 @@ export default function NewTaskDialog({ parses }: NewTaskDialogProps) {
                     id="type-escrow"
                     checked={taskTypes.includes("escrow")}
                     onCheckedChange={() => toggleTaskType("escrow")}
+                    disabled={isReadOnly || isTimelineTask}
                   />
-                  <Label htmlFor="type-escrow" className="font-normal cursor-pointer">
+                  <Label htmlFor="type-escrow" className={`font-normal ${(isReadOnly || isTimelineTask) ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
                     Escrow
                   </Label>
                 </div>
@@ -247,8 +349,9 @@ export default function NewTaskDialog({ parses }: NewTaskDialogProps) {
                     id="type-lender"
                     checked={taskTypes.includes("lender")}
                     onCheckedChange={() => toggleTaskType("lender")}
+                    disabled={isReadOnly || isTimelineTask}
                   />
-                  <Label htmlFor="type-lender" className="font-normal cursor-pointer">
+                  <Label htmlFor="type-lender" className={`font-normal ${(isReadOnly || isTimelineTask) ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
                     Lender
                   </Label>
                 </div>
@@ -257,8 +360,9 @@ export default function NewTaskDialog({ parses }: NewTaskDialogProps) {
                     id="type-timeline"
                     checked={taskTypes.includes("timeline")}
                     onCheckedChange={() => toggleTaskType("timeline")}
+                    disabled={isReadOnly || isTimelineTask}
                   />
-                  <Label htmlFor="type-timeline" className="font-normal cursor-pointer">
+                  <Label htmlFor="type-timeline" className={`font-normal ${(isReadOnly || isTimelineTask) ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
                     Timeline
                   </Label>
                 </div>
@@ -268,22 +372,22 @@ export default function NewTaskDialog({ parses }: NewTaskDialogProps) {
             {/* Due Date Type */}
             <div className="grid gap-3">
               <Label>Due Date *</Label>
-              <RadioGroup value={dueDateType} onValueChange={(value: any) => setDueDateType(value)}>
+              <RadioGroup value={dueDateType} onValueChange={(value: any) => setDueDateType(value)} disabled={isReadOnly}>
                 <div className="flex items-center space-x-3">
-                  <RadioGroupItem value="specific" id="specific" />
-                  <Label htmlFor="specific" className="font-normal cursor-pointer">
+                  <RadioGroupItem value="specific" id="specific" disabled={isReadOnly} />
+                  <Label htmlFor="specific" className={`font-normal ${isReadOnly ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
                     Specific date
                   </Label>
                 </div>
                 <div className="flex items-center space-x-3">
-                  <RadioGroupItem value="days_after_acceptance" id="days_after_acceptance" />
-                  <Label htmlFor="days_after_acceptance" className="font-normal cursor-pointer">
+                  <RadioGroupItem value="days_after_acceptance" id="days_after_acceptance" disabled={isReadOnly} />
+                  <Label htmlFor="days_after_acceptance" className={`font-normal ${isReadOnly ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
                     Days after acceptance
                   </Label>
                 </div>
                 <div className="flex items-center space-x-3">
-                  <RadioGroupItem value="days_from_close" id="days_from_close" />
-                  <Label htmlFor="days_from_close" className="font-normal cursor-pointer">
+                  <RadioGroupItem value="days_from_close" id="days_from_close" disabled={isReadOnly} />
+                  <Label htmlFor="days_from_close" className={`font-normal ${isReadOnly ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
                     Days from close
                   </Label>
                 </div>
@@ -300,6 +404,7 @@ export default function NewTaskDialog({ parses }: NewTaskDialogProps) {
                   value={specificDate}
                   onChange={(e) => setSpecificDate(e.target.value)}
                   required
+                  disabled={isReadOnly}
                 />
               </div>
             ) : (
@@ -313,6 +418,7 @@ export default function NewTaskDialog({ parses }: NewTaskDialogProps) {
                   onChange={(e) => setRelativeDays(e.target.value)}
                   placeholder="e.g., 7"
                   required
+                  disabled={isReadOnly}
                 />
               </div>
             )}
@@ -320,7 +426,7 @@ export default function NewTaskDialog({ parses }: NewTaskDialogProps) {
             {/* Status */}
             <div className="grid gap-3">
               <Label htmlFor="status">Status *</Label>
-              <Select value={status} onValueChange={(value: any) => setStatus(value)}>
+              <Select value={status} onValueChange={(value: any) => setStatus(value)} disabled={isReadOnly}>
                 <SelectTrigger id="status">
                   <SelectValue />
                 </SelectTrigger>
@@ -347,11 +453,19 @@ export default function NewTaskDialog({ parses }: NewTaskDialogProps) {
               onClick={() => setOpen(false)}
               disabled={loading}
             >
-              Cancel
+              {isViewMode ? 'Close' : 'Cancel'}
             </Button>
-            <Button type="submit" disabled={loading}>
-              {loading ? "Creating..." : "Create Task"}
-            </Button>
+            {isViewMode ? (
+              <Button type="button" onClick={handleSwitchToEdit}>
+                Edit Task
+              </Button>
+            ) : (
+              <Button type="submit" disabled={loading}>
+                {loading
+                  ? (isEditMode ? "Updating..." : "Creating...")
+                  : (isEditMode ? "Update Task" : "Create Task")}
+              </Button>
+            )}
           </DialogFooter>
         </form>
       </DialogContent>

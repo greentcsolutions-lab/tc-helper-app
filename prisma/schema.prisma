@@ -224,6 +224,7 @@ model Task {
 
   // Metadata
   isCustom             Boolean   @default(false) // false for timeline tasks, true for user-created
+  isAiGenerated        Boolean   @default(false) // true for tasks initially generated from document extraction
   templateId           String?   // If created from a template, reference to UserTaskTemplate
 
   // Google Calendar Sync

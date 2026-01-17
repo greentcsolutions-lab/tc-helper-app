@@ -5,7 +5,8 @@
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Clock, AlertTriangle, MessageSquare, ChevronLeft, ChevronRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Clock, AlertTriangle, MessageSquare, ChevronLeft, ChevronRight, Pencil, Sparkles } from "lucide-react";
 import { getTaskStatus, formatDaysUntilDue, TASK_TYPES } from "@/types/task";
 
 type Task = any; // Use Prisma-generated type
@@ -77,6 +78,16 @@ export default function TaskCard({ task, onEdit, onShiftLeft, onShiftRight, disa
         <CardContent className="p-4 space-y-3">
           {/* Task Type Badges - can have multiple */}
           <div className="flex flex-wrap gap-1.5">
+            {task.isAiGenerated && (
+              <Badge
+                className="bg-gradient-to-r from-purple-100 to-pink-100 text-purple-700 dark:from-purple-900/30 dark:to-pink-900/30 dark:text-purple-400 text-xs"
+                variant="outline"
+                title="AI Generated"
+              >
+                <Sparkles className="h-3 w-3 mr-1" />
+                AI
+              </Badge>
+            )}
             {task.taskTypes?.map((type: string) => (
               <Badge
                 key={type}
@@ -88,11 +99,23 @@ export default function TaskCard({ task, onEdit, onShiftLeft, onShiftRight, disa
             ))}
           </div>
 
-          {/* Title */}
-          <div>
-            <h3 className="font-semibold text-sm leading-tight line-clamp-2">
+          {/* Title with Edit Button */}
+          <div className="flex items-start justify-between gap-2">
+            <h3 className="font-semibold text-sm leading-tight line-clamp-2 flex-1">
               {task.title}
             </h3>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 flex-shrink-0"
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit?.(task);
+              }}
+              title="Edit task"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </Button>
           </div>
 
           {/* Property Address */}

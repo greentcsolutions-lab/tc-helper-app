@@ -21,17 +21,20 @@ import { ParseResult } from "@/types";
 import { toast } from "sonner";
 
 type SortOption = "date" | "address" | "closing" | "price";
+type Task = any; // Use Prisma-generated type
 
 interface TransactionsClientProps {
   initialParses: ParseResult[];
   userQuota: number;
   activeCount: number;
+  tasks?: Task[]; // Optional tasks for timeline completion status
 }
 
 export default function TransactionsClient({
   initialParses,
   userQuota,
-  activeCount
+  activeCount,
+  tasks = [],
 }: TransactionsClientProps) {
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<SortOption>("date");
@@ -243,6 +246,7 @@ export default function TransactionsClient({
                 onToggleSelectAll={toggleSelectAll}
                 onDelete={handleDelete}
                 onArchive={handleArchive} // Wired to the cabinet button
+                tasks={tasks}
               />
             </div>
           )}
