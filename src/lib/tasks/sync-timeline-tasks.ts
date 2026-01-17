@@ -105,12 +105,12 @@ async function syncAllTimelineEvents(parseId: string, userId: string, parse: any
 
     // Create or update the task
     await upsertTimelineTask(parseId, userId, parse, {
-      timelineEventKey: eventKey,
       timelineEventId: `${parseId}-${eventKey}`,
       title: displayName,
       description: event.description || null,
       taskTypes,
       dueDate,
+      eventKey, // Pass separately for lookup logic
     });
   }
 }
@@ -144,19 +144,19 @@ async function upsertTimelineTask(
   userId: string,
   parse: any,
   taskInfo: {
-    timelineEventKey: string;
     timelineEventId: string;
     title: string;
     description: string | null;
     taskTypes: string[];
     dueDate: Date;
+    eventKey: string; // For logging only
   }
 ): Promise<void> {
-  // Find existing task by parseId + timelineEventKey (not timelineEventId)
+  // Find existing task by parseId + timelineEventId
   const existingTask = await db.task.findFirst({
     where: {
       parseId,
-      timelineEventKey: taskInfo.timelineEventKey,
+      timelineEventId: taskInfo.timelineEventId,
     },
   });
 
@@ -165,7 +165,6 @@ async function upsertTimelineTask(
     parseId,
     taskTypes: taskInfo.taskTypes,
     timelineEventId: taskInfo.timelineEventId,
-    timelineEventKey: taskInfo.timelineEventKey,
     title: taskInfo.title,
     description: taskInfo.description,
     propertyAddress: parse.propertyAddress || null,
@@ -180,13 +179,13 @@ async function upsertTimelineTask(
   };
 
   if (existingTask) {
-    console.log(`[upsertTimelineTask] Updating existing task ${existingTask.id} for ${taskInfo.timelineEventKey}`);
+    console.log(`[upsertTimelineTask] Updating existing task ${existingTask.id} for ${taskInfo.eventKey}`);
     await db.task.update({
       where: { id: existingTask.id },
       data: taskData,
     });
   } else {
-    console.log(`[upsertTimelineTask] Creating new task for ${taskInfo.timelineEventKey}`);
+    console.log(`[upsertTimelineTask] Creating new task for ${taskInfo.eventKey}`);
     await db.task.create({
       data: taskData,
     });

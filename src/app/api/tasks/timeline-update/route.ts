@@ -37,11 +37,14 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
+    // Construct timelineEventId from parseId + eventKey
+    const timelineEventId = `${parseId}-${timelineEventKey}`;
+
     // Find the task
     const task = await db.task.findFirst({
       where: {
         parseId,
-        timelineEventKey,
+        timelineEventId,
         userId: dbUser.id,
       },
     });
@@ -79,6 +82,11 @@ export async function PATCH(request: NextRequest) {
 
     console.log(`[timeline-update] Successfully updated task ${task.id} for ${timelineEventKey}`);
 
+    // Derive timelineEventKey from timelineEventId for response
+    const responseEventKey = updatedTask.timelineEventId
+      ? updatedTask.timelineEventId.replace(`${parseId}-`, '')
+      : timelineEventKey;
+
     return NextResponse.json({
       success: true,
       task: {
@@ -86,7 +94,7 @@ export async function PATCH(request: NextRequest) {
         title: updatedTask.title,
         description: updatedTask.description,
         dueDate: updatedTask.dueDate.toISOString(),
-        timelineEventKey: updatedTask.timelineEventKey,
+        timelineEventKey: responseEventKey,
         status: updatedTask.status,
         archived: updatedTask.archived,
       },

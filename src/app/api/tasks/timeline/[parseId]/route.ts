@@ -54,40 +54,58 @@ export async function GET(
     }
 
     // Fetch all tasks with TIMELINE type for this parse
-    const tasks = await db.task.findMany({
-      where: {
-        parseId,
-        userId: dbUser.id,
-        taskTypes: {
-          has: TASK_TYPES.TIMELINE,
+    let tasks;
+    try {
+      tasks = await db.task.findMany({
+        where: {
+          parseId,
+          userId: dbUser.id,
+          taskTypes: {
+            has: TASK_TYPES.TIMELINE,
+          },
         },
-      },
-      select: {
-        id: true,
-        title: true,
-        description: true,
-        dueDate: true,
-        timelineEventKey: true,
-        status: true,
-        archived: true,
-      },
-      orderBy: {
-        dueDate: 'asc',
-      },
-    });
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          dueDate: true,
+          timelineEventId: true,
+          status: true,
+          archived: true,
+        },
+        orderBy: {
+          dueDate: 'asc',
+        },
+      });
+    } catch (dbError) {
+      console.error(`[timeline/GET] Database error fetching tasks:`, dbError);
+      return NextResponse.json(
+        { error: 'Database error fetching tasks', details: String(dbError) },
+        { status: 500 }
+      );
+    }
 
     console.log(`[timeline/GET] Found ${tasks.length} timeline tasks for parseId: ${parseId}`);
 
     // Format tasks for the frontend
-    const formattedTasks = tasks.map(task => ({
-      id: task.id,
-      title: task.title,
-      description: task.description,
-      dueDate: task.dueDate.toISOString(),
-      timelineEventKey: task.timelineEventKey,
-      status: task.status,
-      archived: task.archived,
-    }));
+    // Derive timelineEventKey from timelineEventId (format: "parseId-eventKey")
+    const formattedTasks = tasks.map(task => {
+      let timelineEventKey = null;
+      if (task.timelineEventId) {
+        // Remove the parseId prefix to get the event key
+        timelineEventKey = task.timelineEventId.replace(`${parseId}-`, '');
+      }
+
+      return {
+        id: task.id,
+        title: task.title,
+        description: task.description,
+        dueDate: task.dueDate.toISOString(),
+        timelineEventKey,
+        status: task.status,
+        archived: task.archived,
+      };
+    });
 
     return NextResponse.json({
       success: true,
