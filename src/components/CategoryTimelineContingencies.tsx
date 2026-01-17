@@ -1,8 +1,8 @@
 // src/components/CategoryTimelineContingencies.tsx
-// Version: 10.0.0 - 2026-01-17
-// MAJOR: Removed Parse model fallback - reads ONLY from Task model
-// Updates tasks directly via /api/tasks/timeline-update (no Parse intermediary)
-// Task model is the ONLY source of truth for timeline dates
+// Version: 11.0.0 - 2026-01-17
+// MAJOR: Now reads ONLY from Task model - removed all Parse model dependencies
+// Task model is the ONLY source of truth for timeline data
+// Parse timelineDataStructured is used ONLY for immutable calculation metadata
 
 "use client";
 
@@ -19,6 +19,7 @@ interface TimelineTask {
   dueDate: string; // ISO string from API
   timelineEventKey: string | null;
   status: string;
+  archived: boolean;
 }
 
 interface CategoryTimelineContingenciesProps {
@@ -34,7 +35,6 @@ export default function CategoryTimelineContingencies({
   onDataChange,
   refetchTrigger = 0,
 }: CategoryTimelineContingenciesProps) {
-  const cont = data.contingencies;
   const [timelineTasks, setTimelineTasks] = useState<TimelineTask[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -72,7 +72,7 @@ export default function CategoryTimelineContingencies({
   // Define non-waivable events (these should never show waived checkbox)
   const NON_WAIVABLE_EVENTS = ['acceptance', 'closing', 'initialDeposit'];
 
-  // Define big 3 contingencies that always show even when waived
+  // Define big 3 contingencies that always show even when archived
   const ALWAYS_SHOW_EVENTS = ['inspectionContingency', 'appraisalContingency', 'loanContingency'];
 
   // Helper: Format date for display (YYYY-MM-DD → MM/DD/YYYY)
@@ -94,72 +94,61 @@ export default function CategoryTimelineContingencies({
     return dateStr;
   };
 
-  // Helper: Get formatted timeline event display using ONLY task data
-  // Task model is the ONLY source of truth for dates
-  const getTimelineEventDisplay = (eventKey: string, event: any): string | null => {
-    // If waived, show "Waived" text
-    if (event?.waived) {
+  // Helper: Get formatted task display for view mode
+  const getTaskDisplay = (task: TimelineTask): string | null => {
+    // If archived (waived), show "Waived" text
+    if (task.archived) {
       return "Waived";
     }
 
-    // Get date from task (ONLY source)
-    const task = timelineTasks.find(t => t.timelineEventKey === eventKey);
-    if (!task?.dueDate) {
+    if (!task.dueDate) {
       return null;
     }
 
     // Extract date-only part to avoid timezone issues
-    // task.dueDate comes as ISO string like "2026-01-06T00:00:00.000Z"
-    // We want just "2026-01-06" to avoid timezone conversion
     const effectiveDate = task.dueDate.split('T')[0];
 
-    // Format the date (now receives date-only string YYYY-MM-DD)
+    // Format the date
     const displayDate = formatDate(effectiveDate);
     if (!displayDate) return null;
 
     const shortDate = toShortYear(displayDate);
 
-    // Build source description from timeline metadata (immutable)
-    let source = '';
-    if (event?.dateType === 'specified') {
-      source = 'specified';
-    } else if (event?.dateType === 'relative') {
-      const dayType = event.dayType === 'business' ? 'business days' : 'days';
-      const direction = event.direction === 'before' ? 'before' : 'after';
-      const anchor = event.anchorPoint || 'acceptance';
-      source = `${event.relativeDays} ${dayType} ${direction} ${anchor}`;
-    } else {
-      source = 'specified'; // Default
+    // Build source description from timeline metadata (immutable template only)
+    let source = 'specified';
+    if (task.timelineEventKey && data.timelineDataStructured) {
+      const timelineData = data.timelineDataStructured as Record<string, any>;
+      const event = timelineData[task.timelineEventKey];
+      if (event?.dateType === 'relative') {
+        const dayType = event.dayType === 'business' ? 'business days' : 'days';
+        const direction = event.direction === 'before' ? 'before' : 'after';
+        const anchor = event.anchorPoint || 'acceptance';
+        source = `${event.relativeDays} ${dayType} ${direction} ${anchor}`;
+      }
     }
 
     return `${shortDate} (${source})`;
   };
 
-  // Helper: Check if event is "active" (should be displayed)
-  // Only shows events that have corresponding tasks
-  const isEventActive = (eventKey: string, event: any, isEditingMode: boolean): boolean => {
-    // Check if we have a corresponding task
-    const hasTask = timelineTasks.some(t => t.timelineEventKey === eventKey);
-    const hasData = hasTask;
-
-    // In edit mode, ALWAYS show all events so user can toggle waived checkbox
+  // Helper: Check if task should be displayed
+  const shouldShowTask = (task: TimelineTask, isEditingMode: boolean): boolean => {
+    // In edit mode, show all tasks
     if (isEditingMode) {
-      return hasData;
-    }
-
-    // In view mode:
-    // Always show the big 3 contingencies (even if waived)
-    if (ALWAYS_SHOW_EVENTS.includes(eventKey) && hasData) {
       return true;
     }
 
-    // Hide waived events (unless they're in the always-show list above)
-    if (event?.waived) {
+    // In view mode:
+    // Always show the big 3 contingencies (even if archived)
+    if (task.timelineEventKey && ALWAYS_SHOW_EVENTS.includes(task.timelineEventKey)) {
+      return true;
+    }
+
+    // Hide archived (waived) tasks (unless they're in the always-show list above)
+    if (task.archived) {
       return false;
     }
 
-    // For other events, show if they have data
-    return hasData;
+    return true;
   };
 
   const createField = (
@@ -182,56 +171,24 @@ export default function CategoryTimelineContingencies({
     showWaivedCheckbox,
   });
 
-  // === DYNAMIC TIMELINE FIELD GENERATION ===
+  // === DYNAMIC TIMELINE FIELD GENERATION FROM TASKS ===
   const fields: FieldConfig[] = [];
 
-  if (!data.timelineDataStructured || typeof data.timelineDataStructured !== 'object') {
-    // No structured data available, component won't render anything
-    return null;
-  }
-
-  const timelineData = data.timelineDataStructured as Record<string, any>;
-
-  // Create array of timeline events with their data
-  interface TimelineEventEntry {
-    eventKey: string;
-    event: any;
-    displayName: string;
-    sortDate: Date | null;
-  }
-
-  const timelineEntries: TimelineEventEntry[] = Object.entries(timelineData)
-    .filter(([eventKey, event]) => isEventActive(eventKey, event, isEditing))
-    .map(([eventKey, event]) => {
-      // Get sort date and display name from task (ONLY source)
-      const task = timelineTasks.find(t => t.timelineEventKey === eventKey);
-      const sortDate = task?.dueDate ? new Date(task.dueDate) : null;
-      const displayName = task?.title || eventKey;
-
-      return {
-        eventKey,
-        event,
-        displayName,
-        sortDate,
-      };
+  // Filter and sort tasks
+  const visibleTasks = timelineTasks
+    .filter(task => shouldShowTask(task, isEditing))
+    .sort((a, b) => {
+      // Sort by due date
+      const dateA = a.dueDate ? new Date(a.dueDate).getTime() : 0;
+      const dateB = b.dueDate ? new Date(b.dueDate).getTime() : 0;
+      return dateA - dateB;
     });
 
-  // Sort chronologically by task due date
-  timelineEntries.sort((a, b) => {
-    // Put null dates at the end
-    if (!a.sortDate && !b.sortDate) return 0;
-    if (!a.sortDate) return 1;
-    if (!b.sortDate) return -1;
-    return a.sortDate.getTime() - b.sortDate.getTime();
-  });
-
-  // Generate fields for each timeline event
-  for (const entry of timelineEntries) {
-    const { eventKey, event, displayName } = entry;
-
+  // Generate fields for each visible task
+  for (const task of visibleTasks) {
     // Check if this event is waivable
-    const isWaivable = !NON_WAIVABLE_EVENTS.includes(eventKey);
-    const isWaived = event.waived === true;
+    const isWaivable = !task.timelineEventKey || !NON_WAIVABLE_EVENTS.includes(task.timelineEventKey);
+    const isArchived = task.archived;
 
     // Get display value
     let displayValue: string | null = null;
@@ -239,12 +196,11 @@ export default function CategoryTimelineContingencies({
 
     if (!isEditing) {
       // View mode: show formatted date with source or "Waived"
-      displayValue = getTimelineEventDisplay(eventKey, event);
+      displayValue = getTaskDisplay(task);
     } else {
-      // Edit mode: Get the task's current due date from Task model (ONLY source)
-      const task = timelineTasks.find(t => t.timelineEventKey === eventKey);
-      if (task?.dueDate) {
-        // Extract date-only part (YYYY-MM-DD) to avoid timezone conversion
+      // Edit mode: Get the task's current due date
+      if (task.dueDate) {
+        // Extract date-only part (YYYY-MM-DD) for date input
         editValue = task.dueDate.split('T')[0];
       } else {
         editValue = '';
@@ -254,18 +210,12 @@ export default function CategoryTimelineContingencies({
     // Create onChange handler for the main field
     // Updates Task model DIRECTLY via /api/tasks/timeline-update
     const handleChange = async (val: any) => {
-      if (!data.id || !val) return;
-
-      const task = timelineTasks.find(t => t.timelineEventKey === eventKey);
-      if (!task) {
-        console.error(`No task found for eventKey: ${eventKey}`);
-        return;
-      }
+      if (!data.id || !val || !task.timelineEventKey) return;
 
       // Optimistically update local task state for immediate UI feedback
       setTimelineTasks(prev =>
         prev.map(t =>
-          t.timelineEventKey === eventKey
+          t.id === task.id
             ? { ...t, dueDate: val } // Update the dueDate
             : t
         )
@@ -278,7 +228,7 @@ export default function CategoryTimelineContingencies({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             parseId: data.id,
-            timelineEventKey: eventKey,
+            timelineEventKey: task.timelineEventKey,
             dueDate: val,
           }),
         });
@@ -287,7 +237,7 @@ export default function CategoryTimelineContingencies({
           // Revert optimistic update on error
           setTimelineTasks(prev =>
             prev.map(t =>
-              t.timelineEventKey === eventKey
+              t.id === task.id
                 ? { ...t, dueDate: task.dueDate } // Revert to original
                 : t
             )
@@ -299,7 +249,7 @@ export default function CategoryTimelineContingencies({
           // Update with server response to ensure consistency
           setTimelineTasks(prev =>
             prev.map(t =>
-              t.timelineEventKey === eventKey
+              t.id === task.id
                 ? { ...t, dueDate: result.task.dueDate }
                 : t
             )
@@ -309,7 +259,7 @@ export default function CategoryTimelineContingencies({
         // Revert optimistic update on error
         setTimelineTasks(prev =>
           prev.map(t =>
-            t.timelineEventKey === eventKey
+            t.id === task.id
               ? { ...t, dueDate: task.dueDate } // Revert to original
               : t
           )
@@ -322,13 +272,7 @@ export default function CategoryTimelineContingencies({
     // Create onChange handler for waived checkbox
     // Updates Task model DIRECTLY via /api/tasks/timeline-update
     const handleWaivedChange = async (waived: boolean) => {
-      if (!data.id) return;
-
-      const task = timelineTasks.find(t => t.timelineEventKey === eventKey);
-      if (!task) {
-        console.error(`No task found for eventKey: ${eventKey}`);
-        return;
-      }
+      if (!data.id || !task.timelineEventKey) return;
 
       try {
         // Update task archived status directly via API
@@ -337,7 +281,7 @@ export default function CategoryTimelineContingencies({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             parseId: data.id,
-            timelineEventKey: eventKey,
+            timelineEventKey: task.timelineEventKey,
             archived: waived,
           }),
         });
@@ -348,13 +292,22 @@ export default function CategoryTimelineContingencies({
           return;
         }
 
-        // Update Parse model to keep waived flag in sync
-        // (This maintains the UI state for the waived checkbox)
-        if (onDataChange) {
+        // Update local state
+        setTimelineTasks(prev =>
+          prev.map(t =>
+            t.id === task.id
+              ? { ...t, archived: waived }
+              : t
+          )
+        );
+
+        // Also update Parse model to keep waived flag in sync for UI consistency
+        if (onDataChange && data.timelineDataStructured) {
+          const timelineData = data.timelineDataStructured as Record<string, any>;
           const updatedTimeline = {
             ...timelineData,
-            [eventKey]: {
-              ...event,
+            [task.timelineEventKey]: {
+              ...timelineData[task.timelineEventKey],
               waived,
             },
           };
@@ -363,9 +316,6 @@ export default function CategoryTimelineContingencies({
             timelineDataStructured: updatedTimeline as any,
           });
         }
-
-        // Optionally refresh tasks to get updated server state
-        // The task will be archived/unarchived, which affects its visibility
       } catch (error) {
         console.error('Error updating waived status:', error);
         alert('Failed to update waived status. Please try again.');
@@ -373,9 +323,9 @@ export default function CategoryTimelineContingencies({
     };
 
     // Build field with inline waived checkbox if event is waivable
-    const fieldLabel = displayName;
+    const fieldLabel = task.title;
     const fieldValue = isEditing ? editValue : displayValue;
-    const fieldDisabled = isEditing && isWaived;
+    const fieldDisabled = isEditing && isArchived;
     const fieldType = isEditing ? 'date' : 'text'; // Date picker in edit mode
 
     fields.push(
@@ -385,7 +335,7 @@ export default function CategoryTimelineContingencies({
         fieldType,
         handleChange,
         fieldDisabled,
-        isWaived,
+        isArchived,
         handleWaivedChange,
         isWaivable // Show waived checkbox for waivable events
       )
