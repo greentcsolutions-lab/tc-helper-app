@@ -3,13 +3,17 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "npm run db:push && next dev",
     "vercel-build": "npx prisma migrate resolve --applied 20260109122422_add_basic_plan_support || true && npx prisma generate && npx prisma migrate deploy && next build",
     "build": "next build",
     "start": "next start",
     "seed": "ts-node prisma/seed.ts",
     "postinstall": "prisma generate",
-    "type-check": "tsc --noEmit --pretty"
+    "type-check": "tsc --noEmit --pretty",
+    "db:push": "prisma db push",
+    "db:migrate:create": "prisma migrate dev",
+    "db:migrate:deploy": "prisma migrate deploy",
+    "db:studio": "prisma studio"
   },
   "dependencies": {
     "@18f/us-federal-holidays": "^4.0.0",

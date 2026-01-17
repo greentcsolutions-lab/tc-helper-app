@@ -203,6 +203,7 @@ model Task {
   // Task Classification
   taskTypes            String[]  // ['timeline', 'broker', 'escrow', 'lender'] - can have multiple categories
   timelineEventId      String?   // For timeline tasks, references the timeline event ID (e.g., "parseId-deposit")
+  timelineEventKey     String?   // For timeline tasks, stores the original key from timelineDataStructured (e.g., "appraisalContingency", "closing")
 
   // Task Details
   title                String

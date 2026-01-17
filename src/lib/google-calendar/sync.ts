@@ -3,9 +3,10 @@
 
 import { calendar_v3 } from 'googleapis';
 import { getGoogleCalendarClient } from './client';
-import { db as prisma } from '@/lib/prisma';
+import { prisma } from '@/lib/prisma';
 import { GoogleCalendarEvent, SyncResult, SyncOperation, EVENT_COLORS } from '@/types/calendar';
-import { Task } from '@/types/task';
+import { Task } from '@prisma/client';
+import { syncTimelineEventsToCalendar } from './sync-timeline-events';
 
 /**
  * Syncs a task to Google Calendar (create or update)
@@ -59,7 +60,7 @@ export async function syncTaskToCalendar(
           },
         });
 
-        return { success: true, googleEventId: response.data.id };
+        return { success: true, googleEventId: response.data.id ?? undefined };
       } catch (error) {
         console.error('Error updating event:', error);
         return { success: false, error: 'Failed to update event' };
@@ -81,7 +82,7 @@ export async function syncTaskToCalendar(
           },
         });
 
-        return { success: true, googleEventId: response.data.id };
+        return { success: true, googleEventId: response.data.id ?? undefined };
       } catch (error) {
         console.error('Error creating event:', error);
         return { success: false, error: 'Failed to create event' };
@@ -228,30 +229,21 @@ export async function performInitialSync(userId: string): Promise<SyncResult> {
       };
     }
 
-    // Get all non-archived tasks
-    const tasks = await prisma.task.findMany({
+    // Sync all timeline events from all parses
+    // Note: We do NOT sync tasks individually - tasks are internal tracking only
+    // Google Calendar should mirror the timeline view (timeline events from timelineDataStructured)
+    const parses = await prisma.parse.findMany({
       where: {
         userId,
-        archived: false,
+        status: { in: ['COMPLETED', 'NEEDS_REVIEW'] },
       },
+      select: { id: true },
     });
 
-    // Sync each task
-    for (const task of tasks) {
-      const result = await syncTaskToCalendar(userId, task.id);
-
-      operations.push({
-        type: 'create',
-        taskId: task.id,
-        googleEventId: result.googleEventId,
-        success: result.success,
-        error: result.error,
-      });
-
-      if (result.success) {
-        totalSynced++;
-      } else {
-        totalErrors++;
+    for (const parse of parses) {
+      const timelineResult = await syncTimelineEventsToCalendar(parse.id, userId);
+      if (timelineResult.success) {
+        totalSynced += timelineResult.eventsSynced;
       }
     }
 
@@ -314,7 +306,7 @@ function buildEventFromTask(
   }
 
   // Determine color based on task type and status
-  let colorId = EVENT_COLORS.CUSTOM;
+  let colorId: string = EVENT_COLORS.CUSTOM;
   if (task.status === 'completed') {
     colorId = EVENT_COLORS.TIMELINE; // Blue for completed
   } else if (new Date(task.dueDate) < new Date()) {

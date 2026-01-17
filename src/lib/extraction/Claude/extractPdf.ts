@@ -5,6 +5,7 @@
 
 import { EXTRACTION_SCHEMA, getExtractionPrompt } from '@/lib/extraction/shared/extraction-schema';
 import { transformToUniversal } from '@/lib/extraction/shared/transform-to-universal';
+import { extractJsonFromResponse } from '@/lib/extraction/shared/extract-json';
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY!;
 if (!ANTHROPIC_API_KEY) {
@@ -153,17 +154,10 @@ export async function extractWithClaude(
     const text = result.content[0].text;
     console.log(`[claude-extract] Received response (${text.length} chars)`);
 
-    // ── JSON extraction ──────────────────────────────────────────────────────
+    // ── JSON extraction (using shared utility for robust parsing) ──────────────
     let extractedData;
     try {
-      const jsonMatch = text.match(/<json>([\s\S]*?)<\/json>/);
-      if (!jsonMatch || !jsonMatch[1]) {
-        throw new Error("No <json> block found in Claude response");
-      }
-
-      const jsonText = jsonMatch[1].trim();
-      extractedData = JSON.parse(jsonText);
-
+      extractedData = extractJsonFromResponse(text);
       console.log(`[claude-extract] Successfully extracted JSON`);
     } catch (parseError: any) {
       console.error(`[claude-extract] JSON extraction failed:`, parseError);
