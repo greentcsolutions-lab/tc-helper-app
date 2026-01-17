@@ -12,6 +12,8 @@ import ExtractionCategories from "@/components/ExtractionCategories";
 import { ParseResult } from "@/types";
 import { toast } from "sonner";
 
+type Task = any; // Use Prisma-generated type
+
 interface TransactionTableProps {
   transactions: ParseResult[];
   latestId: string | null;
@@ -20,6 +22,7 @@ interface TransactionTableProps {
   onToggleSelectAll: () => void;
   onDelete: (id: string) => void;
   onArchive: (id: string) => void;
+  tasks?: Task[]; // Optional tasks for timeline completion status
 }
 
 export default function TransactionTable({
@@ -30,6 +33,7 @@ export default function TransactionTable({
   onToggleSelectAll,
   onDelete,
   onArchive,
+  tasks = [],
 }: TransactionTableProps) {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(
     new Set(latestId ? [latestId] : [])
@@ -216,6 +220,7 @@ export default function TransactionTable({
                               isEditing={isEditing}
                               onDataChange={handleDataChange}
                               viewContext="left"
+                              tasks={tasks}
                             />
                           </div>
                           <div className="space-y-6 md:border-l md:pl-8">
@@ -224,6 +229,7 @@ export default function TransactionTable({
                               isEditing={isEditing}
                               onDataChange={handleDataChange}
                               viewContext="right"
+                              tasks={tasks}
                             />
                             
                             {!isEditing && (

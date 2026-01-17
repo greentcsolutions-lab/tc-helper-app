@@ -1,23 +1,28 @@
 // src/components/CategoryTimelineContingencies.tsx
-// Version: 12.0.0 - 2026-01-17
+// Version: 13.0.0 - 2026-01-17
 // REVERTED: Back to reading from Parse model (timelineDataStructured)
 // This avoids hydration errors and simplifies the architecture
+// NEW: Shows completion status from Task model
 
 import CategorySection, { FieldConfig } from "./CategorySection";
-import { Calendar } from "lucide-react";
+import { Calendar, CheckCircle } from "lucide-react";
 import { ParseResult } from "@/types";
 import { formatDisplayDate } from "@/lib/date-utils";
+
+type Task = any; // Use Prisma-generated type
 
 interface CategoryTimelineContingenciesProps {
   data: ParseResult;
   isEditing?: boolean;
   onDataChange?: (updatedData: ParseResult) => void;
+  tasks?: Task[]; // Optional tasks array to show completion status
 }
 
 export default function CategoryTimelineContingencies({
   data,
   isEditing = false,
   onDataChange,
+  tasks = [],
 }: CategoryTimelineContingenciesProps) {
   // Define non-waivable events (these should never show waived checkbox)
   const NON_WAIVABLE_EVENTS = ['acceptance', 'closing', 'initialDeposit'];
@@ -76,6 +81,21 @@ export default function CategoryTimelineContingencies({
     return `${shortDate} (${source})`;
   };
 
+  // Helper: Find task for a timeline event key
+  const findTaskForEvent = (eventKey: string): Task | null => {
+    if (!tasks || tasks.length === 0) return null;
+
+    // Task timelineEventId format is: `${parseId}-${eventKey}`
+    const targetId = `${data.id}-${eventKey}`;
+    return tasks.find((task: Task) => task.timelineEventId === targetId) || null;
+  };
+
+  // Helper: Check if task is completed
+  const isTaskCompleted = (eventKey: string): boolean => {
+    const task = findTaskForEvent(eventKey);
+    return task?.status === 'completed';
+  };
+
   // Helper: Check if event is "active" (should be displayed)
   const isEventActive = (eventKey: string, event: any, isEditingMode: boolean): boolean => {
     // In edit mode, ALWAYS show all events so user can toggle waived checkbox
@@ -106,7 +126,8 @@ export default function CategoryTimelineContingencies({
     disabled?: boolean,
     waived?: boolean,
     onWaivedChange?: (waived: boolean) => void,
-    showWaivedCheckbox?: boolean
+    showWaivedCheckbox?: boolean,
+    isCompleted?: boolean
   ): FieldConfig => ({
     label,
     value,
@@ -116,6 +137,7 @@ export default function CategoryTimelineContingencies({
     waived,
     onWaivedChange,
     showWaivedCheckbox,
+    isCompleted,
   });
 
   // === DYNAMIC TIMELINE FIELD GENERATION ===
@@ -224,6 +246,7 @@ export default function CategoryTimelineContingencies({
     const fieldValue = isEditing ? editValue : displayValue;
     const fieldDisabled = isEditing && isWaived;
     const fieldType = isEditing ? 'date' : 'text'; // Date picker in edit mode
+    const completed = isTaskCompleted(eventKey);
 
     fields.push(
       createField(
@@ -234,7 +257,8 @@ export default function CategoryTimelineContingencies({
         fieldDisabled,
         isWaived,
         handleWaivedChange,
-        isWaivable // Show waived checkbox for waivable events
+        isWaivable, // Show waived checkbox for waivable events
+        completed // Show completion status (green checkmark)
       )
     );
   }

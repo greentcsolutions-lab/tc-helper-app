@@ -92,6 +92,23 @@ export default async function TransactionsPage() {
     lowResZipUrl: parse.renderZipUrl ?? null,
   }));
 
+  // Fetch all timeline tasks for this user
+  const tasks = await db.task.findMany({
+    where: {
+      userId: dbUser.id,
+      taskTypes: {
+        has: 'timeline',
+      },
+    },
+    select: {
+      id: true,
+      parseId: true,
+      timelineEventId: true,
+      status: true,
+      title: true,
+    },
+  });
+
   // Count only non-archived parses for the active count
   const activeCount = dbParses.filter(p => p.status !== "ARCHIVED").length;
 
@@ -101,6 +118,7 @@ export default async function TransactionsPage() {
         initialParses={initialParses}
         userQuota={dbUser.quota}
         activeCount={activeCount}
+        tasks={tasks}
       />
     </div>
   );
