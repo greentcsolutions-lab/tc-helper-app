@@ -4,7 +4,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { currentUser } from '@clerk/nextjs/server';
 import { db } from '@/lib/prisma';
-import { syncTimelineEventsToCalendar } from '@/lib/google-calendar/sync-timeline-events';
 
 /**
  * PATCH /api/tasks/timeline-update
@@ -79,11 +78,6 @@ export async function PATCH(request: NextRequest) {
     });
 
     console.log(`[timeline-update] Successfully updated task ${task.id} for ${timelineEventKey}`);
-
-    // Trigger Google Calendar sync in background
-    syncTimelineEventsToCalendar(parseId, dbUser.id).catch((error) => {
-      console.error('Failed to sync to calendar after timeline update:', error);
-    });
 
     return NextResponse.json({
       success: true,
