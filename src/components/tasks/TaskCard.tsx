@@ -5,7 +5,8 @@
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Clock, AlertTriangle, MessageSquare, ChevronLeft, ChevronRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Clock, AlertTriangle, MessageSquare, ChevronLeft, ChevronRight, Pencil } from "lucide-react";
 import { getTaskStatus, formatDaysUntilDue, TASK_TYPES } from "@/types/task";
 
 type Task = any; // Use Prisma-generated type
@@ -88,11 +89,23 @@ export default function TaskCard({ task, onEdit, onShiftLeft, onShiftRight, disa
             ))}
           </div>
 
-          {/* Title */}
-          <div>
-            <h3 className="font-semibold text-sm leading-tight line-clamp-2">
+          {/* Title with Edit Button */}
+          <div className="flex items-start justify-between gap-2">
+            <h3 className="font-semibold text-sm leading-tight line-clamp-2 flex-1">
               {task.title}
             </h3>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 flex-shrink-0"
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit?.(task);
+              }}
+              title="Edit task"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </Button>
           </div>
 
           {/* Property Address */}

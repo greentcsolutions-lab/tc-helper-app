@@ -25,7 +25,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { TASK_STATUS, TASK_TYPES, getTaskStatus, getDaysUntilDue, formatDaysUntilDue } from "@/types/task";
-import { ArrowUp, ArrowDown, AlertTriangle, Trash2 } from "lucide-react";
+import { ArrowUp, ArrowDown, AlertTriangle, Trash2, Pencil } from "lucide-react";
 import { toast } from "sonner";
 
 type Task = any; // Use Prisma-generated type
@@ -57,9 +57,10 @@ interface TasksTableProps {
   tasks: Task[];
   onUpdateTaskStatus: (taskId: string, newStatus: string) => Promise<void>;
   onDeleteTasks: (taskIds: string[]) => Promise<void>;
+  onEditTask?: (task: Task) => void;
 }
 
-export default function TasksTable({ tasks, onUpdateTaskStatus, onDeleteTasks }: TasksTableProps) {
+export default function TasksTable({ tasks, onUpdateTaskStatus, onDeleteTasks, onEditTask }: TasksTableProps) {
   const [sortField, setSortField] = useState<SortField>("dueDate");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
@@ -359,15 +360,27 @@ export default function TasksTable({ tasks, onUpdateTaskStatus, onDeleteTasks }:
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDeleteTask(task.id)}
-                        disabled={isDeleting}
-                        className="h-8 w-8"
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => onEditTask?.(task)}
+                          className="h-8 w-8"
+                          title="Edit task"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDeleteTask(task.id)}
+                          disabled={isDeleting}
+                          className="h-8 w-8"
+                          title="Delete task"
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 );
