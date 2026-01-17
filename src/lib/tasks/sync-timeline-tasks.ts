@@ -449,7 +449,7 @@ function getEventAmount(event: TimelineEvent, parse: any): number | null {
 
 /**
  * Updates timeline when a task with TIMELINE category is modified
- * This syncs task changes back to the timeline data
+ * This syncs task changes back to the timeline data with smart calculation preservation
  */
 export async function syncTaskToTimeline(taskId: string): Promise<void> {
   // Get the task
@@ -465,11 +465,13 @@ export async function syncTaskToTimeline(taskId: string): Promise<void> {
   });
 
   if (!task || !task.parseId || !task.timelineEventId) {
+    console.log(`[syncTaskToTimeline] Skipping - task missing required fields`);
     return;
   }
 
   // Only sync back if task has TIMELINE category
   if (!task.taskTypes.includes(TASK_TYPES.TIMELINE)) {
+    console.log(`[syncTaskToTimeline] Skipping - task ${taskId} is not a timeline task`);
     return;
   }
 
@@ -477,16 +479,19 @@ export async function syncTaskToTimeline(taskId: string): Promise<void> {
   // Format is "{parseId}-{eventKey}"
   const eventKey = task.timelineEventId.replace(`${task.parseId}-`, '');
 
-  // Get the parse
+  // Get the parse with full timeline data
   const parse = await db.parse.findUnique({
     where: { id: task.parseId },
     select: {
       id: true,
+      effectiveDate: true,
+      closingDate: true,
       timelineDataStructured: true,
     },
   });
 
   if (!parse || !parse.timelineDataStructured) {
+    console.log(`[syncTaskToTimeline] Skipping - parse or timeline data not found`);
     return;
   }
 
@@ -494,19 +499,79 @@ export async function syncTaskToTimeline(taskId: string): Promise<void> {
 
   // Check if this event exists in timeline
   if (!timelineData[eventKey]) {
-    return;
-  }
+    console.log(`[syncTaskToTimeline] Creating new event ${eventKey} in timeline`);
+    // Event doesn't exist - create it as specified
+    timelineData[eventKey] = {
+      dateType: 'specified',
+      specifiedDate: task.dueDate.toISOString().split('T')[0],
+      effectiveDate: task.dueDate.toISOString().split('T')[0],
+      displayName: eventKey,
+    };
+  } else {
+    // Event exists - preserve calculation method
+    const event = timelineData[eventKey];
+    const updatedDate = task.dueDate.toISOString().split('T')[0];
 
-  // Format date as YYYY-MM-DD for timeline
-  const updatedDate = task.dueDate.toISOString().split('T')[0];
+    console.log(`[syncTaskToTimeline] Updating ${eventKey}: ${event.effectiveDate} → ${updatedDate}`);
 
-  // Update the effectiveDate in timeline
-  timelineData[eventKey].effectiveDate = updatedDate;
+    if (event.dateType === 'relative') {
+      // PRESERVE RELATIVE CALCULATION - auto-calculate new relativeDays
+      const anchorPoint = event.anchorPoint || 'acceptance';
+      const direction = event.direction || 'after';
+      const dayType = event.dayType || 'calendar';
 
-  // If it was a relative date, mark it as specified now
-  if (timelineData[eventKey].dateType === 'relative') {
-    timelineData[eventKey].dateType = 'specified';
-    timelineData[eventKey].specifiedDate = updatedDate;
+      // Get anchor date
+      let anchorDate: Date | null = null;
+      if (anchorPoint === 'acceptance' && parse.effectiveDate) {
+        anchorDate = new Date(parse.effectiveDate);
+      } else if (anchorPoint === 'closing' && parse.closingDate) {
+        anchorDate = new Date(parse.closingDate);
+      } else if (timelineData[anchorPoint]?.effectiveDate) {
+        // Anchor to another timeline event
+        anchorDate = new Date(timelineData[anchorPoint].effectiveDate);
+      }
+
+      if (anchorDate && !isNaN(anchorDate.getTime())) {
+        const newDueDate = new Date(task.dueDate);
+        const diffMs = newDueDate.getTime() - anchorDate.getTime();
+        let diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+
+        // Make positive for relative days
+        if (direction === 'before') {
+          diffDays = Math.abs(diffDays);
+        }
+
+        // For business days, we'd need more complex calculation
+        // For now, use calendar days as approximation
+        const newRelativeDays = Math.max(0, diffDays);
+
+        console.log(`[syncTaskToTimeline] Auto-calculated: ${eventKey} is now ${newRelativeDays} days ${direction} ${anchorPoint}`);
+
+        // Update with preserved calculation method
+        timelineData[eventKey] = {
+          ...event,
+          relativeDays: newRelativeDays,
+          effectiveDate: updatedDate,
+        };
+      } else {
+        console.log(`[syncTaskToTimeline] Could not find anchor date for ${anchorPoint}, converting to specified`);
+        // Couldn't find anchor - convert to specified
+        timelineData[eventKey] = {
+          ...event,
+          dateType: 'specified',
+          specifiedDate: updatedDate,
+          effectiveDate: updatedDate,
+        };
+      }
+    } else {
+      // Already specified - just update the date
+      console.log(`[syncTaskToTimeline] Updating specified date for ${eventKey}`);
+      timelineData[eventKey] = {
+        ...event,
+        specifiedDate: updatedDate,
+        effectiveDate: updatedDate,
+      };
+    }
   }
 
   // Save back to database
@@ -516,6 +581,8 @@ export async function syncTaskToTimeline(taskId: string): Promise<void> {
       timelineDataStructured: timelineData,
     },
   });
+
+  console.log(`[syncTaskToTimeline] Successfully synced task ${taskId} (${eventKey}) to Parse model`);
 }
 
 /**
