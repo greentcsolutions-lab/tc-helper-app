@@ -181,6 +181,7 @@ async function upsertTimelineTask(
     columnId: existingTask?.columnId || TASK_STATUS.NOT_STARTED,
     sortOrder: existingTask?.sortOrder || 0,
     isCustom: false,
+    isAiGenerated: existingTask?.isAiGenerated ?? true, // Preserve existing value, default to true for new tasks
     completedAt: existingTask?.completedAt || null,
   };
 
@@ -363,6 +364,7 @@ async function upsertDefaultTask(
     columnId: existingTask?.columnId || TASK_STATUS.NOT_STARTED,
     sortOrder: existingTask?.sortOrder || 0,
     isCustom: false,
+    isAiGenerated: existingTask?.isAiGenerated ?? true, // Preserve existing value, default to true for new tasks
     completedAt: existingTask?.completedAt || null,
   };
 

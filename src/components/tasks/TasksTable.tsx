@@ -25,7 +25,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { TASK_STATUS, TASK_TYPES, getTaskStatus, getDaysUntilDue, formatDaysUntilDue } from "@/types/task";
-import { ArrowUp, ArrowDown, AlertTriangle, Trash2, Pencil, Eye } from "lucide-react";
+import { ArrowUp, ArrowDown, AlertTriangle, Trash2, Pencil, Eye, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 type Task = any; // Use Prisma-generated type
@@ -320,6 +320,16 @@ export default function TasksTable({ tasks, onUpdateTaskStatus, onDeleteTasks, o
                     </TableCell>
                     <TableCell className="w-[150px]">
                       <div className="flex flex-wrap gap-1">
+                        {task.isAiGenerated && (
+                          <Badge
+                            variant="outline"
+                            className="bg-gradient-to-r from-purple-100 to-pink-100 text-purple-700 dark:from-purple-900/30 dark:to-pink-900/30 dark:text-purple-400 border-0 text-xs"
+                            title="AI Generated"
+                          >
+                            <Sparkles className="h-3 w-3 mr-1" />
+                            AI Generated
+                          </Badge>
+                        )}
                         {task.taskTypes?.map((type: string) => {
                           const typeConfig = TASK_TYPE_CONFIG[type];
                           return (
