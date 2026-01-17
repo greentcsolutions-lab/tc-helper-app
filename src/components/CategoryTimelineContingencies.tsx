@@ -1,26 +1,73 @@
 // src/components/CategoryTimelineContingencies.tsx
-// Version: 8.0.0 - 2026-01-15
-// FIXED: Waived checkbox now inline with input field, always visible
-// UPDATED: Waived events hidden from view mode (except big 3 contingencies which always show)
-// UPDATED: Disabled input fields when waived checkbox is checked
+// Version: 9.0.0 - 2026-01-16
+// MAJOR: Now reads from TASKS database instead of timelineDataStructured
+// Timeline data structure is preserved as immutable template
+// Tasks hold the actual current dates that sync with Google Calendar
 
+"use client";
+
+import { useEffect, useState } from "react";
 import CategorySection, { FieldConfig } from "./CategorySection";
 import { Calendar } from "lucide-react";
 import { ParseResult } from "@/types";
 import { formatDisplayDate } from "@/lib/date-utils";
 
+interface TimelineTask {
+  id: string;
+  title: string;
+  description: string | null;
+  dueDate: string; // ISO string from API
+  timelineEventKey: string | null;
+  status: string;
+}
+
 interface CategoryTimelineContingenciesProps {
   data: ParseResult;
   isEditing?: boolean;
   onDataChange?: (updatedData: ParseResult) => void;
+  refetchTrigger?: number; // Increment this to trigger a refetch
 }
 
 export default function CategoryTimelineContingencies({
   data,
   isEditing = false,
   onDataChange,
+  refetchTrigger = 0,
 }: CategoryTimelineContingenciesProps) {
   const cont = data.contingencies;
+  const [timelineTasks, setTimelineTasks] = useState<TimelineTask[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [fetchFailed, setFetchFailed] = useState(false);
+
+  // Fetch timeline tasks when component mounts or parseId changes
+  useEffect(() => {
+    async function fetchTimelineTasks() {
+      if (!data.id) {
+        setIsLoading(false);
+        setFetchFailed(true); // No parseId means we can't fetch
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/tasks/timeline/${data.id}`);
+        if (response.ok) {
+          const result = await response.json();
+          setTimelineTasks(result.tasks || []);
+          setFetchFailed(false);
+        } else {
+          console.error('Failed to fetch timeline tasks:', response.statusText);
+          setFetchFailed(true);
+        }
+      } catch (error) {
+        console.error('Error fetching timeline tasks:', error);
+        setFetchFailed(true);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    fetchTimelineTasks();
+  }, [data.id, refetchTrigger]); // Refetch when parseId or refetchTrigger changes
 
   // Define non-waivable events (these should never show waived checkbox)
   const NON_WAIVABLE_EVENTS = ['acceptance', 'closing', 'initialDeposit'];
@@ -47,47 +94,75 @@ export default function CategoryTimelineContingencies({
     return dateStr;
   };
 
-  // Helper: Get formatted timeline event from structured data
-  const getTimelineEventDisplay = (event: any): string | null => {
-    if (!event || !event.effectiveDate) {
-      return null;
-    }
-
+  // Helper: Get formatted timeline event display using task data for current date
+  // but timelineDataStructured for calculation metadata
+  // FALLBACK: If tasks fail to load, read directly from timelineDataStructured
+  const getTimelineEventDisplay = (eventKey: string, event: any): string | null => {
     // If waived, show "Waived" text
-    if (event.waived) {
+    if (event?.waived) {
       return "Waived";
     }
 
-    // Format the effective date
-    const displayDate = formatDate(event.effectiveDate);
+    let effectiveDate: string | null = null;
+
+    // Try to get date from task first (preferred)
+    if (!fetchFailed) {
+      const task = timelineTasks.find(t => t.timelineEventKey === eventKey);
+      if (task?.dueDate) {
+        // Extract date-only part to avoid timezone issues
+        // task.dueDate comes as ISO string like "2026-01-06T00:00:00.000Z"
+        // We want just "2026-01-06" to avoid timezone conversion
+        effectiveDate = task.dueDate.split('T')[0];
+      }
+    }
+
+    // Fallback: read from timelineDataStructured if tasks unavailable
+    if (!effectiveDate && event?.effectiveDate) {
+      effectiveDate = event.effectiveDate.split('T')[0]; // Also extract date part
+    }
+
+    if (!effectiveDate) {
+      return null;
+    }
+
+    // Format the date (now receives date-only string YYYY-MM-DD)
+    const displayDate = formatDate(effectiveDate);
     if (!displayDate) return null;
 
     const shortDate = toShortYear(displayDate);
 
-    // Build source description
+    // Build source description from timeline metadata (immutable)
     let source = '';
-    if (event.dateType === 'specified') {
+    if (event?.dateType === 'specified') {
       source = 'specified';
-    } else if (event.dateType === 'relative') {
+    } else if (event?.dateType === 'relative') {
       const dayType = event.dayType === 'business' ? 'business days' : 'days';
       const direction = event.direction === 'before' ? 'before' : 'after';
       const anchor = event.anchorPoint || 'acceptance';
       source = `${event.relativeDays} ${dayType} ${direction} ${anchor}`;
+    } else {
+      source = 'specified'; // Default
     }
 
     return `${shortDate} (${source})`;
   };
 
   // Helper: Check if event is "active" (should be displayed)
+  // FALLBACK: If tasks unavailable, check effectiveDate from timelineDataStructured
   const isEventActive = (eventKey: string, event: any, isEditingMode: boolean): boolean => {
+    // Check if we have a corresponding task OR effectiveDate (fallback)
+    const hasTask = !fetchFailed && timelineTasks.some(t => t.timelineEventKey === eventKey);
+    const hasEffectiveDate = event?.effectiveDate != null;
+    const hasData = hasTask || hasEffectiveDate;
+
     // In edit mode, ALWAYS show all events so user can toggle waived checkbox
     if (isEditingMode) {
-      return true;
+      return hasData;
     }
 
     // In view mode:
     // Always show the big 3 contingencies (even if waived)
-    if (ALWAYS_SHOW_EVENTS.includes(eventKey)) {
+    if (ALWAYS_SHOW_EVENTS.includes(eventKey) && hasData) {
       return true;
     }
 
@@ -96,8 +171,8 @@ export default function CategoryTimelineContingencies({
       return false;
     }
 
-    // For other events, show if they have an effectiveDate
-    return event?.effectiveDate != null;
+    // For other events, show if they have data
+    return hasData;
   };
 
   const createField = (
@@ -135,21 +210,42 @@ export default function CategoryTimelineContingencies({
     eventKey: string;
     event: any;
     displayName: string;
-    effectiveDate: string | null;
     sortDate: Date | null;
   }
 
   const timelineEntries: TimelineEventEntry[] = Object.entries(timelineData)
     .filter(([eventKey, event]) => isEventActive(eventKey, event, isEditing))
-    .map(([eventKey, event]) => ({
-      eventKey,
-      event,
-      displayName: event.displayName || eventKey,
-      effectiveDate: event.effectiveDate,
-      sortDate: event.effectiveDate ? new Date(event.effectiveDate) : null,
-    }));
+    .map(([eventKey, event]) => {
+      // Find corresponding task for sort date and display name
+      let sortDate: Date | null = null;
+      let displayName: string = eventKey;
 
-  // Sort chronologically by effectiveDate
+      // Try to get from task first
+      if (!fetchFailed) {
+        const task = timelineTasks.find(t => t.timelineEventKey === eventKey);
+        if (task) {
+          sortDate = task.dueDate ? new Date(task.dueDate) : null;
+          displayName = task.title;
+        }
+      }
+
+      // Fallback to timelineDataStructured
+      if (!sortDate && event.effectiveDate) {
+        sortDate = new Date(event.effectiveDate);
+      }
+      if (!displayName || displayName === eventKey) {
+        displayName = event.displayName || eventKey;
+      }
+
+      return {
+        eventKey,
+        event,
+        displayName,
+        sortDate,
+      };
+    });
+
+  // Sort chronologically by task due date
   timelineEntries.sort((a, b) => {
     // Put null dates at the end
     if (!a.sortDate && !b.sortDate) return 0;
@@ -172,76 +268,67 @@ export default function CategoryTimelineContingencies({
 
     if (!isEditing) {
       // View mode: show formatted date with source or "Waived"
-      displayValue = getTimelineEventDisplay(event);
+      displayValue = getTimelineEventDisplay(eventKey, event);
     } else {
-      // Edit mode: need to map to the appropriate edit field
-      // For the big 3 contingencies, use the contingencies object
-      // For other timeline events, we'll need different logic
+      // Edit mode: Get the task's current due date OR fall back to effectiveDate
+      let dueDate: string | null = null;
 
-      if (eventKey === 'inspectionContingency') {
-        editValue = cont?.inspectionDays ?? '';
-      } else if (eventKey === 'appraisalContingency') {
-        editValue = cont?.appraisalDays ?? '';
-      } else if (eventKey === 'loanContingency') {
-        editValue = cont?.loanDays ?? '';
-      } else if (eventKey === 'closing') {
-        editValue = data.closingDate ?? '';
-      } else if (eventKey === 'initialDeposit') {
-        editValue = data.initialDepositDueDate ?? '';
-      } else if (eventKey === 'sellerDisclosures') {
-        editValue = data.sellerDeliveryOfDisclosuresDate ?? '';
-      } else {
-        // For other events, show the effectiveDate or relativeDays
-        if (event.dateType === 'specified') {
-          editValue = event.specifiedDate ?? '';
-        } else if (event.dateType === 'relative') {
-          editValue = event.relativeDays ?? '';
+      // Try to get from task first
+      if (!fetchFailed) {
+        const task = timelineTasks.find(t => t.timelineEventKey === eventKey);
+        if (task?.dueDate) {
+          // Extract date-only part (YYYY-MM-DD) to avoid timezone conversion
+          dueDate = task.dueDate.split('T')[0];
         }
+      }
+
+      // Fallback to effectiveDate from timelineDataStructured
+      if (!dueDate && event?.effectiveDate) {
+        dueDate = event.effectiveDate.split('T')[0];
+      }
+
+      if (dueDate) {
+        // Already in YYYY-MM-DD format for date input
+        editValue = dueDate;
+      } else {
+        editValue = '';
       }
     }
 
     // Create onChange handler for the main field
+    // Updates timelineDataStructured which will be intercepted by the API to update tasks
     const handleChange = (val: any) => {
       if (!onDataChange) return;
 
-      // Map back to the appropriate field for database update
-      if (eventKey === 'inspectionContingency') {
-        onDataChange({
-          ...data,
-          contingencies: { ...cont!, inspectionDays: val },
-        });
-      } else if (eventKey === 'appraisalContingency') {
-        onDataChange({
-          ...data,
-          contingencies: { ...cont!, appraisalDays: val },
-        });
-      } else if (eventKey === 'loanContingency') {
-        onDataChange({
-          ...data,
-          contingencies: { ...cont!, loanDays: val },
-        });
-      } else if (eventKey === 'closing') {
-        onDataChange({ ...data, closingDate: val });
-      } else if (eventKey === 'initialDeposit') {
-        onDataChange({ ...data, initialDepositDueDate: val });
-      } else if (eventKey === 'sellerDisclosures') {
-        onDataChange({ ...data, sellerDeliveryOfDisclosuresDate: val });
-      } else {
-        // For other timeline events, we need to update timelineDataStructured
-        const updatedTimeline = {
-          ...timelineData,
-          [eventKey]: {
-            ...event,
-            ...(event.dateType === 'specified'
-              ? { specifiedDate: val }
-              : { relativeDays: parseInt(val, 10) || 0 }),
-          },
-        };
-        onDataChange({
-          ...data,
-          timelineDataStructured: updatedTimeline as any,
-        });
+      // Get the task to preserve other metadata
+      const task = timelineTasks.find(t => t.timelineEventKey === eventKey);
+
+      // Optimistically update local task state for immediate UI feedback
+      if (task && val) {
+        setTimelineTasks(prev =>
+          prev.map(t =>
+            t.timelineEventKey === eventKey
+              ? { ...t, dueDate: val } // Update the dueDate
+              : t
+          )
+        );
       }
+
+      // Update timelineDataStructured with new effectiveDate
+      // The API will intercept this and update the task instead
+      const updatedTimeline = {
+        ...timelineData,
+        [eventKey]: {
+          ...event,
+          effectiveDate: val, // New date from user input
+          displayName: task?.title || event.displayName,
+        },
+      };
+
+      onDataChange({
+        ...data,
+        timelineDataStructured: updatedTimeline as any,
+      });
     };
 
     // Create onChange handler for waived checkbox
@@ -265,18 +352,33 @@ export default function CategoryTimelineContingencies({
     const fieldLabel = displayName;
     const fieldValue = isEditing ? editValue : displayValue;
     const fieldDisabled = isEditing && isWaived;
+    const fieldType = isEditing ? 'date' : 'text'; // Date picker in edit mode
 
     fields.push(
       createField(
         fieldLabel,
         fieldValue,
-        'text',
+        fieldType,
         handleChange,
         fieldDisabled,
         isWaived,
         handleWaivedChange,
         isWaivable // Show waived checkbox for waivable events
       )
+    );
+  }
+
+  // Show loading state while fetching tasks
+  if (isLoading) {
+    return (
+      <CategorySection
+        title="Timeline & Contingencies"
+        icon={<Calendar className="h-6 w-6 text-blue-600" />}
+        fields={[]}
+        categoryName="Timeline"
+        defaultOpen={true}
+        isEditing={isEditing}
+      />
     );
   }
 

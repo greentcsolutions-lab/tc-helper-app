@@ -6,6 +6,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { EXTRACTION_SCHEMA, getExtractionPrompt } from '@/lib/extraction/shared/extraction-schema';
 import { transformToUniversal } from '@/lib/extraction/shared/transform-to-universal';
+import { extractJsonFromResponse } from '@/lib/extraction/shared/extract-json';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY!;
 if (!GEMINI_API_KEY) {
@@ -103,12 +104,10 @@ export async function extractWithGemini(
     console.log(`[gemini-extract] Received response (${text.length} chars)`);
     console.log(`[gemini-extract] First 500 chars: ${text.substring(0, 500)}`);
 
-    // Robust JSON parsing
+    // Robust JSON parsing (using shared utility for multiple wrapper formats)
     let extractedData;
     try {
-      const jsonMatch = text.match(/```json\n?([\s\S]*?)\n?```/) || text.match(/```\n?([\s\S]*?)\n?```/);
-      const jsonText = jsonMatch ? jsonMatch[1] : text;
-      extractedData = JSON.parse(jsonText.trim());
+      extractedData = extractJsonFromResponse(text);
     } catch (parseError: any) {
       console.error(`[gemini-extract] JSON parse error:`, parseError);
       console.error(`[gemini-extract] Raw text:`, text);

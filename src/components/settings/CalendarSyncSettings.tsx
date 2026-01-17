@@ -2,6 +2,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useUser } from "@clerk/nextjs";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -9,6 +10,11 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Calendar, CheckCircle2, XCircle, RefreshCw, Loader2, CalendarCheck, Lock } from "lucide-react";
 import { toast } from "sonner";
+
+// Beta testing email whitelist
+const BETA_TESTER_EMAILS = [
+  "greentcsolutions@gmail.com",
+];
 
 interface CalendarSettings {
   syncEnabled: boolean;
@@ -21,10 +27,12 @@ interface CalendarSettings {
 }
 
 export default function CalendarSyncSettings() {
+  const { user } = useUser();
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isCleaningUp, setIsCleaningUp] = useState(false);
   const [settings, setSettings] = useState<CalendarSettings>({
     syncEnabled: true,
     includeFullDetails: true,
@@ -35,10 +43,18 @@ export default function CalendarSyncSettings() {
     webhookExpiration: null,
   });
 
+  // Check if user is in beta testing whitelist
+  const isBetaTester = user?.primaryEmailAddress?.emailAddress &&
+    BETA_TESTER_EMAILS.includes(user.primaryEmailAddress.emailAddress);
+
   // Load settings on mount
   useEffect(() => {
-    loadSettings();
-  }, []);
+    if (isBetaTester) {
+      loadSettings();
+    } else {
+      setIsLoading(false);
+    }
+  }, [isBetaTester]);
 
   async function loadSettings() {
     try {
@@ -149,6 +165,32 @@ export default function CalendarSyncSettings() {
     }
   }
 
+  async function handleCleanupDuplicates() {
+    if (!confirm('This will remove duplicate calendar events. Continue?')) {
+      return;
+    }
+
+    setIsCleaningUp(true);
+    try {
+      const response = await fetch('/api/google-calendar/cleanup-duplicates', {
+        method: 'POST',
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        toast.success(data.message);
+        await loadSettings();
+      } else {
+        toast.error('Failed to cleanup duplicates');
+      }
+    } catch (error) {
+      console.error('Error cleaning up duplicates:', error);
+      toast.error('Failed to cleanup duplicates');
+    } finally {
+      setIsCleaningUp(false);
+    }
+  }
+
   if (isLoading) {
     return (
       <Card>
@@ -161,29 +203,6 @@ export default function CalendarSyncSettings() {
 
   return (
     <Card className="relative">
-      {/* Coming Soon Overlay */}
-      <div className="absolute inset-0 bg-background/80 backdrop-blur-sm z-10 flex flex-col items-center justify-center rounded-lg">
-        <div className="text-center space-y-3">
-          <div className="flex items-center justify-center">
-            <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
-              <Lock className="h-8 w-8 text-primary" />
-            </div>
-          </div>
-          <div>
-            <Badge variant="secondary" className="text-base px-4 py-1.5">
-              Coming Soon
-            </Badge>
-          </div>
-          <div className="max-w-md px-4">
-            <h3 className="text-lg font-semibold mb-2">Google Calendar Integration</h3>
-            <p className="text-sm text-muted-foreground">
-              We're currently verifying our app with Google to enable Calendar sync.
-              This feature will be available soon!
-            </p>
-          </div>
-        </div>
-      </div>
-
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Calendar className="h-5 w-5" />
@@ -195,6 +214,27 @@ export default function CalendarSyncSettings() {
       </CardHeader>
 
       <CardContent className="space-y-6">
+        {/* Coming Soon Overlay for Non-Beta Testers */}
+        {!isBetaTester && (
+          <div className="absolute inset-0 bg-background/80 backdrop-blur-sm z-10 rounded-lg flex items-center justify-center">
+            <div className="text-center space-y-4 p-8">
+              <div className="mx-auto w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
+                <Lock className="h-8 w-8 text-primary" />
+              </div>
+              <div className="space-y-2">
+                <Badge variant="secondary" className="text-sm px-3 py-1">
+                  Coming Soon
+                </Badge>
+                <h3 className="text-xl font-semibold">Google Calendar Integration</h3>
+                <p className="text-muted-foreground max-w-md">
+                  We're currently verifying our app with Google to enable Calendar sync.
+                  This feature will be available soon!
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Connection Status */}
         <div className="flex items-center justify-between p-4 border rounded-lg">
           <div className="flex items-center gap-3">
@@ -240,19 +280,30 @@ export default function CalendarSyncSettings() {
                       : 'Never'}
                   </p>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleManualSync}
-                  disabled={isSyncing}
-                >
-                  {isSyncing ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                  )}
-                  Sync Now
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleManualSync}
+                    disabled={isSyncing || isCleaningUp}
+                  >
+                    {isSyncing ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                    )}
+                    Sync Now
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCleanupDuplicates}
+                    disabled={isSyncing || isCleaningUp}
+                  >
+                    {isCleaningUp && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Remove Duplicates
+                  </Button>
+                </div>
               </div>
 
               {settings.lastSyncError && (

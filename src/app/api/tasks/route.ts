@@ -163,13 +163,13 @@ export async function POST(request: NextRequest) {
       });
 
       // Determine limit based on plan type
-      const customTaskLimit = dbUser.planType === 'BASIC' ? 10 : 1;
+      const customTaskLimit = dbUser.planType === 'BASIC' ? 100 : 1;
 
       if (currentCustomTaskCount >= customTaskLimit) {
         const upgradeMessage =
           dbUser.planType === 'FREE'
-            ? 'Free tier limited to 1 custom task. Upgrade to Basic for 10 custom tasks.'
-            : 'Basic plan limited to 10 custom tasks.';
+            ? 'Free tier limited to 1 custom task. Upgrade to Basic for 100 custom tasks.'
+            : 'Basic plan limited to 100 custom tasks.';
 
         return NextResponse.json(
           {
@@ -182,38 +182,50 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Create the task
-    const result = await db.task.create({
-      data: {
-        userId: dbUser.id,
-        parseId: parseId || null,
-        taskTypes, // Array of task types
-        title,
-        description: description || null,
-        dueDate: new Date(dueDate),
-        dueDateType: dueDateType || 'specific',
-        dueDateValue: dueDateValue || null,
-        status: status || TASK_STATUS.NOT_STARTED,
-        columnId: columnId || TASK_STATUS.NOT_STARTED,
-        isCustom: isCustom !== undefined ? isCustom : true,
-      },
-      include: {
-        parse: {
-          select: {
-            id: true,
-            propertyAddress: true,
-            effectiveDate: true,
-            closingDate: true,
+    // Create the task and increment custom task count in a transaction
+    const isCustomTask = isCustom !== undefined ? isCustom : true;
+
+    const result = await db.$transaction(async (tx) => {
+      const task = await tx.task.create({
+        data: {
+          userId: dbUser.id,
+          parseId: parseId || null,
+          taskTypes, // Array of task types
+          title,
+          description: description || null,
+          dueDate: new Date(dueDate),
+          dueDateType: dueDateType || 'specific',
+          dueDateValue: dueDateValue || null,
+          status: status || TASK_STATUS.NOT_STARTED,
+          columnId: columnId || TASK_STATUS.NOT_STARTED,
+          isCustom: isCustomTask,
+        },
+        include: {
+          parse: {
+            select: {
+              id: true,
+              propertyAddress: true,
+              effectiveDate: true,
+              closingDate: true,
+            },
           },
         },
-      },
+      });
+
+      // Increment custom task count if this is a custom task
+      if (isCustomTask) {
+        await tx.user.update({
+          where: { id: dbUser.id },
+          data: { customTaskCount: { increment: 1 } },
+        });
+      }
+
+      return task;
     });
 
-    // Sync to Google Calendar (async, don't wait for completion)
-    syncTaskToCalendar(dbUser.id, result.id).catch((error) => {
-      console.error('Failed to sync task to calendar:', error);
-      // Don't fail the request if calendar sync fails
-    });
+    // Note: We do NOT sync tasks to Google Calendar
+    // Google Calendar mirrors timeline events (from timelineDataStructured), not tasks
+    // Tasks are internal tracking only
 
     return NextResponse.json({ task: result }, { status: 201 });
   } catch (error) {
