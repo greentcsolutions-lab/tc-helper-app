@@ -44,6 +44,7 @@ interface NewTaskDialogProps {
   open?: boolean; // Controlled open state
   onOpenChange?: (open: boolean) => void; // Controlled open state handler
   onTaskUpdated?: () => void; // Callback when task is updated
+  mode?: 'create' | 'edit' | 'view'; // Dialog mode
 }
 
 export default function NewTaskDialog({
@@ -51,18 +52,33 @@ export default function NewTaskDialog({
   editTask = null,
   open: controlledOpen,
   onOpenChange,
-  onTaskUpdated
+  onTaskUpdated,
+  mode: initialMode,
 }: NewTaskDialogProps) {
   const router = useRouter();
   const [internalOpen, setInternalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dialogMode, setDialogMode] = useState<'create' | 'edit' | 'view'>(initialMode || 'create');
 
   // Use controlled open state if provided, otherwise use internal state
   const open = controlledOpen !== undefined ? controlledOpen : internalOpen;
   const setOpen = onOpenChange || setInternalOpen;
 
-  const isEditMode = !!editTask;
+  // Update dialog mode when initialMode or editTask changes
+  useEffect(() => {
+    if (initialMode) {
+      setDialogMode(initialMode);
+    } else if (editTask) {
+      setDialogMode('edit');
+    } else {
+      setDialogMode('create');
+    }
+  }, [initialMode, editTask]);
+
+  const isEditMode = dialogMode === 'edit';
+  const isViewMode = dialogMode === 'view';
+  const isReadOnly = isViewMode;
 
   // Form state - initialize from editTask if in edit mode
   const [title, setTitle] = useState(editTask?.title || "");
@@ -220,9 +236,18 @@ export default function NewTaskDialog({
   // Check if this is a timeline task (categories are locked)
   const isTimelineTask = editTask?.taskTypes?.includes('timeline');
 
+  // Check if this is an anchor point task (Acceptance or Closing)
+  const isAnchorPoint = editTask?.timelineEventId?.endsWith('-acceptance') ||
+                        editTask?.timelineEventId?.endsWith('-closing');
+  const isTitleLocked = isAnchorPoint;
+
+  const handleSwitchToEdit = () => {
+    setDialogMode('edit');
+  };
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      {!isEditMode && (
+      {dialogMode === 'create' && (
         <DialogTrigger asChild>
           <Button>
             <Plus className="mr-2 h-4 w-4" />
@@ -233,14 +258,23 @@ export default function NewTaskDialog({
       <DialogContent className="sm:max-w-[500px]">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>{isEditMode ? 'Edit Task' : 'Create New Task'}</DialogTitle>
+            <DialogTitle>
+              {isViewMode ? 'View Task' : (isEditMode ? 'Edit Task' : 'Create New Task')}
+            </DialogTitle>
             <DialogDescription>
-              {isEditMode
-                ? 'Update the task details below.'
-                : 'Add a custom task to your workflow. Fill in the details below.'}
-              {isTimelineTask && (
+              {isViewMode
+                ? 'View task details below. Click Edit to make changes.'
+                : (isEditMode
+                  ? 'Update the task details below.'
+                  : 'Add a custom task to your workflow. Fill in the details below.')}
+              {isTimelineTask && !isViewMode && (
                 <div className="mt-2 text-sm text-orange-600 dark:text-orange-400">
                   Note: Timeline tasks cannot change categories
+                </div>
+              )}
+              {isTitleLocked && !isViewMode && (
+                <div className="mt-2 text-sm text-orange-600 dark:text-orange-400">
+                  Note: Timeline anchor points (Acceptance, Closing) cannot change names
                 </div>
               )}
             </DialogDescription>
@@ -256,13 +290,15 @@ export default function NewTaskDialog({
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="e.g., Follow up with lender"
                 required
+                disabled={isReadOnly || isTitleLocked}
+                className={isTitleLocked ? 'opacity-60 cursor-not-allowed' : ''}
               />
             </div>
 
             {/* Transaction */}
             <div className="grid gap-3">
               <Label htmlFor="parse">Transaction</Label>
-              <Select value={parseId} onValueChange={setParseId}>
+              <Select value={parseId} onValueChange={setParseId} disabled={isReadOnly}>
                 <SelectTrigger id="parse">
                   <SelectValue placeholder="Select a transaction (optional)" />
                 </SelectTrigger>
@@ -291,9 +327,9 @@ export default function NewTaskDialog({
                     id="type-broker"
                     checked={taskTypes.includes("broker")}
                     onCheckedChange={() => toggleTaskType("broker")}
-                    disabled={isTimelineTask}
+                    disabled={isReadOnly || isTimelineTask}
                   />
-                  <Label htmlFor="type-broker" className={`font-normal ${isTimelineTask ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
+                  <Label htmlFor="type-broker" className={`font-normal ${(isReadOnly || isTimelineTask) ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
                     Broker
                   </Label>
                 </div>
@@ -302,9 +338,9 @@ export default function NewTaskDialog({
                     id="type-escrow"
                     checked={taskTypes.includes("escrow")}
                     onCheckedChange={() => toggleTaskType("escrow")}
-                    disabled={isTimelineTask}
+                    disabled={isReadOnly || isTimelineTask}
                   />
-                  <Label htmlFor="type-escrow" className={`font-normal ${isTimelineTask ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
+                  <Label htmlFor="type-escrow" className={`font-normal ${(isReadOnly || isTimelineTask) ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
                     Escrow
                   </Label>
                 </div>
@@ -313,9 +349,9 @@ export default function NewTaskDialog({
                     id="type-lender"
                     checked={taskTypes.includes("lender")}
                     onCheckedChange={() => toggleTaskType("lender")}
-                    disabled={isTimelineTask}
+                    disabled={isReadOnly || isTimelineTask}
                   />
-                  <Label htmlFor="type-lender" className={`font-normal ${isTimelineTask ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
+                  <Label htmlFor="type-lender" className={`font-normal ${(isReadOnly || isTimelineTask) ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
                     Lender
                   </Label>
                 </div>
@@ -324,9 +360,9 @@ export default function NewTaskDialog({
                     id="type-timeline"
                     checked={taskTypes.includes("timeline")}
                     onCheckedChange={() => toggleTaskType("timeline")}
-                    disabled={isTimelineTask}
+                    disabled={isReadOnly || isTimelineTask}
                   />
-                  <Label htmlFor="type-timeline" className={`font-normal ${isTimelineTask ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
+                  <Label htmlFor="type-timeline" className={`font-normal ${(isReadOnly || isTimelineTask) ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
                     Timeline
                   </Label>
                 </div>
@@ -336,22 +372,22 @@ export default function NewTaskDialog({
             {/* Due Date Type */}
             <div className="grid gap-3">
               <Label>Due Date *</Label>
-              <RadioGroup value={dueDateType} onValueChange={(value: any) => setDueDateType(value)}>
+              <RadioGroup value={dueDateType} onValueChange={(value: any) => setDueDateType(value)} disabled={isReadOnly}>
                 <div className="flex items-center space-x-3">
-                  <RadioGroupItem value="specific" id="specific" />
-                  <Label htmlFor="specific" className="font-normal cursor-pointer">
+                  <RadioGroupItem value="specific" id="specific" disabled={isReadOnly} />
+                  <Label htmlFor="specific" className={`font-normal ${isReadOnly ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
                     Specific date
                   </Label>
                 </div>
                 <div className="flex items-center space-x-3">
-                  <RadioGroupItem value="days_after_acceptance" id="days_after_acceptance" />
-                  <Label htmlFor="days_after_acceptance" className="font-normal cursor-pointer">
+                  <RadioGroupItem value="days_after_acceptance" id="days_after_acceptance" disabled={isReadOnly} />
+                  <Label htmlFor="days_after_acceptance" className={`font-normal ${isReadOnly ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
                     Days after acceptance
                   </Label>
                 </div>
                 <div className="flex items-center space-x-3">
-                  <RadioGroupItem value="days_from_close" id="days_from_close" />
-                  <Label htmlFor="days_from_close" className="font-normal cursor-pointer">
+                  <RadioGroupItem value="days_from_close" id="days_from_close" disabled={isReadOnly} />
+                  <Label htmlFor="days_from_close" className={`font-normal ${isReadOnly ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
                     Days from close
                   </Label>
                 </div>
@@ -368,6 +404,7 @@ export default function NewTaskDialog({
                   value={specificDate}
                   onChange={(e) => setSpecificDate(e.target.value)}
                   required
+                  disabled={isReadOnly}
                 />
               </div>
             ) : (
@@ -381,6 +418,7 @@ export default function NewTaskDialog({
                   onChange={(e) => setRelativeDays(e.target.value)}
                   placeholder="e.g., 7"
                   required
+                  disabled={isReadOnly}
                 />
               </div>
             )}
@@ -388,7 +426,7 @@ export default function NewTaskDialog({
             {/* Status */}
             <div className="grid gap-3">
               <Label htmlFor="status">Status *</Label>
-              <Select value={status} onValueChange={(value: any) => setStatus(value)}>
+              <Select value={status} onValueChange={(value: any) => setStatus(value)} disabled={isReadOnly}>
                 <SelectTrigger id="status">
                   <SelectValue />
                 </SelectTrigger>
@@ -415,13 +453,19 @@ export default function NewTaskDialog({
               onClick={() => setOpen(false)}
               disabled={loading}
             >
-              Cancel
+              {isViewMode ? 'Close' : 'Cancel'}
             </Button>
-            <Button type="submit" disabled={loading}>
-              {loading
-                ? (isEditMode ? "Updating..." : "Creating...")
-                : (isEditMode ? "Update Task" : "Create Task")}
-            </Button>
+            {isViewMode ? (
+              <Button type="button" onClick={handleSwitchToEdit}>
+                Edit Task
+              </Button>
+            ) : (
+              <Button type="submit" disabled={loading}>
+                {loading
+                  ? (isEditMode ? "Updating..." : "Creating...")
+                  : (isEditMode ? "Update Task" : "Create Task")}
+              </Button>
+            )}
           </DialogFooter>
         </form>
       </DialogContent>

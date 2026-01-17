@@ -25,7 +25,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { TASK_STATUS, TASK_TYPES, getTaskStatus, getDaysUntilDue, formatDaysUntilDue } from "@/types/task";
-import { ArrowUp, ArrowDown, AlertTriangle, Trash2, Pencil } from "lucide-react";
+import { ArrowUp, ArrowDown, AlertTriangle, Trash2, Pencil, Eye } from "lucide-react";
 import { toast } from "sonner";
 
 type Task = any; // Use Prisma-generated type
@@ -58,9 +58,10 @@ interface TasksTableProps {
   onUpdateTaskStatus: (taskId: string, newStatus: string) => Promise<void>;
   onDeleteTasks: (taskIds: string[]) => Promise<void>;
   onEditTask?: (task: Task) => void;
+  onViewTask?: (task: Task) => void;
 }
 
-export default function TasksTable({ tasks, onUpdateTaskStatus, onDeleteTasks, onEditTask }: TasksTableProps) {
+export default function TasksTable({ tasks, onUpdateTaskStatus, onDeleteTasks, onEditTask, onViewTask }: TasksTableProps) {
   const [sortField, setSortField] = useState<SortField>("dueDate");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
@@ -253,31 +254,31 @@ export default function TasksTable({ tasks, onUpdateTaskStatus, onDeleteTasks, o
                 Task Title <SortIcon field="title" />
               </TableHead>
               <TableHead
-                className="cursor-pointer hover:bg-muted/50"
+                className="cursor-pointer hover:bg-muted/50 w-[200px]"
                 onClick={() => handleSort("propertyAddress")}
               >
-                Property Address <SortIcon field="propertyAddress" />
+                Property <SortIcon field="propertyAddress" />
               </TableHead>
               <TableHead
-                className="cursor-pointer hover:bg-muted/50"
+                className="cursor-pointer hover:bg-muted/50 w-[150px]"
                 onClick={() => handleSort("taskTypes")}
               >
-                Task Types <SortIcon field="taskTypes" />
+                Categories <SortIcon field="taskTypes" />
               </TableHead>
               <TableHead
-                className="cursor-pointer hover:bg-muted/50"
+                className="cursor-pointer hover:bg-muted/50 w-[130px]"
                 onClick={() => handleSort("dueDate")}
               >
                 Due Date <SortIcon field="dueDate" />
               </TableHead>
               <TableHead
-                className="cursor-pointer hover:bg-muted/50"
+                className="cursor-pointer hover:bg-muted/50 w-[140px]"
                 onClick={() => handleSort("status")}
               >
                 Status <SortIcon field="status" />
               </TableHead>
-              <TableHead>Days Until/Overdue</TableHead>
-              <TableHead className="w-[80px]">Actions</TableHead>
+              <TableHead className="w-[140px]">Days Until/Overdue</TableHead>
+              <TableHead className="w-[130px]">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -307,9 +308,17 @@ export default function TasksTable({ tasks, onUpdateTaskStatus, onDeleteTasks, o
                         aria-label={`Select ${task.title}`}
                       />
                     </TableCell>
-                    <TableCell className="font-medium">{task.title}</TableCell>
-                    <TableCell>{task.propertyAddress || "-"}</TableCell>
-                    <TableCell>
+                    <TableCell className="font-medium max-w-[300px]">
+                      <div className="truncate" title={task.title}>
+                        {task.title}
+                      </div>
+                    </TableCell>
+                    <TableCell className="w-[200px]">
+                      <div className="truncate" title={task.propertyAddress || "-"}>
+                        {task.propertyAddress || "-"}
+                      </div>
+                    </TableCell>
+                    <TableCell className="w-[150px]">
                       <div className="flex flex-wrap gap-1">
                         {task.taskTypes?.map((type: string) => {
                           const typeConfig = TASK_TYPE_CONFIG[type];
@@ -317,7 +326,7 @@ export default function TasksTable({ tasks, onUpdateTaskStatus, onDeleteTasks, o
                             <Badge
                               key={type}
                               variant="outline"
-                              className={`${typeConfig?.color || ""} border-0`}
+                              className={`${typeConfig?.color || ""} border-0 text-xs`}
                             >
                               {typeConfig?.label || type}
                             </Badge>
@@ -325,10 +334,10 @@ export default function TasksTable({ tasks, onUpdateTaskStatus, onDeleteTasks, o
                         })}
                       </div>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="w-[130px]">
                       {format(new Date(task.dueDate), "MMM d, yyyy")}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="w-[140px]">
                       <Select
                         value={task.status}
                         onValueChange={(value) => handleStatusChange(task.id, value)}
@@ -349,18 +358,27 @@ export default function TasksTable({ tasks, onUpdateTaskStatus, onDeleteTasks, o
                         </SelectContent>
                       </Select>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="w-[140px]">
                       <div className="flex items-center gap-2">
                         {isOverdue && (
-                          <AlertTriangle className="h-4 w-4 text-red-500" />
+                          <AlertTriangle className="h-4 w-4 text-red-500 flex-shrink-0" />
                         )}
                         <span className={isOverdue ? "text-red-600 font-semibold" : ""}>
                           {daysText}
                         </span>
                       </div>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="w-[130px]">
                       <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => onViewTask?.(task)}
+                          className="h-8 w-8"
+                          title="View task"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
                         <Button
                           variant="ghost"
                           size="icon"

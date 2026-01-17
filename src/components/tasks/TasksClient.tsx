@@ -100,14 +100,22 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
   const [viewMode, setViewMode] = useState<"cards" | "table">("cards");
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [taskDialogMode, setTaskDialogMode] = useState<'create' | 'edit' | 'view'>('create');
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const handleRefresh = () => {
     router.refresh();
   };
 
+  const handleViewTask = useCallback((task: Task) => {
+    setEditingTask(task);
+    setTaskDialogMode('view');
+    setEditDialogOpen(true);
+  }, []);
+
   const handleEditTask = useCallback((task: Task) => {
     setEditingTask(task);
+    setTaskDialogMode('edit');
     setEditDialogOpen(true);
   }, []);
 
@@ -115,7 +123,10 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
     setEditDialogOpen(open);
     if (!open) {
       // Clear editing task after dialog animation completes
-      setTimeout(() => setEditingTask(null), 150);
+      setTimeout(() => {
+        setEditingTask(null);
+        setTaskDialogMode('create');
+      }, 150);
     }
   }, []);
 
@@ -719,6 +730,7 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
             })}
             onUpdateTaskStatus={updateTaskColumn}
             onDeleteTasks={deleteTasks}
+            onViewTask={handleViewTask}
             onEditTask={handleEditTask}
           />
         ) : (
@@ -809,6 +821,7 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
     viewMode,
     updateTaskColumn,
     deleteTasks,
+    handleViewTask,
     handleEditTask,
   ]);
 
@@ -823,6 +836,7 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
         open={editDialogOpen}
         onOpenChange={handleEditDialogClose}
         onTaskUpdated={handleTaskUpdated}
+        mode={taskDialogMode}
       />
     </>
   );
