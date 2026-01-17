@@ -40,8 +40,8 @@ export async function syncTimelineTasks(parseId: string, userId: string): Promis
     return;
   }
 
-  // Create default AI-generated tasks based on template
-  await syncDefaultTasks(parseId, userId, parse);
+  // Create tasks for ALL timeline events (not just defaults)
+  await syncAllTimelineEvents(parseId, userId, parse);
 }
 
 /**
@@ -63,8 +63,140 @@ function addBusinessDays(date: Date, days: number): Date {
 }
 
 /**
- * Syncs the 6 default tasks, reading dates from timeline data
+ * Syncs ALL timeline events to tasks
+ * Creates a task for every event in timelineDataStructured
+ */
+async function syncAllTimelineEvents(parseId: string, userId: string, parse: any): Promise<void> {
+  // Extract dates from structured timeline data
+  const timelineData = parse.timelineDataStructured || {};
+
+  console.log(`[syncAllTimelineEvents] Processing ${Object.keys(timelineData).length} timeline events for parse ${parseId}`);
+
+  // Iterate through all timeline events and create tasks
+  for (const [eventKey, eventData] of Object.entries(timelineData)) {
+    const event = eventData as any;
+
+    // Skip if no effective date
+    if (!event?.effectiveDate) {
+      console.log(`[syncAllTimelineEvents] Skipping ${eventKey} - no effective date`);
+      continue;
+    }
+
+    // Skip if waived
+    if (event.waived === true) {
+      console.log(`[syncAllTimelineEvents] Skipping ${eventKey} - waived`);
+      continue;
+    }
+
+    // Parse the date
+    const dueDate = new Date(event.effectiveDate);
+    if (isNaN(dueDate.getTime())) {
+      console.log(`[syncAllTimelineEvents] Skipping ${eventKey} - invalid date: ${event.effectiveDate}`);
+      continue;
+    }
+
+    // Determine the display name
+    const displayName = event.displayName || eventKey;
+
+    // Determine task types based on event key
+    const taskTypes = determineTaskTypes(eventKey);
+
+    console.log(`[syncAllTimelineEvents] Creating/updating task for ${eventKey}: "${displayName}" due ${dueDate.toISOString()}`);
+
+    // Create or update the task
+    await upsertTimelineTask(parseId, userId, parse, {
+      timelineEventKey: eventKey,
+      timelineEventId: `${parseId}-${eventKey}`,
+      title: displayName,
+      description: event.description || null,
+      taskTypes,
+      dueDate,
+    });
+  }
+}
+
+/**
+ * Determines appropriate task types based on the event key
+ */
+function determineTaskTypes(eventKey: string): string[] {
+  // Always include 'timeline' for all timeline events
+  const types = [TASK_TYPES.TIMELINE];
+
+  // Add specific categories based on event name
+  if (eventKey.toLowerCase().includes('contingency')) {
+    // Don't add additional types for contingencies
+  } else if (eventKey.toLowerCase().includes('deposit') || eventKey.toLowerCase().includes('escrow')) {
+    types.push(TASK_TYPES.ESCROW);
+  } else if (eventKey.toLowerCase().includes('loan') || eventKey.toLowerCase().includes('appraisal')) {
+    types.push(TASK_TYPES.LENDER);
+  } else if (eventKey.toLowerCase().includes('broker')) {
+    types.push(TASK_TYPES.BROKER);
+  }
+
+  return types;
+}
+
+/**
+ * Helper function to upsert a timeline task
+ */
+async function upsertTimelineTask(
+  parseId: string,
+  userId: string,
+  parse: any,
+  taskInfo: {
+    timelineEventKey: string;
+    timelineEventId: string;
+    title: string;
+    description: string | null;
+    taskTypes: string[];
+    dueDate: Date;
+  }
+): Promise<void> {
+  // Find existing task by parseId + timelineEventKey (not timelineEventId)
+  const existingTask = await db.task.findFirst({
+    where: {
+      parseId,
+      timelineEventKey: taskInfo.timelineEventKey,
+    },
+  });
+
+  const taskData = {
+    userId,
+    parseId,
+    taskTypes: taskInfo.taskTypes,
+    timelineEventId: taskInfo.timelineEventId,
+    timelineEventKey: taskInfo.timelineEventKey,
+    title: taskInfo.title,
+    description: taskInfo.description,
+    propertyAddress: parse.propertyAddress || null,
+    dueDate: taskInfo.dueDate,
+    dueDateType: 'specific' as const,
+    dueDateValue: null,
+    status: existingTask?.status || TASK_STATUS.NOT_STARTED,
+    columnId: existingTask?.columnId || TASK_STATUS.NOT_STARTED,
+    sortOrder: existingTask?.sortOrder || 0,
+    isCustom: false,
+    completedAt: existingTask?.completedAt || null,
+  };
+
+  if (existingTask) {
+    console.log(`[upsertTimelineTask] Updating existing task ${existingTask.id} for ${taskInfo.timelineEventKey}`);
+    await db.task.update({
+      where: { id: existingTask.id },
+      data: taskData,
+    });
+  } else {
+    console.log(`[upsertTimelineTask] Creating new task for ${taskInfo.timelineEventKey}`);
+    await db.task.create({
+      data: taskData,
+    });
+  }
+}
+
+/**
+ * OLD FUNCTION - Syncs the 7 default tasks, reading dates from timeline data
  * These tasks have a read/write relationship with the timeline
+ * DEPRECATED: Use syncAllTimelineEvents instead
  */
 async function syncDefaultTasks(parseId: string, userId: string, parse: any): Promise<void> {
   // Extract dates from structured timeline data (or fallback to legacy fields)
