@@ -5,7 +5,6 @@ import { calendar_v3 } from 'googleapis';
 import { getGoogleCalendarClient } from './client';
 import { prisma } from '@/lib/prisma';
 import { matchPropertyAddress } from './property-matcher';
-import { inferTaskTypes } from './ai-inference';
 import { TASK_STATUS } from '@/types/task';
 
 /**
@@ -351,21 +350,9 @@ async function syncExternalEvent(
     return; // No property match
   }
 
-  // Infer task types (AI for BASIC plan users)
-  const user = await prisma.user.findUnique({ where: { id: userId } });
-  let taskTypes = ['timeline']; // Default
-
-  console.log(`[syncExternalEvent] User plan: ${(user as any)?.planType || 'unknown'}`);
-
-  // AI inference for BASIC plan users
-  if (user && (user as any).planType === 'BASIC') {
-    console.log(`[syncExternalEvent] Running AI inference for task types`);
-    const inference = await inferTaskTypes(title, description || '', match.propertyAddress);
-    taskTypes = inference.taskTypes.length > 0 ? inference.taskTypes : ['timeline'];
-    console.log(`[syncExternalEvent] Inferred task types: ${taskTypes.join(', ')}`);
-  } else {
-    console.log(`[syncExternalEvent] Using default task types: timeline`);
-  }
+  // Default task types - users can update in the app
+  const taskTypes = ['timeline'];
+  console.log(`[syncExternalEvent] Using default task types: timeline`);
 
   // Create task and increment custom task count in a transaction
   console.log(`[syncExternalEvent] Creating task in database...`);

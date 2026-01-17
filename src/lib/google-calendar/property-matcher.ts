@@ -65,7 +65,7 @@ export async function matchPropertyAddress(
       const score = fuzzyMatchAddress(textLower, parse.propertyAddress);
       console.log(`[PropertyMatcher] Fuzzy score for "${parse.propertyAddress}": ${score}`);
 
-      if (score > 70 && score > (bestMatch.matchScore || 0)) {
+      if (score >= 70 && score > (bestMatch.matchScore || 0)) {
         bestMatch = {
           propertyAddress: parse.propertyAddress,
           parseId: parse.id,
@@ -105,10 +105,10 @@ function fuzzyMatchAddress(text: string, address: string): number {
   const streetNumber = addressMatch[1] || '';
   const streetName = addressMatch[2].trim();
 
-  // Split street name into significant words (> 2 chars)
+  // Split street name into significant words (>= 2 chars to include words like "El")
   const streetNameWords = streetName
     .split(/\s+/)
-    .filter((w) => w.length > 2 && !['the', 'and', 'for'].includes(w));
+    .filter((w) => w.length >= 2 && !['the', 'and', 'for'].includes(w));
 
   if (streetNameWords.length === 0) return 0;
 
