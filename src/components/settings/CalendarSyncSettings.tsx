@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Calendar, CheckCircle2, XCircle, RefreshCw, Loader2, CalendarCheck, Lock } from "lucide-react";
+import { Calendar, CheckCircle2, XCircle, RefreshCw, Loader2, CalendarCheck, Lock, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 
 // Beta testing email whitelist
@@ -24,6 +24,7 @@ interface CalendarSettings {
   lastSyncAt: string | null;
   lastSyncError: string | null;
   webhookExpiration: string | null;
+  primaryCalendarId: string | null;
 }
 
 export default function CalendarSyncSettings() {
@@ -285,6 +286,20 @@ export default function CalendarSyncSettings() {
             </Button>
           )}
         </div>
+
+        {/* Google Calendar Link */}
+        {isConnected && settings.primaryCalendarId && (
+          <a
+            href={`https://calendar.google.com/calendar/u/0?cid=${encodeURIComponent(settings.primaryCalendarId)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 text-sm text-primary hover:text-primary/80 transition-colors underline p-4 border rounded-lg bg-slate-50/50"
+          >
+            <Calendar className="h-4 w-4" />
+            <span>View in Google Calendar</span>
+            <ExternalLink className="h-3 w-3 ml-auto" />
+          </a>
+        )}
 
         {isConnected && (
           <>

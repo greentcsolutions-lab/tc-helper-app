@@ -2,7 +2,7 @@
 // Version: 2.1.0 - Added Dynamic Calendar Header
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Calendar, dateFnsLocalizer, View } from "react-big-calendar";
 import { format, parse, startOfWeek, getDay, isSameDay } from "date-fns";
 import { enUS } from "date-fns/locale";
@@ -16,24 +16,25 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Separator } from "@/components/ui/separator";
-import { 
-  getAllTimelineEvents, 
-  TimelineEvent 
+import {
+  getAllTimelineEvents,
+  TimelineEvent
 } from "@/lib/dates/extract-timeline-events";
-import { 
-  Calendar as CalendarIcon, 
-  AlertCircle, 
-  CheckCircle, 
-  Clock, 
-  Search, 
-  Lock, 
-  ChevronLeft, 
+import {
+  Calendar as CalendarIcon,
+  AlertCircle,
+  CheckCircle,
+  Clock,
+  Search,
+  Lock,
+  ChevronLeft,
   ChevronRight,
   Filter,
   X,
   MapPin,
   Tag,
-  FileText
+  FileText,
+  ExternalLink
 } from "lucide-react";
 
 const locales = { "en-US": enUS };
@@ -65,8 +66,28 @@ export default function TimelineClient({ parses }: TimelineClientProps) {
   const [search, setSearch] = useState("");
   const [selectedTypes, setSelectedTypes] = useState<string[]>(EVENT_TYPES.map(t => t.id));
   const [selectedEvent, setSelectedEvent] = useState<TimelineEvent | null>(null);
+  const [googleCalendarUrl, setGoogleCalendarUrl] = useState<string | null>(null);
 
   const rawEvents = useMemo(() => getAllTimelineEvents(parses), [parses]);
+
+  // Fetch Google Calendar URL
+  useEffect(() => {
+    async function fetchCalendarUrl() {
+      try {
+        const response = await fetch('/api/google-calendar/settings');
+        if (response.ok) {
+          const data = await response.json();
+          if (data.settings?.primaryCalendarId) {
+            const calendarId = encodeURIComponent(data.settings.primaryCalendarId);
+            setGoogleCalendarUrl(`https://calendar.google.com/calendar/u/0?cid=${calendarId}`);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching calendar URL:', error);
+      }
+    }
+    fetchCalendarUrl();
+  }, []);
 
   // Live Filtering Logic
   const filteredEvents = useMemo(() => {
@@ -241,6 +262,23 @@ export default function TimelineClient({ parses }: TimelineClientProps) {
             <span className="font-bold tabular-nums">{stats.total}</span>
           </div>
         </div>
+
+        {/* Google Calendar Link */}
+        {googleCalendarUrl && (
+          <>
+            <Separator />
+            <a
+              href={googleCalendarUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 text-sm text-primary hover:text-primary/80 transition-colors underline px-1"
+            >
+              <CalendarIcon className="h-4 w-4" />
+              <span>View in Google Calendar</span>
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          </>
+        )}
       </aside>
 
       {/* --- MAIN CALENDAR AREA --- */}
