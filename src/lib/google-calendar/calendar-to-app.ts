@@ -52,16 +52,46 @@ export async function syncCalendarToApp(userId: string): Promise<{
       };
     }
 
-    // Get all events from the calendar
-    const response = await calendar.events.list({
-      calendarId: settings.primaryCalendarId,
-      timeMin: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString(), // Last 90 days
-      maxResults: 2500,
-      singleEvents: true,
-      orderBy: 'startTime',
-    });
+    // Get events from calendar using incremental sync if possible
+    // This only fetches changed events since last sync, not all events
+    let response;
+    try {
+      if (settings.syncToken) {
+        // Use incremental sync - only fetch events that changed since last sync
+        console.log(`[Calendar→App] Using incremental sync with syncToken`);
+        response = await calendar.events.list({
+          calendarId: settings.primaryCalendarId,
+          syncToken: settings.syncToken,
+        });
+      } else {
+        // First sync or syncToken expired - fetch all recent events
+        console.log(`[Calendar→App] Performing full sync (no syncToken)`);
+        response = await calendar.events.list({
+          calendarId: settings.primaryCalendarId,
+          timeMin: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString(),
+          maxResults: 2500,
+          singleEvents: true,
+          orderBy: 'startTime',
+        });
+      }
+    } catch (error: any) {
+      // If syncToken is invalid (expired/deleted), fall back to full sync
+      if (error.code === 410) {
+        console.log(`[Calendar→App] syncToken expired, performing full sync`);
+        response = await calendar.events.list({
+          calendarId: settings.primaryCalendarId,
+          timeMin: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString(),
+          maxResults: 2500,
+          singleEvents: true,
+          orderBy: 'startTime',
+        });
+      } else {
+        throw error;
+      }
+    }
 
     const events = response.data.items || [];
+    const nextSyncToken = response.data.nextSyncToken || null;
 
     // Process each event
     for (const event of events) {
@@ -133,10 +163,13 @@ export async function syncCalendarToApp(userId: string): Promise<{
       }
     }
 
-    // Update sync timestamp
+    // Update sync timestamp and save syncToken for next incremental sync
     await prisma.calendarSettings.update({
       where: { userId },
-      data: { lastSyncAt: new Date() },
+      data: {
+        lastSyncAt: new Date(),
+        syncToken: nextSyncToken, // Save for next incremental sync
+      },
     });
 
     return {

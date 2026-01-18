@@ -303,6 +303,7 @@ model CalendarSettings {
   lastSyncAt              DateTime? // Last successful sync timestamp
   lastSyncError           String?   // Last error message if sync failed
   initialSyncCompleted    Boolean   @default(false) // Whether initial push of all tasks is done
+  syncToken               String?   // Google Calendar sync token for incremental sync
 
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt

@@ -113,8 +113,11 @@ export async function PATCH(
       },
     });
 
-    // Note: Tasks ARE synced to Google Calendar
-    // Google Calendar now mirrors the TASKS database (all tasks are synced to calendar)
+    // Sync individual task changes to Google Calendar (fire-and-forget)
+    // Don't block response on calendar sync - runs in background
+    syncTaskToCalendar(dbUser.id, id).catch((error) => {
+      console.error('[TaskUpdate] Failed to sync task changes to calendar:', error);
+    });
 
     // Sync task changes back to timeline (if task has TIMELINE category and dueDate changed)
     if (body.dueDate !== undefined) {
@@ -173,10 +176,6 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
-    // Note: We do NOT delete from Google Calendar when deleting tasks
-    // Google Calendar mirrors timeline events (from timelineDataStructured), not tasks
-    // Tasks are internal tracking only
-
     // Delete the task and decrement custom task count if it's a custom task
     await db.$transaction(async (tx) => {
       await tx.task.delete({
@@ -190,6 +189,12 @@ export async function DELETE(
           data: { customTaskCount: { decrement: 1 } },
         });
       }
+    });
+
+    // Delete from Google Calendar (fire-and-forget)
+    // Don't block response on calendar deletion - runs in background
+    deleteTaskFromCalendar(dbUser.id, id).catch((error) => {
+      console.error('[TaskDelete] Failed to delete task from calendar:', error);
     });
 
     return NextResponse.json({ success: true });

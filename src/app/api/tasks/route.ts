@@ -223,8 +223,11 @@ export async function POST(request: NextRequest) {
       return task;
     });
 
-    // Note: Tasks ARE synced to Google Calendar
-    // Google Calendar now mirrors the TASKS database (all tasks are synced to calendar)
+    // Sync individual task to Google Calendar (fire-and-forget)
+    // Don't block response on calendar sync - runs in background
+    syncTaskToCalendar(dbUser.id, result.id).catch((error) => {
+      console.error('[TaskCreate] Failed to sync task to calendar:', error);
+    });
 
     return NextResponse.json({ task: result }, { status: 201 });
   } catch (error) {
