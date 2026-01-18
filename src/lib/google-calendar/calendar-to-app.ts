@@ -396,43 +396,6 @@ async function syncExternalEvent(
 
   console.log(`[syncExternalEvent] Transaction completed successfully`);
 
-  // Add event to Parse timeline if we have a parseId match
-  if (match.parseId) {
-    try {
-      const parse = await prisma.parse.findUnique({
-        where: { id: match.parseId },
-        select: { timelineDataStructured: true },
-      });
-
-      if (parse) {
-        const timelineData = (parse.timelineDataStructured as any) || {};
-
-        // Create a unique key for this external event
-        const eventKey = `external_${event.id}`;
-
-        // Add to timeline data
-        timelineData[eventKey] = {
-          dateType: 'specified',
-          effectiveDate: new Date(startDate).toISOString().split('T')[0],
-          specifiedDate: new Date(startDate).toISOString().split('T')[0],
-          displayName: title,
-          description: description || undefined,
-          waived: false,
-          googleCalendarEventId: event.id,
-        };
-
-        // Save updated timeline data
-        await prisma.parse.update({
-          where: { id: match.parseId },
-          data: { timelineDataStructured: timelineData },
-        });
-      }
-    } catch (error) {
-      console.error('Error adding external event to timeline:', error);
-      // Don't fail the sync if timeline update fails
-    }
-  }
-
   // Update CalendarEvent record
   await prisma.calendarEvent.upsert({
     where: { googleEventId: event.id },
