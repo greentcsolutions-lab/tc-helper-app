@@ -350,9 +350,9 @@ async function syncExternalEvent(
     return; // No property match
   }
 
-  // Default task types - users can update in the app
-  const taskTypes = ['timeline'];
-  console.log(`[syncExternalEvent] Using default task types: timeline`);
+  // No default task types - users can manually categorize in the app
+  const taskTypes: string[] = [];
+  console.log(`[syncExternalEvent] No default task types - user will categorize in app`);
 
   // Create task and increment custom task count in a transaction
   console.log(`[syncExternalEvent] Creating task in database...`);
