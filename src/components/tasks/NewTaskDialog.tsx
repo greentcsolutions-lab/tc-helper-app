@@ -25,7 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 type Parse = {
@@ -245,6 +245,41 @@ export default function NewTaskDialog({
     setDialogMode('edit');
   };
 
+  const handleDelete = async () => {
+    // Confirm deletion
+    if (!confirm('Are you sure you want to delete this task? This action cannot be undone.')) {
+      return;
+    }
+
+    setError(null);
+    setLoading(true);
+
+    try {
+      const response = await fetch(`/api/tasks/${editTask.id}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to delete task');
+      }
+
+      // Success! Close dialog and refresh
+      setOpen(false);
+
+      // Call the callback if provided
+      if (onTaskUpdated) {
+        onTaskUpdated();
+      }
+
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       {dialogMode === 'create' && (
@@ -446,26 +481,43 @@ export default function NewTaskDialog({
             )}
           </div>
 
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setOpen(false)}
-              disabled={loading}
-            >
-              {isViewMode ? 'Close' : 'Cancel'}
-            </Button>
-            {isViewMode ? (
-              <Button type="button" onClick={handleSwitchToEdit}>
-                Edit Task
-              </Button>
-            ) : (
-              <Button type="submit" disabled={loading}>
-                {loading
-                  ? (isEditMode ? "Updating..." : "Creating...")
-                  : (isEditMode ? "Update Task" : "Create Task")}
+          <DialogFooter className="sm:justify-between">
+            {/* Delete button - only show in edit/view mode */}
+            {(isEditMode || isViewMode) && editTask && (
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={handleDelete}
+                disabled={loading}
+                className="gap-2"
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete
               </Button>
             )}
+
+            {/* Right side buttons */}
+            <div className="flex gap-2 ml-auto">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setOpen(false)}
+                disabled={loading}
+              >
+                {isViewMode ? 'Close' : 'Cancel'}
+              </Button>
+              {isViewMode ? (
+                <Button type="button" onClick={handleSwitchToEdit}>
+                  Edit Task
+                </Button>
+              ) : (
+                <Button type="submit" disabled={loading}>
+                  {loading
+                    ? (isEditMode ? "Updating..." : "Creating...")
+                    : (isEditMode ? "Update Task" : "Create Task")}
+                </Button>
+              )}
+            </div>
           </DialogFooter>
         </form>
       </DialogContent>
