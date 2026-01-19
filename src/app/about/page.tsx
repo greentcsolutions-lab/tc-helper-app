@@ -15,7 +15,7 @@ import {
   Check,
 } from "lucide-react";
 import Link from "next/link";
-import { siteFooter } from "@/components/layout/siteFooter";
+import { SiteFooter } from "@/components/layout/siteFooter";
 
 export default function AboutPage() {
   return (
