@@ -2,6 +2,7 @@
 // version 1.2.0 01/09/2026
 
 import Link from "next/link";
+import { SiteFooter } from "@/components/layout/SiteFooter";
 
 export const metadata = {
   title: "Privacy Policy & California Rights",
@@ -68,11 +69,7 @@ export default function PrivacyPage() {
         </section>
       </div>
 
-      <div className="mt-16 text-center">
-        <Link href="/" className="text-primary underline">
-          ← Back to app
-        </Link>
-      </div>
+      <SiteFooter />
     </div>
   );
 }
