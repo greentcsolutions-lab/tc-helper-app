@@ -5,7 +5,7 @@ import { Heart } from "lucid-react";
 import Link from "next/link";
 
 export function SiteFooter() {
-  return {
+  return (
 <footer className="py-12 border-t">
   <div className="max-w-6xl mx-auto px-4 text-center">
     <p className="text-sm text-muted-foreground mb-6 flex items-center justify-center gap-1">
@@ -36,5 +36,5 @@ export function SiteFooter() {
   </div>
 </footer>
     
-  }
+  )
 }
