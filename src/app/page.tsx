@@ -43,16 +43,6 @@ export default function Home() {
             <span className="text-foreground">Start Managing Them.</span>
           </h1>
 
-          <!-- Google tag (gtag.js) -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=AW-17888435386"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
-
-  gtag('config', 'AW-17888435386');
-</script>
-
           <p className="text-xl md:text-2xl text-muted-foreground mb-8 max-w-3xl mx-auto leading-relaxed">
             Upload any real estate contract. Our AI extracts every date, contact, and contingency in 60 seconds. You just execute.
           </p>
