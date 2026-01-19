@@ -4,7 +4,7 @@
 import { Heart } from "lucid-react";
 import Link from "next/link";
 
-export function siteFooter() {
+export function SiteFooter() {
   return {
 <footer className="py-12 border-t">
   <div className="max-w-6xl mx-auto px-4 text-center">
