@@ -14,6 +14,7 @@ import { toast } from "sonner";
 // Beta testing email whitelist
 const BETA_TESTER_EMAILS = [
   "greentcsolutions@gmail.com",
+  "chrisiscool23@gmail.com",
 ];
 
 interface CalendarSettings {
