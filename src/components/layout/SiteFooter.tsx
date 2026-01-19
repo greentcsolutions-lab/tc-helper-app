@@ -34,6 +34,12 @@ export function SiteFooter() {
           >
             Privacy Policy
           </Link>
+          <Link
+            href="/terms"
+            className="px-4 text-muted-foreground hover:text-foreground underline underline-offset-4 transition-colors"
+          >
+            Terms of Service
+          </Link>
         </div>
       </div>
     </footer>
