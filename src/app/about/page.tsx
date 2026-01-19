@@ -203,7 +203,7 @@ export default function AboutPage() {
           <p className="text-sm text-muted-foreground mb-3 flex items-center justify-center gap-1">
             © 2026 TC Helper App. Built with <Heart className="h-3.5 w-3.5 text-red-500 fill-red-500" /> in Saint Robert, Missouri.
           </p>
-          <div className="flex gap-6 justify-center text-sm">
+          <div className="flex flex-wrap justify-center gap-6 text-sm text-muted-foreground">
             <Link
               href="/"
               className="text-muted-foreground hover:text-foreground underline underline-offset-4 transition-colors"
