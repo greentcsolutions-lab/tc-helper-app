@@ -15,6 +15,7 @@ import {
   Check,
 } from "lucide-react";
 import Link from "next/link";
+import { siteFooter } from "@/components/layout/siteFooter";
 
 export default function AboutPage() {
   return (
@@ -196,37 +197,9 @@ export default function AboutPage() {
           </Card>
         </div>
       </section>
-
-      {/* Footer */}
-<footer className="py-12 border-t">
-  <div className="max-w-6xl mx-auto px-4 text-center">
-    <p className="text-sm text-muted-foreground mb-6 flex items-center justify-center gap-1">
-      © 2026 TC Helper App. Built with <Heart className="h-3.5 w-3.5 text-red-500 fill-red-500" /> in Saint Robert, Missouri.
-    </p>
-
-    {/* CSS-only separator using divide-x */}
-    <div className="flex items-center justify-center divide-x divide-muted-foreground/40 text-sm">
-      <Link
-        href="/"
-        className="px-4 text-muted-foreground hover:text-foreground underline underline-offset-4 transition-colors"
-      >
-        Home
-      </Link>
-      <Link
-        href="/plans"
-        className="px-4 text-muted-foreground hover:text-foreground underline underline-offset-4 transition-colors"
-      >
-        Pricing
-      </Link>
-      <Link
-        href="/privacy"
-        className="px-4 text-muted-foreground hover:text-foreground underline underline-offset-4 transition-colors"
-      >
-        Privacy Policy
-      </Link>
-    </div>
-  </div>
-</footer>
+    
+      <siteFooter />
+    
     </main>
   );
 }
