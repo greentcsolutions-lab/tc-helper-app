@@ -1,5 +1,5 @@
 // src/app/terms/page.tsx
-// version 1.0.0 01/19/2026
+// version 1.1.0 01/19/2026
 
 import { SiteFooter } from "@/components/layout/SiteFooter";
 
@@ -20,17 +20,17 @@ export default function TermsPage() {
           <h2>1. Acceptance of Terms</h2>
           <p>
             By accessing or using TC Helper App (“the Service”), you agree to be bound by these Terms. 
-            The Service is operated from Saint Robert, Missouri. If you do not agree to these terms, 
-            do not use the Service.
+            The Service is operated from <strong>Mountain Grove, Missouri</strong>. If you do not agree 
+            to these terms, do not use the Service.
           </p>
         </section>
 
         <section className="bg-red-50 dark:bg-red-950/20 p-6 rounded-lg border border-red-200 dark:border-red-900">
-          <h2 className="text-red-800 dark:text-red-400 mt-0">2. AI Accuracy & Professional Disclaimer</h2>
+          <h2 className="text-red-800 dark:text-red-400 mt-0 text-xl font-bold">2. AI Accuracy & Professional Disclaimer</h2>
           <p>
             <strong>The "Verify Everything" Rule:</strong> TC Helper App uses advanced Artificial Intelligence (Anthropic Claude and Google Gemini) to extract data from real estate contracts. AI is subject to "hallucinations" and may occasionally produce incorrect dates, prices, or names.
           </p>
-          <ul>
+          <ul className="text-sm space-y-2">
             <li><strong>User Responsibility:</strong> You are 100% responsible for verifying the accuracy of all extracted data before relying on it for business purposes or deadlines.</li>
             <li><strong>Not Legal Advice:</strong> TC Helper App is an administrative tool only. We are not licensed real estate brokers, attorneys, or legal counsel. Use of this app does not constitute professional real estate or legal advice.</li>
           </ul>
@@ -62,24 +62,24 @@ export default function TermsPage() {
           <p>
             TO THE MAXIMUM EXTENT PERMITTED BY LAW, TC HELPER APP SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, OR CONSEQUENTIAL DAMAGES (INCLUDING LOST COMMISSIONS, MISSED CONTRACT DEADLINES, OR LEGAL DISPUTES) ARISING FROM YOUR USE OF THE SERVICE. 
           </p>
-          <p>
-            The Service is provided "AS IS" and "AS AVAILABLE." If you miss a deadline, the responsibility lies solely with you as the professional in charge of the transaction.
-          </p>
         </section>
 
         <section>
           <h2>6. Termination & Governing Law</h2>
           <p>
-            We reserve the right to terminate or suspend your account immediately, without prior notice, for conduct that we believe violates these Terms or is harmful to other users or our integration partners (e.g., Google).
+            We reserve the right to terminate or suspend your account immediately, without prior notice, for conduct that we believe violates these Terms.
           </p>
           <p>
-            <strong>Arbitration & Law:</strong> These terms are governed by the laws of the State of Missouri. Any disputes shall be resolved through binding arbitration in Missouri, rather than in court.
+            <strong>Arbitration & Law:</strong> These terms are governed by the laws of the <strong>State of Missouri</strong>. Any disputes arising from these terms or the use of the Service shall be resolved through binding arbitration conducted in <strong>Wright County, Missouri</strong>.
           </p>
         </section>
 
-        <section>
+        <section className="pt-8 border-t">
           <h2>7. Contact</h2>
-          <p>For support or legal inquiries: <strong>info@tchelper.app</strong></p>
+          <p>
+            For support or legal inquiries: <strong>info@tchelper.app</strong><br />
+            Mountain Grove, Missouri 65711
+          </p>
         </section>
       </div>
 
