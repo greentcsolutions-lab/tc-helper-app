@@ -18,6 +18,7 @@ const isPublicRoute = createRouteMatcher([
   "/plans",            // public pricing page
   "/onboarding(.*)",   // onboarding is public
   "/public",
+  "/about",
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
