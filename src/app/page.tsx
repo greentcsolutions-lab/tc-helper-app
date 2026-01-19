@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import { SignUpButton, SignedOut } from "@clerk/nextjs";
 import Link from "next/link";
-import { siteFooter } from "@/components/layout/siteFooter";
+import { SiteFooter } from "@/components/layout/siteFooter";
 
 export default function Home() {
   return (
