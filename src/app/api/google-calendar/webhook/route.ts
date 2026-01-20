@@ -5,24 +5,26 @@ import { NextRequest, NextResponse } from 'next/server';
 import { syncCalendarToApp } from '@/lib/google-calendar/calendar-to-app';
 import { prisma } from '@/lib/prisma';
 
+/**
+ * Handle POST requests from Google Calendar
+ * Google sends a POST request here whenever a calendar event is 
+ * created, updated, or deleted by the user in the Google UI.
+ */
 export async function POST(request: NextRequest) {
   try {
-    // Get headers from Google Calendar push notification
+    // 1. Extract headers sent by Google
     const channelId = request.headers.get('x-goog-channel-id');
     const resourceState = request.headers.get('x-goog-resource-state');
     const resourceId = request.headers.get('x-goog-resource-id');
 
-    console.log('Webhook received:', {
-      channelId,
-      resourceState,
-      resourceId,
-    });
+    // Debugging logs (visible in your server terminal)
+    console.log(`[Webhook] Received notification. Channel: ${channelId}, State: ${resourceState}`);
 
     if (!channelId || !resourceId) {
       return NextResponse.json({ error: 'Missing required headers' }, { status: 400 });
     }
 
-    // Find the user associated with this webhook channel
+    // 2. Identify the user based on the Webhook IDs stored in our database
     const settings = await prisma.calendarSettings.findFirst({
       where: {
         webhookChannelId: channelId,
@@ -31,49 +33,53 @@ export async function POST(request: NextRequest) {
     });
 
     if (!settings) {
-      console.log('No settings found for webhook channel:', channelId);
+      console.error(`[Webhook] No user found for channel: ${channelId}`);
       return NextResponse.json({ error: 'Unknown webhook channel' }, { status: 404 });
     }
 
-    // Only process 'sync' events (ignore 'exists' which is initial verification)
+    // 3. Handle 'sync' vs 'exists'
+    // 'sync' is sent when the webhook is first created (verification)
+    // 'exists' (or anything else) means actual data changed
     if (resourceState === 'sync') {
-      console.log('Webhook sync verification received');
+      console.log(`[Webhook] Verification successful for User: ${settings.userId}`);
       return NextResponse.json({ success: true });
     }
 
-    // Sync calendar changes to app
-    console.log('Syncing calendar changes for user:', settings.userId);
+    // 4. Trigger the Incremental Sync logic from Step 2
+    console.log(`[Webhook] Syncing changes for User: ${settings.userId}...`);
+    
     const result = await syncCalendarToApp(settings.userId);
 
     if (!result.success) {
-      console.error('Sync failed:', result.error);
+      console.error(`[Webhook] Sync failed for ${settings.userId}:`, result.error);
+      
+      // Update our memory fields with the error
       await prisma.calendarSettings.update({
         where: { id: settings.id },
         data: {
-          lastSyncError: result.error || 'Sync failed',
+          lastSyncStatus: 'ERROR',
+          lastSyncError: result.error || 'Incremental sync failed',
         },
       });
     } else {
-      console.log('Sync successful:', {
-        totalProcessed: result.totalProcessed,
-        totalCreated: result.totalCreated,
-        totalUpdated: result.totalUpdated,
-        totalDeleted: result.totalDeleted,
-      });
+      console.log(`[Webhook] Sync complete. Processed ${result.totalProcessed} changes.`);
     }
 
+    // Google expects a 200 OK response to confirm we received the message
     return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error('Error in webhook handler:', error);
+
+  } catch (error: any) {
+    console.error('[Webhook] Internal Error:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unknown error' },
+      { error: error.message || 'Internal server error' },
       { status: 500 }
     );
   }
 }
 
-// Handle webhook verification (GET request)
-export async function GET(request: NextRequest) {
-  // Google may send GET requests for webhook verification
-  return NextResponse.json({ success: true });
+/**
+ * Handle GET requests (Google sometimes uses these for initial reachability tests)
+ */
+export async function GET() {
+  return NextResponse.json({ status: 'Webhook endpoint active' });
 }

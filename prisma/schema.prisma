@@ -1,408 +1,382 @@
 // prisma/schema.prisma
-// Version: 3.1.0 - 2025-12-30
-// UPDATED: Changed to single 200 DPI architecture (renderZipUrl is PRIMARY, lowRes/highRes are DEPRECATED)
+// Version: 3.1.1 - 2026-01-20
+// UPDATED: Added Google Calendar sync memory fields (nextSyncToken, etc.)
 
 generator client {
-  provider = "prisma-client-js"
+provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+provider = "postgresql"
+url      = env("DATABASE_URL")
 }
 
 model User {
-  id                   String    @id @default(cuid())
-  clerkId              String    @unique
-  email                String?
-  name                 String?
-  phone                String?
-  state                String?
-  role                 String?   // office admin, solo agent, team agent, team leader, broker/CEO, other
-  problems             String[]  @default([]) // contract terms extraction, team workflows, task management, timeline management, other
-  referralSource       String?   // Google, X, Facebook, Instagram, referral, other
-  onboarded            Boolean   @default(false)
+id                   String    @id @default(cuid())
+clerkId              String    @unique
+email                String?
+name                 String?
+phone                String?
+state                String?
+role                 String?   // office admin, solo agent, team agent, team leader, broker/CEO, other
+problems             String[]  @default([]) // contract terms extraction, team workflows, task management, timeline management, other
+referralSource       String?   // Google, X, Facebook, Instagram, referral, other
+onboarded            Boolean   @default(false)
 
-  // Progressive Onboarding Tracking
-  onboardingDismissedCount Int    @default(0)      // Number of times user clicked "not now"
-  onboardingOptedOut       Boolean @default(false) // User clicked "don't ask again"
-  lastOnboardingPrompt     DateTime?               // Last time we showed the modal
+// Progressive Onboarding Tracking
+onboardingDismissedCount Int    @default(0)      // Number of times user clicked "not now"
+onboardingOptedOut       Boolean @default(false) // User clicked "don't ask again"
+lastOnboardingPrompt     DateTime?               // Last time we showed the modal
 
-  // Plan & Subscription (Repurposed for Whop)
-  planType             String    @default("FREE") // "FREE" | "BASIC"
-  quota                Int       @default(1)      // Concurrent active transactions (1 for FREE, 5 for BASIC)
-  credits              Int       @default(1)      // AI parse credits (1 for FREE, resets monthly for BASIC)
-  stripeCustomerId     String?                    // Repurposed: Whop membership ID
-  stripeSubscriptionId String?                    // Repurposed: Whop product ID
-  priceId              String?                    // Repurposed: Whop plan variant (monthly/annual)
-  currentPeriodEnd     DateTime?                  // Subscription period end
+// Plan & Subscription (Repurposed for Whop)
+planType             String    @default("FREE") // "FREE" | "BASIC"
+quota                Int       @default(1)      // Concurrent active transactions (1 for FREE, 5 for BASIC)
+credits              Int       @default(1)      // AI parse credits (1 for FREE, resets monthly for BASIC)
+stripeCustomerId     String?                    // Repurposed: Whop membership ID
+stripeSubscriptionId String?                    // Repurposed: Whop product ID
+priceId              String?                    // Repurposed: Whop plan variant (monthly/annual)
+currentPeriodEnd     DateTime?                  // Subscription period end
 
-  // Usage Tracking
-  customTaskCount      Int       @default(0)      // Current custom tasks (max 10 for FREE, 100 for BASIC)
-  templateCount        Int       @default(0)      // Current task templates (max 1 for FREE, 10 for BASIC)
-  parseLimit           Int       @default(1)      // Monthly parse limit (1 for FREE, 5 for BASIC)
-  parseCount           Int       @default(0)      // Current month's parse count
-  parseResetDate       DateTime? @default(now())  // When to reset parseCount to 0
+// Usage Tracking
+customTaskCount      Int       @default(0)      // Current custom tasks (max 10 for FREE, 100 for BASIC)
+templateCount        Int       @default(0)      // Current task templates (max 1 for FREE, 10 for BASIC)
+parseLimit           Int       @default(1)      // Monthly parse limit (1 for FREE, 5 for BASIC)
+parseCount           Int       @default(0)      // Current month's parse count
+parseResetDate       DateTime? @default(now())  // When to reset parseCount to 0
 
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
+createdAt            DateTime  @default(now())
+updatedAt            DateTime  @updatedAt
 
-  usage                UserUsage?
-  parses               Parse[]
-  tasks                Task[]
-  taskTemplates        UserTaskTemplate[]
-  calendarSettings     CalendarSettings?
-  calendarEvents       CalendarEvent[]
-  teamMembers          TeamMember[]
+usage                UserUsage?
+parses               Parse[]
+tasks                Task[]
+taskTemplates        UserTaskTemplate[]
+calendarSettings     CalendarSettings?
+calendarEvents       CalendarEvent[]
+teamMembers          TeamMember[]
 
-  @@map("users")
+@@map("users")
 }
 
 model UserUsage {
-  id         String   @id @default(cuid())
-  userId     String   @unique
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  parses     Int      @default(0)
-  lastParse  DateTime?
+id         String   @id @default(cuid())
+userId     String   @unique
+user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+parses     Int      @default(0)
+lastParse  DateTime?
 
-  @@map("user_usage")
+@@map("user_usage")
 }
 
 model Parse {
-  id                   String    @id @default(cuid())
-  userId               String
-  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+id                    String    @id @default(cuid())
+userId                String
+user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  // Team Support (optional - transactions can belong to individual or team)
-  teamId               String?
-  team                 Team?     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+// Team Support
+teamId                String?
+team                  Team?     @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
-  fileName             String
-  state                String    @default("Unknown")
-  
-  rawJson              Json      @default("{}")              
-  formatted            Json      @default("{}")              
-  missingSCOs          Boolean   @default(false)           
-  counterInfo          Json?                               
+fileName              String
+state                 String    @default("Unknown")
 
-  // ============================================================================
-  // STATUS TRACKING
-  // ============================================================================
-  // Valid values:
-  // - "PENDING" → Ready for render
-  // - "PROCESSING" → Currently rendering/classifying/extracting
-  // - "NEEDS_REVIEW" → Extraction complete, low confidence
-  // - "COMPLETED" → Extraction complete, high confidence
-  // - "RENDER_FAILED" → Rendering crashed
-  // - "CLASSIFICATION_FAILED" → Classification crashed
-  // - "EXTRACTION_FAILED" → Extraction crashed
-  status               String    @default("PENDING")
-  archived             Boolean   @default(false) // Archived/deleted transactions don't count toward quota
+rawJson               Json      @default("{}")
 
-  // ============================================================================
-  // TEMPORARY STORAGE (deleted after cleanup)
-  // ============================================================================
-  // Original PDF buffer - deleted after render completes
-  pdfBuffer            Bytes?
-  pdfPublicUrl         String?   // NEW: Public Vercel Blob URL for direct Mistral PDF calls
-  
-  // PRIMARY: Single 200 DPI ZIP - Used for BOTH classification AND extraction
-  // Deleted after cleanup route runs
-  renderZipUrl         String?
-  renderZipKey         String?   // Vercel Blob key for deletion
-  
-  // DEPRECATED: Legacy dual-DPI fields (kept for backward compatibility)
-  // New parses should have these as NULL
-  lowResZipUrl         String?   // DEPRECATED: Was 180 DPI for classification
-  lowResZipKey         String?   // DEPRECATED: Vercel Blob key for deletion
-  highResZipUrl        String?   // DEPRECATED: Was 300 DPI for extraction
-  highResZipKey        String?   // DEPRECATED: Vercel Blob key for deletion
+formatted             Json      @default("{}")
 
-  // ============================================================================
-  // CLASSIFICATION & PAGE INFO
-  // ============================================================================
-  criticalPageNumbers  Int[]     @default([])   // Pages used for extraction
-  pageCount            Int?                     // Total pages in PDF
-  
-  // TEMPORARY: Classification results (deleted after extraction)
-  classificationCache  Json?     // { criticalImages, packageMetadata } - deleted after extract
+missingSCOs           Boolean   @default(false)
 
-  // ============================================================================
-  // UNIVERSAL CORE FIELDS (top-level for fast queries)
-  // ============================================================================
-  transactionType      String?   @default("escrow") // "listing" or "escrow"
-  buyerNames           String[]  @default([])
-  sellerNames          String[]  @default([])
-  propertyAddress      String?
-  purchasePrice        Float?
-  earnestMoneyAmount   Float?                   // Deprecated - use earnestMoneyDeposit
-  earnestMoneyHolder   String?                  // Deprecated - use earnestMoneyDeposit
-  closingDate          String?                  // YYYY-MM-DD or "N days"
-  effectiveDate        String?                  // YYYY-MM-DD (final acceptance / acceptance date)
-  initialDepositDueDate String?                 // YYYY-MM-DD or "N days" (same as earnest money due date)
-  sellerDeliveryOfDisclosuresDate String?       // YYYY-MM-DD or "N days"
-  isAllCash            Boolean?
-  loanType             String?
+counterInfo           Json?
 
-  // ============================================================================
-  // NESTED UNIVERSAL FIELDS (stored as JSON for rich data)
-  // ============================================================================
-  earnestMoneyDeposit  Json?     // { amount: number, holder: string }
-  financing            Json?     // { isAllCash: boolean, loanType: string, loanAmount: number }
-  contingencies        Json?     // { inspectionDays, appraisalDays, loanDays, saleOfBuyerProperty }
-  closingCosts         Json?     // { buyerPays: [], sellerPays: [], sellerCreditAmount }
-  brokers              Json?     // { listingAgent: { name, company, phone, email }, buyersAgent: { name, company, phone, email } }
-  personalPropertyIncluded String[] @default([])
-  escrowHolder         String?
+status                String    @default("PENDING")
+archived              Boolean   @default(false)
 
-  // ============================================================================
-  // STATE-SPECIFIC RICHNESS & TIMELINE
-  // ============================================================================
-  extractionDetails    Json?     // { route: "california"|"universal", californiaSpecific: {...} }
-  timelineEvents       Json?     // [{ date, title, type, description }] - DEPRECATED: Use timelineDataStructured
-  timelineDataStructured Json?   // NEW: Structured timeline data with date calculation details
-                                 // { [eventKey]: { dateType, effectiveDate, relativeDays?, anchorPoint?, direction?, dayType?, specifiedDate? } }
+pdfBuffer             Bytes?
+pdfPublicUrl          String?
 
-  // ============================================================================
-  // ERROR TRACKING
-  // ============================================================================
-  errorMessage         String?   // Error details if status = *_FAILED
+renderZipUrl          String?
+renderZipKey          String?
 
-  // ============================================================================
-  // TIMESTAMPS
-  // ============================================================================
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
-  finalizedAt          DateTime? // When extraction completed
+lowResZipUrl          String?
 
-  tasks                Task[]    // Tasks associated with this transaction
+lowResZipKey          String?
 
-  @@index([userId, createdAt])
-  @@map("parses")
+highResZipUrl         String?
+
+highResZipKey         String?
+
+criticalPageNumbers   Int[]     @default([])
+
+pageCount             Int?
+
+classificationCache   Json?
+
+transactionType       String?   @default("escrow")
+buyerNames            String[]  @default([])
+sellerNames           String[]  @default([])
+propertyAddress       String?
+purchasePrice         Float?
+earnestMoneyAmount    Float?
+
+earnestMoneyHolder    String?
+
+closingDate           String?
+
+effectiveDate         String?
+
+initialDepositDueDate String?
+
+sellerDeliveryOfDisclosuresDate String?
+
+isAllCash             Boolean?
+loanType              String?
+
+earnestMoneyDeposit   Json?
+
+financing             Json?
+
+contingencies         Json?
+
+closingCosts          Json?
+
+brokers               Json?
+
+personalPropertyIncluded String[] @default([])
+escrowHolder          String?
+
+extractionDetails     Json?
+
+timelineEvents        Json?
+
+timelineDataStructured Json?
+
+errorMessage          String?
+
+createdAt             DateTime  @default(now())
+updatedAt             DateTime  @updatedAt
+finalizedAt           DateTime?
+
+tasks                 Task[]
+
+@@index([userId, createdAt])
+@@map("parses")
 }
 
-// ============================================================================
-// TASKS SYSTEM
-// ============================================================================
 model Task {
-  id                   String    @id @default(cuid())
-  userId               String
-  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  parseId              String?   // Null for user-created tasks not tied to a transaction
-  parse                Parse?    @relation(fields: [parseId], references: [id], onDelete: Cascade)
+id                    String    @id @default(cuid())
+userId                String
+user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+parseId               String?
 
-  // Team Support (optional - tasks can belong to individual or team)
-  teamId               String?
-  team                 Team?     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+parse                 Parse?    @relation(fields: [parseId], references: [id], onDelete: Cascade)
 
-  // Task Assignment (TEAMS plan feature)
-  assignedToId         String?   // TeamMember ID - who is responsible for this task
-  assignedTo           TeamMember? @relation("TaskAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
-  assignedToRole       String?   // For 3rd party assignments (e.g., "Broker", "Escrow Officer") - not actual team members
+teamId                String?
+team                  Team?     @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
-  // Task Classification
-  taskTypes            String[]  // ['timeline', 'broker', 'escrow', 'lender'] - can have multiple categories
-  timelineEventId      String?   // For timeline tasks, references the timeline event ID (e.g., "parseId-deposit")
-  timelineEventKey     String?   // For timeline tasks, stores the original key from timelineDataStructured (e.g., "appraisalContingency", "closing")
+assignedToId          String?
 
-  // Task Details
-  title                String
-  description          String?
-  propertyAddress      String?   // Simplified address from parse
-  amount               Float?    // For deposit/payment tasks
+assignedTo            TeamMember? @relation("TaskAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+assignedToRole        String?
 
-  // Scheduling
-  dueDate              DateTime
-  dueDateType          String    @default("specific") // 'specific' | 'days_after_acceptance' | 'days_from_close'
-  dueDateValue         Int?      // If dueDateType is relative, stores the number of days
+taskTypes             String[]
 
-  // Status & Organization
-  status               String    @default("not_started") // 'not_started' | 'pending' | 'completed'
-  sortOrder            Int       @default(0)  // For drag-drop positioning within columns
-  columnId             String    @default("not_started") // Which column the task appears in
-  archived             Boolean   @default(false) // Archived tasks (from archived parses) don't count toward limits
+timelineEventId       String?
 
-  // Metadata
-  isCustom             Boolean   @default(false) // false for timeline tasks, true for user-created
-  isAiGenerated        Boolean   @default(false) // true for tasks initially generated from document extraction
-  templateId           String?   // If created from a template, reference to UserTaskTemplate
+timelineEventKey      String?
 
-  // Google Calendar Sync
-  googleCalendarEventId String?  @unique // Google Calendar event ID for synced events
-  syncedToCalendar     Boolean   @default(false) // Whether this task has been synced to Google Calendar
-  lastSyncedAt         DateTime? // Last time this task was synced to Google Calendar
+title                 String
+description           String?
+propertyAddress       String?
 
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
-  completedAt          DateTime? // When task was marked completed
+amount                Float?
 
-  @@index([userId, parseId])
-  @@index([userId, status])
-  @@index([userId, dueDate])
-  @@index([googleCalendarEventId])
-  @@map("tasks")
+dueDate               DateTime
+dueDateType           String    @default("specific")
+dueDateValue          Int?
+
+status                String    @default("not_started")
+sortOrder             Int       @default(0)
+
+columnId              String    @default("not_started")
+archived              Boolean   @default(false)
+
+isCustom              Boolean   @default(false)
+isAiGenerated         Boolean   @default(false)
+templateId            String?
+
+googleCalendarEventId String?  @unique
+syncedToCalendar      Boolean   @default(false)
+lastSyncedAt          DateTime?
+
+createdAt             DateTime  @default(now())
+updatedAt             DateTime  @updatedAt
+completedAt           DateTime?
+
+@@index([userId, parseId])
+@@index([userId, status])
+@@index([userId, dueDate])
+@@index([googleCalendarEventId])
+@@map("tasks")
 }
 
 model UserTaskTemplate {
-  id                      String    @id @default(cuid())
-  userId                  String
-  user                    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+id                      String    @id @default(cuid())
+userId                  String
+user                    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+teamId                  String?
+team                    Team?     @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
-  // Team Support (optional - templates can be shared with team)
-  teamId                  String?
-  team                    Team?     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+name                    String
 
-  // Template Details
-  name                    String    // Template name
-  description             String?   // Template description
-  fileType                String    @default("escrow") // "listing" or "escrow" - which transaction type this template applies to
-  isDefaultForNewFiles    Boolean   @default(false) // Auto-generate tasks from this template on new files
-  isAiGenerated           Boolean   @default(false) // Special AI-generated template (doesn't count against limits)
+description             String?
 
-  // Task Collection (JSON array of task definitions)
-  // Each task: { title: string, description?: string, taskTypes: string[], dueDateType: 'days_after_acceptance' | 'days_from_close', dueDateValue: number }
-  tasks                   Json      @default("[]")
+fileType                String    @default("escrow")
+isDefaultForNewFiles    Boolean   @default(false)
+isAiGenerated           Boolean   @default(false)
 
-  createdAt               DateTime  @default(now())
-  updatedAt               DateTime  @updatedAt
+tasks                   Json      @default("[]")
 
-  @@index([userId])
-  @@map("user_task_templates")
+createdAt               DateTime  @default(now())
+updatedAt               DateTime  @updatedAt
+
+@@index([userId])
+@@map("user_task_templates")
 }
 
-// ============================================================================
-// GOOGLE CALENDAR INTEGRATION
-// ============================================================================
-
 model CalendarSettings {
-  id                      String    @id @default(cuid())
-  userId                  String    @unique
-  user                    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+id                      String    @id @default(cuid())
+userId                  String    @unique
+user                    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  // Google OAuth Tokens (encrypted in application layer)
-  googleAccessToken       String?   // OAuth access token
-  googleRefreshToken      String?   // OAuth refresh token
-  googleTokenExpiry       DateTime? // When the access token expires
+googleAccessToken       String?
 
-  // Calendar IDs
-  primaryCalendarId       String?   // "TC Helper" calendar ID
-  archivedCalendarId      String?   // "TC Helper Archived Events" calendar ID
+googleRefreshToken      String?
 
-  // Sync Settings
-  syncEnabled             Boolean   @default(true)   // Master toggle for calendar sync
-  includeFullDetails      Boolean   @default(true)   // Include full task details in calendar events
-  syncNonAppEvents        Boolean   @default(true)   // Fetch and display non-app events as grayed out
-  excludeFinancialData    Boolean   @default(true)   // Exclude financial amounts from calendar sync
+googleTokenExpiry       DateTime?
 
-  // Webhook Configuration (for real-time push notifications)
-  webhookChannelId        String?   // Google Calendar push notification channel ID
-  webhookResourceId       String?   // Google Calendar push notification resource ID
-  webhookExpiration       DateTime? // When the webhook expires (renew before this)
+primaryCalendarId       String?
 
-  // Sync Status
-  lastSyncAt              DateTime? // Last successful sync timestamp
-  lastSyncError           String?   // Last error message if sync failed
-  initialSyncCompleted    Boolean   @default(false) // Whether initial push of all tasks is done
+archivedCalendarId      String?
 
-  createdAt               DateTime  @default(now())
-  updatedAt               DateTime  @updatedAt
+syncEnabled             Boolean   @default(true)
 
-  @@map("calendar_settings")
+includeFullDetails      Boolean   @default(true)
+
+syncNonAppEvents        Boolean   @default(true)
+
+excludeFinancialData    Boolean   @default(true)
+
+webhookChannelId        String?
+
+webhookResourceId       String?
+
+webhookExpiration       DateTime?
+
+// --- START MEMORY FIELDS ---
+nextSyncToken           String?   // Bookmark for Google incremental changes
+lastSyncStatus          String?   // SUCCESS | ERROR
+lastSyncError           String?   // Stores details of failures
+lastSyncedAt            DateTime? // Timestamp of last success
+// --- END MEMORY FIELDS ---
+
+initialSyncCompleted    Boolean   @default(false)
+
+createdAt               DateTime  @default(now())
+updatedAt               DateTime  @updatedAt
+
+@@map("calendar_settings")
 }
 
 model CalendarEvent {
-  id                      String    @id @default(cuid())
-  userId                  String
-  user                    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+id                      String    @id @default(cuid())
+userId                  String
+user                    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  // Google Calendar Event Details
-  googleEventId           String    @unique // Google Calendar event ID
-  calendarId              String    // Which calendar this event belongs to
+googleEventId           String    @unique
+calendarId              String
 
-  // Event Details
-  title                   String
-  description             String?
-  start                   DateTime
-  end                     DateTime
-  allDay                  Boolean   @default(false)
+title                   String
+description             String?
+start                   DateTime
+end                     DateTime
+allDay                  Boolean   @default(false)
 
-  // Classification
-  isAppEvent              Boolean   @default(false) // true = created by app, false = external event
-  matchedPropertyAddress  String?   // If fuzzy matched to a property, store the address
-  inferredTaskTypes       String[]  @default([])    // AI-inferred task types for external events (BASIC plan feature)
+isAppEvent              Boolean   @default(false)
+matchedPropertyAddress  String?
 
-  // Sync Metadata
-  lastSyncedAt            DateTime  @default(now())
+inferredTaskTypes       String[]  @default([])
 
-  createdAt               DateTime  @default(now())
-  updatedAt               DateTime  @updatedAt
+lastSyncedAt            DateTime  @default(now())
 
-  @@index([userId, isAppEvent])
-  @@index([userId, start])
-  @@index([googleEventId])
-  @@map("calendar_events")
+createdAt               DateTime  @default(now())
+updatedAt               DateTime  @updatedAt
+
+@@index([userId, isAppEvent])
+@@index([userId, start])
+@@index([googleEventId])
+@@map("calendar_events")
 }
 
-// ============================================================================
-// TEAMS COLLABORATION SYSTEM
-// ============================================================================
-
 model Team {
-  id                   String    @id @default(cuid())
-  name                 String
-  clerkOrgId           String?   @unique // Clerk organization ID for team management
+id                   String    @id @default(cuid())
+name                 String
+clerkOrgId           String?   @unique
 
-  // Plan & Subscription
-  planType             String    @default("TEAMS") // "TEAMS" plan type
-  maxMembers           Int       @default(5)      // 4 members + 1 owner (configurable)
+planType             String    @default("TEAMS")
+maxMembers           Int       @default(5)
 
-  // Shared Usage & Quotas (team-level limits)
-  quota                Int       @default(10)     // Shared concurrent transactions for team
-  credits              Int       @default(10)     // Shared AI parse credits for team
-  parseLimit           Int       @default(10)     // Monthly parse limit for team
-  parseCount           Int       @default(0)      // Current month's parse count
-  parseResetDate       DateTime? @default(now())  // When to reset parseCount
+quota                Int       @default(10)
 
-  // Billing (team leader responsible)
-  stripeCustomerId     String?   // Whop membership ID for team
-  stripeSubscriptionId String?   // Whop product ID for team
-  priceId              String?   // Whop plan variant
-  currentPeriodEnd     DateTime? // Subscription period end
+credits              Int       @default(10)
 
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
+parseLimit           Int       @default(10)
 
-  members              TeamMember[]
-  parses               Parse[]
-  tasks                Task[]
-  templates            UserTaskTemplate[]
+parseCount           Int       @default(0)
 
-  @@index([clerkOrgId])
-  @@map("teams")
+parseResetDate       DateTime? @default(now())
+
+stripeCustomerId     String?
+
+stripeSubscriptionId String?
+
+priceId              String?
+
+currentPeriodEnd     DateTime?
+
+createdAt            DateTime  @default(now())
+updatedAt            DateTime  @updatedAt
+
+members              TeamMember[]
+parses               Parse[]
+tasks                Task[]
+templates            UserTaskTemplate[]
+
+@@index([clerkOrgId])
+@@map("teams")
 }
 
 model TeamMember {
-  id                   String    @id @default(cuid())
-  teamId               String
-  team                 Team      @relation(fields: [teamId], references: [id], onDelete: Cascade)
+id                   String    @id @default(cuid())
+teamId               String
+team                 Team      @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
-  userId               String
-  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+userId               String
+user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  clerkUserId          String    // Clerk user ID for sync
-  role                 String    // "owner" (admin/team leader) or "member" (regular team member)
+clerkUserId          String
 
-  // Member Info
-  email                String
-  name                 String?
+role                 String
 
-  joinedAt             DateTime  @default(now())
+email                String
+name                 String?
 
-  assignedTasks        Task[]    @relation("TaskAssignee")
+joinedAt             DateTime  @default(now())
 
-  @@unique([teamId, userId])
-  @@index([teamId])
-  @@index([userId])
-  @@index([clerkUserId])
-  @@map("team_members")
+assignedTasks        Task[]    @relation("TaskAssignee")
+
+@@unique([teamId, userId])
+@@index([teamId])
+@@index([userId])
+@@index([clerkUserId])
+@@map("team_members")
 }

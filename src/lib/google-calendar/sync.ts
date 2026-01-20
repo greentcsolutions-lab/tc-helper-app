@@ -1,15 +1,14 @@
 // src/lib/google-calendar/sync.ts
-// Bidirectional sync between app tasks and Google Calendar
+// Logic for pushing App Task updates to Google Calendar
 
 import { calendar_v3 } from 'googleapis';
 import { getGoogleCalendarClient } from './client';
 import { prisma } from '@/lib/prisma';
-import { GoogleCalendarEvent, SyncResult, SyncOperation, EVENT_COLORS } from '@/types/calendar';
+import { EVENT_COLORS } from '@/types/calendar';
 import { Task } from '@prisma/client';
-import { syncTimelineEventsToCalendar } from './sync-timeline-events';
 
 /**
- * Syncs a task to Google Calendar (create or update)
+ * Syncs a single task to Google Calendar (Create or Update)
  * Direction: App → Google Calendar
  */
 export async function syncTaskToCalendar(
@@ -19,9 +18,10 @@ export async function syncTaskToCalendar(
   try {
     const calendar = await getGoogleCalendarClient(userId);
     if (!calendar) {
-      return { success: false, error: 'Calendar client not available' };
+      throw new Error('Calendar client not available');
     }
 
+    // 1. Get Settings and Task details
     const settings = await prisma.calendarSettings.findUnique({
       where: { userId },
     });
@@ -36,307 +36,109 @@ export async function syncTaskToCalendar(
     });
 
     if (!task || task.userId !== userId) {
-      return { success: false, error: 'Task not found' };
+      throw new Error('Task not found');
     }
 
-    // Build event from task
-    const event = buildEventFromTask(task, settings.includeFullDetails, settings.excludeFinancialData);
+    // 2. Prepare the Event Data for Google
+    const eventBody: calendar_v3.Schema$Event = buildEventFromTask(
+      task, 
+      settings.includeFullDetails, 
+      settings.excludeFinancialData
+    );
 
-    // Create or update event
-    if (task.googleCalendarEventId) {
-      // Update existing event
+    let googleEventId = task.googleCalendarEventId;
+
+    if (googleEventId) {
+      // UPDATE existing event
       try {
         const response = await calendar.events.update({
           calendarId: settings.primaryCalendarId,
-          eventId: task.googleCalendarEventId,
-          requestBody: event,
+          eventId: googleEventId,
+          requestBody: eventBody,
         });
-
-        await prisma.task.update({
-          where: { id: taskId },
-          data: {
-            syncedToCalendar: true,
-            lastSyncedAt: new Date(),
-          },
-        });
-
-        return { success: true, googleEventId: response.data.id ?? undefined };
-      } catch (error) {
-        console.error('Error updating event:', error);
-        return { success: false, error: 'Failed to update event' };
+        googleEventId = response.data.id || null;
+      } catch (err: any) {
+        // If event was deleted in Google, create a new one instead
+        if (err.code === 404) {
+          const response = await calendar.events.insert({
+            calendarId: settings.primaryCalendarId,
+            requestBody: eventBody,
+          });
+          googleEventId = response.data.id || null;
+        } else {
+          throw err;
+        }
       }
     } else {
-      // Create new event
-      try {
-        const response = await calendar.events.insert({
-          calendarId: settings.primaryCalendarId,
-          requestBody: event,
-        });
-
-        await prisma.task.update({
-          where: { id: taskId },
-          data: {
-            googleCalendarEventId: response.data.id || null,
-            syncedToCalendar: true,
-            lastSyncedAt: new Date(),
-          },
-        });
-
-        return { success: true, googleEventId: response.data.id ?? undefined };
-      } catch (error) {
-        console.error('Error creating event:', error);
-        return { success: false, error: 'Failed to create event' };
-      }
-    }
-  } catch (error) {
-    console.error('Error syncing task to calendar:', error);
-    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
-  }
-}
-
-/**
- * Deletes a task from Google Calendar
- * Direction: App → Google Calendar
- */
-export async function deleteTaskFromCalendar(
-  userId: string,
-  taskId: string
-): Promise<{ success: boolean; error?: string }> {
-  try {
-    const calendar = await getGoogleCalendarClient(userId);
-    if (!calendar) {
-      return { success: false, error: 'Calendar client not available' };
-    }
-
-    const settings = await prisma.calendarSettings.findUnique({
-      where: { userId },
-    });
-
-    if (!settings || !settings.primaryCalendarId) {
-      return { success: false, error: 'Calendar not configured' };
-    }
-
-    const task = await prisma.task.findUnique({
-      where: { id: taskId },
-    });
-
-    if (!task || task.userId !== userId || !task.googleCalendarEventId) {
-      return { success: true }; // Nothing to delete
-    }
-
-    try {
-      await calendar.events.delete({
+      // CREATE new event
+      const response = await calendar.events.insert({
         calendarId: settings.primaryCalendarId,
-        eventId: task.googleCalendarEventId,
+        requestBody: eventBody,
       });
+      googleEventId = response.data.id || null;
+    }
 
+    // 3. Save the Google Event ID back to our Task
+    if (googleEventId) {
       await prisma.task.update({
         where: { id: taskId },
         data: {
-          googleCalendarEventId: null,
-          syncedToCalendar: false,
-        },
-      });
-
-      return { success: true };
-    } catch (error) {
-      console.error('Error deleting event from calendar:', error);
-      return { success: false, error: 'Failed to delete event' };
-    }
-  } catch (error) {
-    console.error('Error deleting task from calendar:', error);
-    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
-  }
-}
-
-/**
- * Moves a task to the archived calendar
- * Direction: App → Google Calendar
- */
-export async function archiveTaskInCalendar(
-  userId: string,
-  taskId: string
-): Promise<{ success: boolean; error?: string }> {
-  try {
-    const calendar = await getGoogleCalendarClient(userId);
-    if (!calendar) {
-      return { success: false, error: 'Calendar client not available' };
-    }
-
-    const settings = await prisma.calendarSettings.findUnique({
-      where: { userId },
-    });
-
-    if (!settings || !settings.primaryCalendarId || !settings.archivedCalendarId) {
-      return { success: false, error: 'Calendars not configured' };
-    }
-
-    const task = await prisma.task.findUnique({
-      where: { id: taskId },
-      include: { parse: true },
-    });
-
-    if (!task || task.userId !== userId || !task.googleCalendarEventId) {
-      return { success: true }; // Nothing to archive
-    }
-
-    try {
-      // Move event to archived calendar
-      const movedEvent = await calendar.events.move({
-        calendarId: settings.primaryCalendarId,
-        eventId: task.googleCalendarEventId,
-        destination: settings.archivedCalendarId,
-      });
-
-      await prisma.task.update({
-        where: { id: taskId },
-        data: {
+          googleCalendarEventId: googleEventId,
+          syncedToCalendar: true,
           lastSyncedAt: new Date(),
         },
       });
-
-      return { success: true };
-    } catch (error) {
-      console.error('Error moving event to archived calendar:', error);
-      return { success: false, error: 'Failed to archive event' };
     }
-  } catch (error) {
-    console.error('Error archiving task in calendar:', error);
-    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+
+    return { success: true, googleEventId: googleEventId || undefined };
+
+  } catch (error: any) {
+    console.error('Task to Calendar sync failed:', error);
+    return { success: false, error: error.message };
   }
 }
 
 /**
- * Performs initial sync: pushes all existing tasks to Google Calendar
- */
-export async function performInitialSync(userId: string): Promise<SyncResult> {
-  const operations: SyncOperation[] = [];
-  let totalSynced = 0;
-  let totalErrors = 0;
-
-  try {
-    const settings = await prisma.calendarSettings.findUnique({
-      where: { userId },
-    });
-
-    if (!settings || !settings.syncEnabled || !settings.primaryCalendarId) {
-      return {
-        success: false,
-        operations,
-        totalSynced,
-        totalErrors,
-        error: 'Calendar sync not configured',
-      };
-    }
-
-    // Sync all timeline events from all parses
-    // Note: We do NOT sync tasks individually - tasks are internal tracking only
-    // Google Calendar should mirror the timeline view (timeline events from timelineDataStructured)
-    const parses = await prisma.parse.findMany({
-      where: {
-        userId,
-        status: { in: ['COMPLETED', 'NEEDS_REVIEW'] },
-      },
-      select: { id: true },
-    });
-
-    for (const parse of parses) {
-      const timelineResult = await syncTimelineEventsToCalendar(parse.id, userId);
-      if (timelineResult.success) {
-        totalSynced += timelineResult.eventsSynced;
-      }
-    }
-
-    // Mark initial sync as completed
-    await prisma.calendarSettings.update({
-      where: { userId },
-      data: {
-        initialSyncCompleted: true,
-        lastSyncAt: new Date(),
-      },
-    });
-
-    return {
-      success: totalErrors === 0,
-      operations,
-      totalSynced,
-      totalErrors,
-    };
-  } catch (error) {
-    console.error('Error performing initial sync:', error);
-    return {
-      success: false,
-      operations,
-      totalSynced,
-      totalErrors,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    };
-  }
-}
-
-/**
- * Builds a Google Calendar event from a Task
+ * Helper to transform a Task object into a Google Calendar Event
  */
 function buildEventFromTask(
-  task: Task & { parse?: any },
-  includeFullDetails: boolean,
-  excludeFinancialData: boolean
-): GoogleCalendarEvent {
-  const startDate = new Date(task.dueDate);
-  const endDate = new Date(task.dueDate);
-  endDate.setHours(23, 59, 59, 999); // End of day
-
-  // Build title with [TC Helper] prefix
-  const title = `[TC Helper] ${task.title}`;
-
-  // Build description
+  task: any, 
+  includeDetails: boolean, 
+  excludeFinancial: boolean
+): calendar_v3.Schema$Event {
+  const title = `[${task.parse?.propertyAddress || 'Task'}] ${task.title}`;
+  
   let description = '';
-  if (includeFullDetails) {
-    if (task.description) {
-      description += `${task.description}\n\n`;
-    }
-    if (task.propertyAddress) {
-      description += `Property: ${task.propertyAddress}\n`;
-    }
-    if (task.amount && !excludeFinancialData) {
-      description += `Amount: $${task.amount.toLocaleString()}\n`;
-    }
+  if (includeDetails) {
+    description += `${task.description || ''}\n\n`;
     description += `Status: ${task.status}\n`;
-    description += `Task Types: ${task.taskTypes.join(', ')}\n`;
+    if (task.amount && !excludeFinancial) {
+      description += `Amount: $${task.amount}\n`;
+    }
+    description += `View in App: ${process.env.NEXT_PUBLIC_APP_URL}/tasks/${task.id}`;
   }
 
-  // Determine color based on task type and status
-  let colorId: string = EVENT_COLORS.CUSTOM;
+  // Choose Google Color based on status/type
+  let colorId = EVENT_COLORS.TIMELINE; // Default Blue
   if (task.status === 'completed') {
-    colorId = EVENT_COLORS.TIMELINE; // Blue for completed
-  } else if (new Date(task.dueDate) < new Date()) {
-    colorId = EVENT_COLORS.OVERDUE; // Red for overdue
-  } else if (task.taskTypes.includes('timeline')) {
-    colorId = EVENT_COLORS.TIMELINE;
-  } else if (task.taskTypes.includes('broker')) {
-    colorId = EVENT_COLORS.BROKER;
-  } else if (task.taskTypes.includes('escrow')) {
-    colorId = EVENT_COLORS.ESCROW;
-  } else if (task.taskTypes.includes('lender')) {
-    colorId = EVENT_COLORS.LENDER;
+    colorId = '8'; // Gray in Google
+  } else if (new Date(task.dueDate) < new Date() && task.status !== 'completed') {
+    colorId = '11'; // Red for overdue
   }
+
+  const dateStr = new Date(task.dueDate).toISOString().split('T')[0];
 
   return {
     summary: title,
-    description: description.trim() || undefined,
-    start: {
-      date: startDate.toISOString().split('T')[0], // All-day event
-    },
-    end: {
-      date: endDate.toISOString().split('T')[0],
-    },
-    colorId,
+    description: description.trim(),
+    colorId: colorId,
+    start: { date: dateStr }, // All-day event
+    end: { date: dateStr },
     extendedProperties: {
       private: {
-        tcHelperId: task.id,
-        tcHelperType: task.timelineEventId ? 'timeline' : 'task',
-        tcHelperParseId: task.parseId || undefined,
-      },
-    },
+        appTaskId: task.id,
+        parseId: task.parseId || '',
+      }
+    }
   };
 }

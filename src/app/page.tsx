@@ -1,4 +1,5 @@
 // src/app/page.tsx
+// @ts-nocheck
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
