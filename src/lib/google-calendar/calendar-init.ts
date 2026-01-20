@@ -4,183 +4,90 @@
 import { calendar_v3 } from 'googleapis';
 import { getGoogleCalendarClient } from './client';
 import { prisma } from '@/lib/prisma';
-import { CALENDAR_COLORS } from '@/types/calendar';
+import { setupWebhook } from './webhook';
 
 /**
  * Finds or creates the TC Helper calendars for a user
+ * This is the "Handshake" function called after OAuth is complete
  */
 export async function initializeCalendars(userId: string): Promise<{
   primaryCalendarId: string | null;
-  archivedCalendarId: string | null;
   error?: string;
 }> {
   try {
     const calendar = await getGoogleCalendarClient(userId);
 
     if (!calendar) {
-      return {
-        primaryCalendarId: null,
-        archivedCalendarId: null,
-        error: 'Failed to create Google Calendar client',
-      };
+      return { primaryCalendarId: null, error: 'Failed to create Google Calendar client' };
     }
 
-    // Check if calendars already exist
+    // 1. Check existing settings
     const settings = await prisma.calendarSettings.findUnique({
       where: { userId },
     });
 
     let primaryCalendarId = settings?.primaryCalendarId;
-    let archivedCalendarId = settings?.archivedCalendarId;
 
-    // Verify existing calendars still exist
+    // 2. Verify or Create the Primary Calendar
     if (primaryCalendarId) {
       try {
         await calendar.calendars.get({ calendarId: primaryCalendarId });
       } catch (error) {
-        console.log('Primary calendar no longer exists, will create new one');
+        console.log('Primary calendar no longer exists, creating a new one.');
         primaryCalendarId = null;
       }
     }
 
-    if (archivedCalendarId) {
-      try {
-        await calendar.calendars.get({ calendarId: archivedCalendarId });
-      } catch (error) {
-        console.log('Archived calendar no longer exists, will create new one');
-        archivedCalendarId = null;
-      }
-    }
-
-    // Create primary calendar if needed
     if (!primaryCalendarId) {
-      const primaryCalendar = await createCalendar(calendar, {
-        summary: 'TC Helper',
-        description: 'Real estate transaction timeline and tasks from TC Helper app',
-        timeZone: 'America/Los_Angeles',
+      const newCal = await calendar.calendars.insert({
+        requestBody: {
+          summary: 'TC Helper - Transactions',
+          description: 'Real estate transaction deadlines and tasks',
+          timeZone: 'America/New_York',
+        },
       });
-
-      if (primaryCalendar) {
-        primaryCalendarId = primaryCalendar.id || null;
-      }
+      primaryCalendarId = newCal.data.id || null;
     }
 
-    // Create archived calendar if needed
-    if (!archivedCalendarId) {
-      const archivedCalendar = await createCalendar(calendar, {
-        summary: 'TC Helper Archived Events',
-        description: 'Archived events from TC Helper app',
-        timeZone: 'America/Los_Angeles',
-      });
+    if (!primaryCalendarId) throw new Error("Could not create primary calendar");
 
-      if (archivedCalendar) {
-        archivedCalendarId = archivedCalendar.id || null;
-      }
-    }
-
-    // Update settings with calendar IDs
+    // 3. SECURE THE HANDSHAKE
+    // We update all memory fields to ensure the UI loop is broken immediately
     await prisma.calendarSettings.update({
       where: { userId },
       data: {
-        primaryCalendarId: primaryCalendarId || null,
-        archivedCalendarId: archivedCalendarId || null,
+        primaryCalendarId,
+        syncEnabled: true,
+        initialSyncCompleted: true, // Crucial for breaking the "Connect" button loop
+        lastSyncStatus: 'SUCCESS',
+        lastSyncedAt: new Date(),
+        lastSyncError: null,
+        // Reset sync token to null to force a fresh start on the first webhook
+        nextSyncToken: null 
       },
     });
 
-    return {
-      primaryCalendarId: primaryCalendarId || null,
-      archivedCalendarId: archivedCalendarId || null,
-    };
-  } catch (error) {
+    // 4. Initialize the Webhook
+    // This will set up the watch channel and the first Sync Token
+    const webhookResult = await setupWebhook(userId);
+    
+    if (!webhookResult.success) {
+      console.warn('Initial webhook setup failed, but settings are saved:', webhookResult.error);
+    }
+
+    return { primaryCalendarId };
+  } catch (error: any) {
     console.error('Error initializing calendars:', error);
-    return {
-      primaryCalendarId: null,
-      archivedCalendarId: null,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    };
-  }
-}
-
-/**
- * Creates a new Google Calendar
- */
-async function createCalendar(
-  calendar: calendar_v3.Calendar,
-  params: {
-    summary: string;
-    description: string;
-    timeZone: string;
-  }
-): Promise<calendar_v3.Schema$Calendar | null> {
-  try {
-    const response = await calendar.calendars.insert({
-      requestBody: {
-        summary: params.summary,
-        description: params.description,
-        timeZone: params.timeZone,
-      },
-    });
-
-    return response.data;
-  } catch (error) {
-    console.error(`Error creating calendar "${params.summary}":`, error);
-    return null;
-  }
-}
-
-/**
- * Deletes the TC Helper calendars (cleanup when disconnecting)
- */
-export async function deleteCalendars(userId: string): Promise<boolean> {
-  try {
-    const calendar = await getGoogleCalendarClient(userId);
-
-    if (!calendar) {
-      return false;
-    }
-
-    const settings = await prisma.calendarSettings.findUnique({
-      where: { userId },
-    });
-
-    if (!settings) {
-      return true;
-    }
-
-    // Delete primary calendar
-    if (settings.primaryCalendarId) {
-      try {
-        await calendar.calendars.delete({
-          calendarId: settings.primaryCalendarId,
-        });
-      } catch (error) {
-        console.error('Error deleting primary calendar:', error);
-      }
-    }
-
-    // Delete archived calendar
-    if (settings.archivedCalendarId) {
-      try {
-        await calendar.calendars.delete({
-          calendarId: settings.archivedCalendarId,
-        });
-      } catch (error) {
-        console.error('Error deleting archived calendar:', error);
-      }
-    }
-
-    // Clear calendar IDs from settings
+    
+    // Even if it fails, try to mark the attempt so the user isn't stuck
     await prisma.calendarSettings.update({
       where: { userId },
       data: {
-        primaryCalendarId: null,
-        archivedCalendarId: null,
-      },
-    });
+        lastSyncStatus: 'ERROR',
+        lastSyncError: error.message || 'Initialization failed'
+      }
+    }).catch(() => {});
 
-    return true;
-  } catch (error) {
-    console.error('Error deleting calendars:', error);
-    return false;
+    return { primaryCalendarId: null, error: error.message };
   }
 }
