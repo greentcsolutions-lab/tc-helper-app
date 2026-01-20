@@ -80,7 +80,7 @@ export default function PrivacyPage() {
           <p className="font-medium">
             TC Helper App <br />
             Email: <a href="mailto:info@tchelper.app">info@tchelper.app</a> <br />
-            Location: Saint Robert, Missouri
+            Location: Mountain Grove, Missouri
           </p>
         </section>
       </div>
