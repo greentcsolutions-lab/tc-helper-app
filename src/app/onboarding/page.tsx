@@ -11,41 +11,14 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { PartyPopper, AlertTriangle } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
-const usStates = [
-  "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA",
-  "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD",
-  "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ",
-  "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC",
-  "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY"
-] as const;
-
-type State = typeof usStates[number];
-
-const roleOptions = [
-  { value: "office_admin", label: "Office Admin" },
-  { value: "solo_agent", label: "Solo Agent" },
-  { value: "team_agent", label: "Team Agent" },
-  { value: "team_leader", label: "Team Leader" },
-  { value: "broker_ceo", label: "Broker or CEO" },
-  { value: "other", label: "Other" },
-];
-
-const problemOptions = [
-  { value: "contract_extraction", label: "Contract terms extraction" },
-  { value: "team_workflows", label: "Team workflows" },
-  { value: "task_management", label: "Task management" },
-  { value: "timeline_management", label: "Timeline management" },
-  { value: "other", label: "Other" },
-];
-
-const referralOptions = [
-  { value: "google", label: "Google" },
-  { value: "x", label: "X (Twitter)" },
-  { value: "facebook", label: "Facebook" },
-  { value: "instagram", label: "Instagram" },
-  { value: "referral", label: "Referral" },
-  { value: "other", label: "Other" },
-];
+// Imported Refactored Types and Constants
+import { 
+  usStates, 
+  roleOptions, 
+  problemOptions, 
+  referralOptions, 
+  type State 
+} from './types';
 
 export default function OnboardingPage() {
   const { isLoaded, isSignedIn, user } = useUser();
