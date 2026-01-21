@@ -99,6 +99,83 @@ export async function syncTaskToCalendar(
 }
 
 /**
+ * Performs an initial sync of all user's tasks to Google Calendar.
+ * This is usually called once after the user connects their calendar.
+ * Direction: App → Google Calendar
+ */
+export async function performInitialSync(
+  userId: string
+): Promise<{
+  success: boolean;
+  syncedTasks: number;
+  errors: { taskId: string; error: string }[];
+}> {
+  console.log(`[Initial Sync] Starting for user ${userId}`);
+  const errors: { taskId: string; error: string }[] = [];
+  let syncedTasks = 0;
+
+  try {
+    // 1. Get all non-archived tasks for the user
+    const tasks = await prisma.task.findMany({
+      where: {
+        userId: userId,
+        archived: false,
+      },
+    });
+
+    if (tasks.length === 0) {
+      console.log('[Initial Sync] No tasks to sync.');
+      return { success: true, syncedTasks: 0, errors: [] };
+    }
+
+    console.log(`[Initial Sync] Found ${tasks.length} tasks to sync.`);
+
+    // 2. Sync all tasks in parallel
+    const syncPromises = tasks.map(async (task) => {
+      const result = await syncTaskToCalendar(userId, task.id);
+      if (result.success) {
+        syncedTasks++;
+      } else {
+        errors.push({ taskId: task.id, error: result.error || 'Unknown error' });
+      }
+    });
+
+    await Promise.all(syncPromises);
+
+    // 3. Update calendar settings to mark initial sync as complete
+    await prisma.calendarSettings.update({
+      where: { userId },
+      data: {
+        initialSyncCompleted: true,
+        lastSyncStatus: errors.length > 0 ? 'ERROR' : 'SUCCESS',
+        lastSyncedAt: new Date(),
+        lastSyncError: errors.length > 0 ? `${errors.length} tasks failed to sync.` : null,
+      },
+    });
+
+    if (errors.length > 0) {
+      console.error(`[Initial Sync] Completed with ${errors.length} errors.`);
+      return { success: false, syncedTasks, errors };
+    }
+
+    console.log(`[Initial Sync] Successfully synced ${syncedTasks} tasks.`);
+    return { success: true, syncedTasks, errors };
+
+  } catch (error: any) {
+    console.error('[Initial Sync] Failed:', error);
+    await prisma.calendarSettings.update({
+        where: { userId },
+        data: {
+            lastSyncStatus: 'ERROR',
+            lastSyncError: error.message || 'Initial sync failed entirely.',
+        },
+    }).catch(() => {}); // Avoid crashing if this update fails too
+    return { success: false, syncedTasks: 0, errors: [{ taskId: 'general', error: error.message }] };
+  }
+}
+
+
+/**
  * Helper to transform a Task object into a Google Calendar Event
  */
 function buildEventFromTask(
@@ -126,7 +203,9 @@ function buildEventFromTask(
     colorId = '11'; // Red for overdue
   }
 
-  const dateStr = new Date(task.dueDate).toISOString().split('T')[0];
+  const dateStr = task.dueDate
+    ? new Date(task.dueDate).toISOString().split('T')[0]
+    : new Date().toISOString().split('T')[0];
 
   return {
     summary: title,

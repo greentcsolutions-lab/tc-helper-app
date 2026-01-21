@@ -7,6 +7,7 @@ import { prisma } from '@/lib/prisma';
 import { matchPropertyAddress } from './property-matcher';
 import { inferTaskTypes } from './ai-inference';
 import { TASK_STATUS } from '@/types/task';
+import { CalendarEvent } from '@prisma/client';
 
 /**
  * Syncs changes from Google Calendar to the app
@@ -49,7 +50,7 @@ export async function syncCalendarToApp(userId: string): Promise<{
     if (settings.nextSyncToken) {
       params.syncToken = settings.nextSyncToken;
     } else {
-      // First time sync? Or token expired? 
+      // First time sync? Or token expired?
       // Limit window to 3 months back/forward to avoid massive initial loads
       const now = new Date();
       params.timeMin = new Date(now.setMonth(now.getMonth() - 3)).toISOString();
@@ -78,10 +79,12 @@ export async function syncCalendarToApp(userId: string): Promise<{
 
       // 1. Handle Deleted Events
       if (event.status === 'cancelled') {
-        await prisma.calendarEvent.deleteMany({
-          where: { googleEventId: event.id as string }
-        });
-        totalDeleted++;
+        const existingEvent = await prisma.calendarEvent.findUnique({ where: { googleEventId: event.id as string }});
+        if (existingEvent) {
+            await syncCalendarEventToTask(existingEvent, true);
+            await prisma.calendarEvent.delete({ where: { id: existingEvent.id } });
+            totalDeleted++;
+        }
         continue;
       }
 
@@ -103,7 +106,7 @@ export async function syncCalendarToApp(userId: string): Promise<{
       }
 
       // 3. Upsert into CalendarEvent table (Our "Mirror" of Google)
-      await prisma.calendarEvent.upsert({
+      const calendarEvent = await prisma.calendarEvent.upsert({
         where: { googleEventId: event.id as string },
         create: {
           userId,
@@ -131,10 +134,16 @@ export async function syncCalendarToApp(userId: string): Promise<{
         }
       });
 
-      totalUpdated++;
+      // 4. Sync the mirrored event to a Task
+      const { created } = await syncCalendarEventToTask(calendarEvent, false);
+      if (created) {
+        totalCreated++;
+      } else {
+        totalUpdated++;
+      }
     }
 
-    // 4. Save the new Sync Token for next time
+    // 5. Save the new Sync Token for next time
     await prisma.calendarSettings.update({
       where: { userId },
       data: {
@@ -169,4 +178,57 @@ export async function syncCalendarToApp(userId: string): Promise<{
       error: error.message
     };
   }
+}
+
+/**
+ * Creates, updates, or archives a Task based on a CalendarEvent
+ */
+async function syncCalendarEventToTask(event: CalendarEvent, isDeletion: boolean): Promise<{ success: boolean, created: boolean }> {
+    if (isDeletion) {
+        // Archive the task instead of deleting it
+        await prisma.task.updateMany({
+            where: { googleCalendarEventId: event.googleEventId },
+            data: { archived: true }
+        });
+        return { success: true, created: false };
+    }
+
+    // Only create tasks for events that are matched to a property
+    if (!event.isAppEvent || !event.matchedPropertyAddress) {
+        return { success: true, created: false };
+    }
+
+    const existingTask = await prisma.task.findUnique({
+        where: { googleCalendarEventId: event.googleEventId }
+    });
+
+    const taskData = {
+        title: event.title,
+        description: event.description || '',
+        propertyAddress: event.matchedPropertyAddress,
+        dueDate: event.start,
+        taskTypes: event.inferredTaskTypes,
+        status: TASK_STATUS.NOT_STARTED,
+        syncedToCalendar: true,
+        lastSyncedAt: new Date(),
+    };
+
+    if (existingTask) {
+        // Update existing task
+        await prisma.task.update({
+            where: { id: existingTask.id },
+            data: taskData
+        });
+        return { success: true, created: false };
+    } else {
+        // Create new task
+        await prisma.task.create({
+            data: {
+                ...taskData,
+                userId: event.userId,
+                googleCalendarEventId: event.googleEventId,
+            }
+        });
+        return { success: true, created: true };
+    }
 }
