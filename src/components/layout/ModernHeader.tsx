@@ -24,14 +24,14 @@ export default function ModernHeader({ credits, sidebarCollapsed }: ModernHeader
 
         {/* Center - Public Navigation Links */}
         <SignedOut>
-          <nav className="hidden md:flex items-center gap-6">
-            <Link href="/" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
+          <nav className="hidden md:flex items-center divide-x divide-muted-foreground/40">
+            <Link href="/" className="px-4 text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
               Home
             </Link>
-            <Link href="/plans" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
+            <Link href="/plans" className="px-4 text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
               Plans
             </Link>
-            <Link href="/about" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
+            <Link href="/about" className="px-4 text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
               About
             </Link>
           </nav>
