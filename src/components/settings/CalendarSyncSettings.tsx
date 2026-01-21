@@ -55,6 +55,21 @@ export default function CalendarSyncSettings() {
     } else {
       setIsLoading(false);
     }
+
+    const searchParams = new URLSearchParams(window.location.search);
+    if (searchParams.get('calendar_connected')) {
+      toast.success('Google Calendar connected successfully!');
+      loadSettings();
+      // Clean up the URL
+      const newUrl = window.location.pathname;
+      window.history.replaceState({}, '', newUrl);
+    }
+    if (searchParams.get('calendar_error')) {
+      toast.error(`Failed to connect calendar: ${searchParams.get('calendar_error')}`);
+      // Clean up the URL
+      const newUrl = window.location.pathname;
+      window.history.replaceState({}, '', newUrl);
+    }
   }, [isBetaTester]);
 
   async function loadSettings() {

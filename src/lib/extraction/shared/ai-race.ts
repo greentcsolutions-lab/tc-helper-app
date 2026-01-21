@@ -1,6 +1,7 @@
 // src/lib/extraction/shared/ai-race.ts
-// Version: 1.0.0 - 2026-01-15
+// Version: 1.1.0 - 2026-01-21
 // Unified AI racing system - pings all available AIs and uses the fastest responder
+// Prefers Gemini, falls back to other models on timeout
 
 import { checkClaudeAvailability, extractWithClaude } from '@/lib/extraction/Claude/extractPdf';
 import { checkGeminiAvailability, extractWithGemini } from '@/lib/extraction/gemini/extractPdf';
@@ -16,38 +17,74 @@ interface AIProvider {
 }
 
 /**
- * All available AI providers
+ * All available AI providers. Gemini is preferred.
  */
 const AI_PROVIDERS: AIProvider[] = [
-  {
-    name: 'Claude',
-    model: 'claude-haiku-4-5-20251001',
-    checkAvailability: () => checkClaudeAvailability('claude-haiku-4-5-20251001', 5000),
-    extract: extractWithClaude,
-  },
   {
     name: 'Gemini',
     model: 'gemini-3-flash-preview',
     checkAvailability: () => checkGeminiAvailability('gemini-3-flash-preview', 5000),
     extract: extractWithGemini,
   },
+  {
+    name: 'Claude',
+    model: 'claude-haiku-4-5-20251001',
+    checkAvailability: () => checkClaudeAvailability('claude-haiku-4-5-20251001', 5000),
+    extract: extractWithClaude,
+  },
 ];
 
+const GEMINI_PROVIDER_NAME = 'Gemini';
+
 /**
- * Race all AI providers and return the fastest available one
- * Returns the first AI to respond successfully to a ping
+ * Race all AI providers and return the fastest available one.
+ * This function now prefers Gemini. It tries to get a response from Gemini
+ * within a 5-second timeout. If it fails or times out, it will race
+ * the other available providers.
  */
 export async function raceAIProviders(timeoutMs: number = 5000): Promise<AIProvider | null> {
-  console.log(`[ai-race] Racing ${AI_PROVIDERS.length} AI providers...`);
+  console.log(`[ai-race] Attempting to use preferred provider: ${GEMINI_PROVIDER_NAME}`);
+
+  const geminiProvider = AI_PROVIDERS.find(p => p.name === GEMINI_PROVIDER_NAME);
+
+  if (geminiProvider) {
+    const timeoutPromise = new Promise<null>((_, reject) =>
+      setTimeout(() => reject(new Error('Gemini timed out')), timeoutMs)
+    );
+
+    try {
+      const geminiResult = await Promise.race([
+        (async () => {
+          if (await geminiProvider.checkAvailability()) {
+            return geminiProvider;
+          }
+          return null;
+        })(),
+        timeoutPromise,
+      ]);
+
+      if (geminiResult) {
+        console.log(`[ai-race] ✓ ${GEMINI_PROVIDER_NAME} responded within the timeout`);
+        return geminiResult;
+      }
+    } catch (error: any) {
+      console.warn(`[ai-race] ✗ ${GEMINI_PROVIDER_NAME} failed or timed out: ${error.message}`);
+    }
+  }
+
+  console.log('[ai-race] Falling back to racing other providers...');
+  const otherProviders = AI_PROVIDERS.filter(p => p.name !== GEMINI_PROVIDER_NAME);
+
+  if (otherProviders.length === 0) {
+    console.error('[ai-race] No other providers to fall back to.');
+    return null;
+  }
 
   try {
-    // Create ping promises for all providers
-    const pingPromises = AI_PROVIDERS.map(async (provider) => {
+    const pingPromises = otherProviders.map(async (provider) => {
       try {
         console.log(`[ai-race] Pinging ${provider.name}...`);
-        const isAvailable = await provider.checkAvailability();
-
-        if (isAvailable) {
+        if (await provider.checkAvailability()) {
           console.log(`[ai-race] ✓ ${provider.name} responded`);
           return provider;
         } else {
@@ -60,37 +97,18 @@ export async function raceAIProviders(timeoutMs: number = 5000): Promise<AIProvi
       }
     });
 
-    // Race all pings
-    const winner = await Promise.race(
-      pingPromises.map(async (promise, index) => {
-        const result = await promise;
-        if (result) {
-          return { provider: result, index };
-        }
-        return null;
-      })
-    );
+    const results = await Promise.all(pingPromises);
+    const firstAvailable = results.find(p => p !== null);
 
-    if (!winner) {
-      // No provider responded yet, wait for all to complete
-      console.log(`[ai-race] No immediate winner, waiting for all providers...`);
-      const results = await Promise.all(pingPromises);
-      const firstAvailable = results.find(p => p !== null);
-
-      if (firstAvailable) {
-        console.log(`[ai-race] Winner: ${firstAvailable.name}`);
-        return firstAvailable;
-      }
-
-      console.error(`[ai-race] No AI providers available`);
-      return null;
+    if (firstAvailable) {
+      console.log(`[ai-race] Winner: ${firstAvailable.name}`);
+      return firstAvailable;
     }
 
-    console.log(`[ai-race] Winner: ${winner.provider.name} (responded first)`);
-    return winner.provider;
-
+    console.error(`[ai-race] No fallback AI providers available`);
+    return null;
   } catch (error: any) {
-    console.error(`[ai-race] Race failed: ${error.message}`);
+    console.error(`[ai-race] Fallback race failed: ${error.message}`);
     return null;
   }
 }
