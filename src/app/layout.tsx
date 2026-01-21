@@ -17,6 +17,8 @@ import { TestingBanner } from "@/components/layout/TestingBanner";
 import { currentUser } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
 
+import { Analytics } from "@vercel/analytics/next";
+
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata = {
@@ -66,6 +68,7 @@ export default async function RootLayout({
 
             <Toaster position="top-right" richColors toastOptions={{ style: { background: "hsl(var(--background))", border: "1px solid hsl(var(--border))" } }} />
           </ThemeProvider>
+          <Analytics />
         </body>
       </html>
     </ClerkProvider>
