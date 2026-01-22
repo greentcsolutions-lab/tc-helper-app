@@ -68,11 +68,14 @@ export async function initializeCalendars(userId: string): Promise<{
     });
 
     // 4. Initialize the Webhook
-    // This will set up the watch channel and the first Sync Token
+    // This will set up the watch channel for real-time notifications
+    console.log(`[Calendar Init] Setting up webhook for user ${userId}...`);
     const webhookResult = await setupWebhook(userId);
-    
+
     if (!webhookResult.success) {
-      console.warn('Initial webhook setup failed, but settings are saved:', webhookResult.error);
+      console.warn('[Calendar Init] Webhook setup failed, but settings are saved:', webhookResult.error);
+    } else {
+      console.log(`[Calendar Init] Webhook setup successful. Channel ID: ${webhookResult.channelId}, Expiration: ${webhookResult.expiration}`);
     }
 
     return { primaryCalendarId };

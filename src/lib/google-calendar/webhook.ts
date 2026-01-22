@@ -48,6 +48,15 @@ export async function setupWebhook(userId: string): Promise<{
     // Ensure this URL is publicly accessible
     const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/google-calendar/webhook`;
 
+    console.log(`[Webhook Setup] Creating watch channel for user ${userId}`);
+    console.log(`[Webhook Setup] Webhook URL: ${webhookUrl}`);
+    console.log(`[Webhook Setup] Channel ID: ${channelId}`);
+
+    if (!process.env.NEXT_PUBLIC_APP_URL) {
+      console.error('[Webhook Setup] NEXT_PUBLIC_APP_URL is not set!');
+      return { success: false, error: 'NEXT_PUBLIC_APP_URL environment variable is not set' };
+    }
+
     const response = await calendar.events.watch({
       calendarId: settings.primaryCalendarId,
       requestBody: {
@@ -56,6 +65,8 @@ export async function setupWebhook(userId: string): Promise<{
         address: webhookUrl,
       },
     });
+
+    console.log(`[Webhook Setup] Watch created successfully. Resource ID: ${response.data.resourceId}, Expiration: ${response.data.expiration}`);
 
     const expiration = response.data.expiration 
       ? new Date(parseInt(response.data.expiration)) 

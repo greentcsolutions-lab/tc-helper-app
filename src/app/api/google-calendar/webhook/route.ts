@@ -45,14 +45,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true });
     }
 
-    // 4. Trigger the Incremental Sync logic from Step 2
-    console.log(`[Webhook] Syncing changes for User: ${settings.userId}...`);
-    
+    // 4. Trigger the Incremental Sync logic
+    console.log(`[Webhook] Triggering sync for User: ${settings.userId} (resourceState: ${resourceState})...`);
+
     const result = await syncCalendarToApp(settings.userId);
 
     if (!result.success) {
       console.error(`[Webhook] Sync failed for ${settings.userId}:`, result.error);
-      
+
       // Update our memory fields with the error
       await prisma.calendarSettings.update({
         where: { id: settings.id },
@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
         },
       });
     } else {
-      console.log(`[Webhook] Sync complete. Processed ${result.totalProcessed} changes.`);
+      console.log(`[Webhook] Sync complete for ${settings.userId}. Created: ${result.totalCreated}, Updated: ${result.totalUpdated}, Deleted: ${result.totalDeleted}, Processed: ${result.totalProcessed}`);
     }
 
     // Google expects a 200 OK response to confirm we received the message

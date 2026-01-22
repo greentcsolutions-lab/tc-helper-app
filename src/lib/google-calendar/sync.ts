@@ -57,25 +57,61 @@ export async function syncTaskToCalendar(
           requestBody: eventBody,
         });
         googleEventId = response.data.id || null;
+        console.log(`[App→Calendar] Updated event for task ${task.id}`);
       } catch (err: any) {
-        // If event was deleted in Google, create a new one instead
+        // If event was deleted in Google, search for it or create new
         if (err.code === 404) {
-          const response = await calendar.events.insert({
-            calendarId: settings.primaryCalendarId,
-            requestBody: eventBody,
-          });
-          googleEventId = response.data.id || null;
+          console.log(`[App→Calendar] Event ${googleEventId} not found, searching for existing...`);
+          googleEventId = null; // Clear it so we search below
         } else {
           throw err;
         }
       }
-    } else {
-      // CREATE new event
+    }
+
+    // If no googleEventId or event was deleted, search for existing event by taskId
+    if (!googleEventId) {
+      try {
+        const eventDate = new Date(task.dueDate);
+        const endDateObj = new Date(eventDate);
+        endDateObj.setUTCDate(endDateObj.getUTCDate() + 1);
+
+        const searchResponse = await calendar.events.list({
+          calendarId: settings.primaryCalendarId,
+          timeMin: eventDate.toISOString(),
+          timeMax: endDateObj.toISOString(),
+          singleEvents: true,
+          maxResults: 50,
+        });
+
+        const existingEvents = searchResponse.data.items || [];
+        const matchingEvent = existingEvents.find((event: any) => {
+          return event.extendedProperties?.private?.tcHelperTaskId === task.id;
+        });
+
+        if (matchingEvent?.id) {
+          // Found existing event - update it
+          const response = await calendar.events.update({
+            calendarId: settings.primaryCalendarId,
+            eventId: matchingEvent.id,
+            requestBody: eventBody,
+          });
+          googleEventId = response.data.id || null;
+          console.log(`[App→Calendar] Found and updated existing event for task ${task.id}`);
+        }
+      } catch (searchError) {
+        console.error('[App→Calendar] Error searching for existing event:', searchError);
+      }
+    }
+
+    // If still no event found, create new one
+    if (!googleEventId) {
       const response = await calendar.events.insert({
         calendarId: settings.primaryCalendarId,
         requestBody: eventBody,
       });
       googleEventId = response.data.id || null;
+      console.log(`[App→Calendar] Created new event for task ${task.id}`);
     }
 
     // 3. Save the Google Event ID back to our Task
@@ -293,7 +329,12 @@ function buildEventFromTask(
   includeDetails: boolean,
   excludeFinancial: boolean
 ): calendar_v3.Schema$Event {
-  const title = `[${task.parse?.propertyAddress || 'Task'}] ${task.title}`;
+  // Don't add prefix if title already has one (prevents [Task] [Task] duplicates)
+  // Prefix pattern: starts with [ and contains ]
+  const hasPrefix = /^\[.*?\]/.test(task.title);
+  const title = hasPrefix
+    ? task.title
+    : `[${task.parse?.propertyAddress || 'Task'}] ${task.title}`;
 
   let description = '';
   if (includeDetails) {
@@ -325,7 +366,7 @@ function buildEventFromTask(
     end: { date: dateStr },
     extendedProperties: {
       private: {
-        appTaskId: task.id,
+        tcHelperTaskId: task.id, // Use consistent naming with sync-timeline-events
         parseId: task.parseId || '',
       }
     }

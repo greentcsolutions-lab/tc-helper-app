@@ -61,6 +61,31 @@
 
 ---
 
+### 6. Google Calendar → TC Helper Not Auto-Syncing
+**Root Cause**: Events only synced to tasks if they matched a property address. Generic events were ignored.
+
+**Fix**: Modified `syncCalendarEventToTask()` to sync ALL events from our calendar, not just property-matched ones.
+
+**File**: `src/lib/google-calendar/calendar-to-app.ts`
+
+---
+
+### 7. Duplicate Events with [Task] [Task] Prefix
+**Root Cause**: The `buildEventFromTask()` function added a prefix every time, even if the task title already had one (from a previous sync).
+
+**Fixes**:
+1. Added regex check to detect if title already has a prefix before adding it
+2. Added extended properties search to find existing events by `tcHelperTaskId` before creating duplicates
+3. Enhanced logging throughout sync process to track event creation/updates
+
+**Files**:
+- `src/lib/google-calendar/sync.ts`
+- `src/lib/google-calendar/calendar-init.ts`
+- `src/lib/google-calendar/webhook.ts`
+- `src/app/api/google-calendar/webhook/route.ts`
+
+---
+
 ## How Bidirectional Sync Works Now
 
 ### TC Helper → Google Calendar (App to Calendar)
@@ -202,21 +227,28 @@ Acts as a fallback if webhooks fail or are delayed
 ## Files Modified
 
 ### API Routes
-- `src/app/api/google-calendar/settings/route.ts` - Fixed connection status check
+- `src/app/api/google-calendar/settings/route.ts` - Fixed connection status check and field name
 - `src/app/api/google-calendar/sync/route.ts` - Enhanced manual sync
 - `src/app/api/google-calendar/poll-sync/route.ts` - **NEW** Polling endpoint
+- `src/app/api/google-calendar/webhook/route.ts` - Enhanced logging for webhook notifications
 - `src/app/api/tasks/route.ts` - Added auto-sync on task creation
 - `src/app/api/tasks/[id]/route.ts` - Added auto-sync on task update/delete
 
 ### Library Functions
-- `src/lib/google-calendar/sync.ts` - Added delete/archive functions
+- `src/lib/google-calendar/sync.ts` - Added delete/archive functions, duplicate prevention, prefix checking
+- `src/lib/google-calendar/calendar-to-app.ts` - Sync ALL events, not just property-matched, enhanced logging
+- `src/lib/google-calendar/calendar-init.ts` - Added webhook setup logging
+- `src/lib/google-calendar/webhook.ts` - Added webhook creation logging and URL validation
 - `src/lib/google-calendar/sync-timeline-events.ts` - Fixed undefined variable bug
 
 ### Components
-- `src/components/settings/CalendarSyncSettings.tsx` - Added polling mechanism
+- `src/components/settings/CalendarSyncSettings.tsx` - Added polling mechanism, fixed field names
 
-### Configuration
-- `.claude-branch` - **NEW** Branch tracking for crash recovery
+### Types
+- `src/types/calendar.ts` - Fixed field name from lastSyncAt to lastSyncedAt
+
+### Documentation
+- `GOOGLE_CALENDAR_SYNC_FIXES.md` - Comprehensive documentation of all changes
 
 ---
 
