@@ -32,6 +32,19 @@ This is why you're seeing polling work (5-minute intervals) but no webhook logs.
 
 ## Fix Steps
 
+### Step 0: Deploy Latest Code (REQUIRED FIRST)
+
+The latest commit includes a fix for the disconnect function. Deploy this first:
+
+1. The code has been pushed to `fix/google-calendar-sync` branch
+2. Merge to `main` or deploy the branch directly
+3. Wait for deployment to complete
+
+**Note**: Without this deployment, disconnect will fail with:
+```
+Error: (0, webhook.stopWebhook) is not a function
+```
+
 ### Step 1: Update Environment Variable
 
 **In Vercel Dashboard:**
@@ -40,7 +53,7 @@ This is why you're seeing polling work (5-minute intervals) but no webhook logs.
 3. **Current value**: `https://tchelper.app`
 4. **Change to**: `https://www.tchelper.app` *(add www)*
 5. Save changes
-6. **Redeploy** the application
+6. **Redeploy** the application (or this happens automatically)
 
 ### Step 2: Reconnect Google Calendar
 
