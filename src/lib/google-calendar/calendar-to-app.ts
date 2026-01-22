@@ -74,6 +74,8 @@ export async function syncCalendarToApp(userId: string): Promise<{
 
     const items = response.data.items || [];
 
+    console.log(`[Calendar→App Sync] Processing ${items.length} events for user ${userId}`);
+
     for (const event of items) {
       totalProcessed++;
 
@@ -89,14 +91,14 @@ export async function syncCalendarToApp(userId: string): Promise<{
       }
 
       // 2. Process Active Events
-      // Match against property addresses in our system
+      // All events from our "TC Helper - Transactions" calendar are app events
+      // Try to match against property addresses for linking to transactions
       const match = await matchPropertyAddress(userId, `${event.summary} ${event.description || ''}`);
 
-      const isAppEvent = match.confidence !== 'none';
       let taskTypes: string[] = [];
 
-      if (isAppEvent) {
-        // Only run AI inference if it's potentially an app-related event
+      // Only run AI inference if we found a property match
+      if (match.confidence !== 'none' && match.propertyAddress) {
         const inference = await inferTaskTypes(
           event.summary || '',
           event.description || '',
@@ -104,8 +106,10 @@ export async function syncCalendarToApp(userId: string): Promise<{
         );
         taskTypes = inference.taskTypes;
       }
+      // Otherwise, taskTypes remains empty array (user can assign in app)
 
       // 3. Upsert into CalendarEvent table (Our "Mirror" of Google)
+      // All events from our calendar are considered app events
       const calendarEvent = await prisma.calendarEvent.upsert({
         where: { googleEventId: event.id as string },
         create: {
@@ -117,8 +121,8 @@ export async function syncCalendarToApp(userId: string): Promise<{
           start: new Date(event.start?.dateTime || event.start?.date || ''),
           end: new Date(event.end?.dateTime || event.end?.date || ''),
           allDay: !!event.start?.date,
-          isAppEvent,
-          matchedPropertyAddress: match.propertyAddress,
+          isAppEvent: true, // All events from our calendar are app events
+          matchedPropertyAddress: match.propertyAddress || null,
           inferredTaskTypes: taskTypes,
         },
         update: {
@@ -127,8 +131,8 @@ export async function syncCalendarToApp(userId: string): Promise<{
           start: new Date(event.start?.dateTime || event.start?.date || ''),
           end: new Date(event.end?.dateTime || event.end?.date || ''),
           allDay: !!event.start?.date,
-          isAppEvent,
-          matchedPropertyAddress: match.propertyAddress,
+          isAppEvent: true, // All events from our calendar are app events
+          matchedPropertyAddress: match.propertyAddress || null,
           inferredTaskTypes: taskTypes,
           lastSyncedAt: new Date(),
         }
@@ -182,6 +186,7 @@ export async function syncCalendarToApp(userId: string): Promise<{
 
 /**
  * Creates, updates, or archives a Task based on a CalendarEvent
+ * Syncs ALL events from our calendar, not just property-matched ones
  */
 async function syncCalendarEventToTask(event: CalendarEvent, isDeletion: boolean): Promise<{ success: boolean, created: boolean }> {
     if (isDeletion) {
@@ -193,21 +198,34 @@ async function syncCalendarEventToTask(event: CalendarEvent, isDeletion: boolean
         return { success: true, created: false };
     }
 
-    // Only create tasks for events that are matched to a property
-    if (!event.isAppEvent || !event.matchedPropertyAddress) {
-        return { success: true, created: false };
-    }
-
+    // Check if this event already exists as a task
     const existingTask = await prisma.task.findUnique({
         where: { googleCalendarEventId: event.googleEventId }
     });
 
+    // Try to find matching parse (transaction) if property address exists
+    let parseId: string | null = null;
+    if (event.matchedPropertyAddress) {
+        const parse = await prisma.parse.findFirst({
+            where: {
+                userId: event.userId,
+                propertyAddress: event.matchedPropertyAddress,
+                status: {
+                    not: 'ARCHIVED' // Don't link to archived transactions
+                }
+            },
+            select: { id: true }
+        });
+        parseId = parse?.id || null;
+    }
+
     const taskData = {
         title: event.title,
         description: event.description || '',
-        propertyAddress: event.matchedPropertyAddress,
+        propertyAddress: event.matchedPropertyAddress || null, // Null for non-property events
+        parseId: parseId, // Null if no property match or archived transaction
         dueDate: event.start,
-        taskTypes: event.inferredTaskTypes,
+        taskTypes: event.inferredTaskTypes.length > 0 ? event.inferredTaskTypes : [], // Empty array if no match
         status: TASK_STATUS.NOT_STARTED,
         syncedToCalendar: true,
         lastSyncedAt: new Date(),
@@ -219,9 +237,10 @@ async function syncCalendarEventToTask(event: CalendarEvent, isDeletion: boolean
             where: { id: existingTask.id },
             data: taskData
         });
+        console.log(`[Calendar→App] Updated task "${event.title}" (parseId: ${parseId || 'none'})`);
         return { success: true, created: false };
     } else {
-        // Create new task
+        // Create new task - ALL events create tasks now
         await prisma.task.create({
             data: {
                 ...taskData,
@@ -229,6 +248,7 @@ async function syncCalendarEventToTask(event: CalendarEvent, isDeletion: boolean
                 googleCalendarEventId: event.googleEventId,
             }
         });
+        console.log(`[Calendar→App] Created task "${event.title}" (parseId: ${parseId || 'none'})`);
         return { success: true, created: true };
     }
 }

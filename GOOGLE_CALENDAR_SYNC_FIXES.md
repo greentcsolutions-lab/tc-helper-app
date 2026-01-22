@@ -90,7 +90,9 @@
 - Subsequent syncs only fetch changes since last sync token
 - Sync token is stored in `CalendarSettings.nextSyncToken`
 - If sync token expires (410 error), automatically clears token and re-syncs
-- Uses AI inference to match events to properties and determine task types
+- **ALL events from "TC Helper - Transactions" calendar sync to tasks**
+- For events with property indicators: Uses fuzzy matching to link to non-archived transactions
+- For events without property: Creates standalone tasks (propertyAddress=null, parseId=null, taskTypes=[])
 - Creates/updates/deletes tasks in the database based on calendar changes
 
 ---
@@ -178,10 +180,12 @@ Acts as a fallback if webhooks fail or are delayed
 - [ ] Delete a task → verify it disappears from Google Calendar
 
 ### Google Calendar → TC Helper
-- [ ] Create event in Google Calendar with property address → verify task created in app
+- [ ] Create event in Google Calendar with property address → verify task created in app with property link
+- [ ] Create event in Google Calendar WITHOUT property address → verify standalone task created in app
 - [ ] Update event title in Google Calendar → verify task updated in app
 - [ ] Delete event in Google Calendar → verify task archived in app
 - [ ] Wait 5 minutes (polling) → verify changes sync
+- [ ] Verify standalone tasks show propertyAddress=null, parseId=null, taskTypes=empty
 
 ### Manual Sync
 - [ ] Click "Sync Now" → verify comprehensive re-sync happens
