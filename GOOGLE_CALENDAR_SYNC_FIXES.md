@@ -267,3 +267,101 @@ No new environment variables needed. Existing variables:
 2. **Cron Job Configured**: Vercel cron is already configured in `vercel.json`
 3. **Database Migration**: No schema changes required
 4. **Testing**: Test all scenarios in staging before production deployment
+
+---
+
+## Troubleshooting
+
+### Automatic Sync Not Working
+
+If events created in Google Calendar are not syncing to the app:
+
+1. **Check Webhook Status**:
+   - Click the "Debug Sync" button in Calendar Settings
+   - Check browser console for webhook diagnostic info
+   - Look for:
+     - `hasChannelId`: Should be `true`
+     - `hasResourceId`: Should be `true`
+     - `isExpired`: Should be `false`
+     - `expiresIn`: Should show hours remaining
+
+2. **Check Environment Variable**:
+   ```bash
+   # In Vercel dashboard, check that NEXT_PUBLIC_APP_URL is set
+   # It should be: https://your-production-domain.com
+   ```
+
+3. **Check Vercel Logs**:
+   - Look for `[Webhook Setup]` logs during initial connection
+   - Look for `[Webhook]` logs when events are created
+   - Look for `[Calendar→App]` logs during sync
+
+4. **Manual Sync Test**:
+   - Create an event in Google Calendar
+   - Click "Debug Sync" button in settings
+   - Check if event appears in Tasks view
+   - Check console logs for sync results
+
+5. **Test Webhook Endpoint**:
+   ```bash
+   # Test if webhook endpoint is accessible
+   curl https://your-domain.com/api/google-calendar/webhook
+   # Should return: {"status":"Webhook endpoint active"}
+   ```
+
+6. **Check Database**:
+   - Open Prisma Studio: `npm run db:studio`
+   - Navigate to `CalendarSettings` table
+   - Check fields:
+     - `webhookChannelId` - should have UUID value
+     - `webhookResourceId` - should have Google resource ID
+     - `webhookExpiration` - should be future date
+     - `nextSyncToken` - may be null or have token value
+
+### Expected Log Flow
+
+**During Initial Connection:**
+```
+[Calendar Init] Setting up webhook for user <userId>...
+[Webhook Setup] Creating watch channel for user <userId>
+[Webhook Setup] Webhook URL: https://your-domain.com/api/google-calendar/webhook
+[Webhook Setup] Channel ID: <uuid>
+[Webhook Setup] Watch created successfully. Resource ID: <resourceId>, Expiration: <timestamp>
+[Calendar Init] Webhook setup successful. Channel ID: <uuid>, Expiration: <date>
+```
+
+**When Event Created in Google Calendar:**
+```
+[Webhook] Received notification. Channel: <uuid>, State: exists
+[Webhook] Triggering sync for User: <userId> (resourceState: exists)...
+[Calendar→App Sync] Processing X events for user <userId>
+[Calendar→App] Created task "<task-title>" (parseId: <id or none>)
+[Webhook] Sync complete for <userId>. Created: 1, Updated: 0, Deleted: 0, Processed: 1
+```
+
+**During Polling (Every 5 minutes):**
+```
+[Calendar→App Sync] Processing X events for user <userId>
+```
+
+### Common Issues
+
+1. **Webhook Never Set Up**:
+   - Symptom: `webhookChannelId` is `null` in database
+   - Solution: Disconnect and reconnect Google Calendar
+
+2. **Webhook Expired**:
+   - Symptom: `isExpired: true` in debug sync
+   - Solution: Wait for cron job to renew, or disconnect/reconnect
+
+3. **NEXT_PUBLIC_APP_URL Not Set**:
+   - Symptom: Webhook setup fails with error about missing URL
+   - Solution: Set environment variable in Vercel dashboard
+
+4. **Webhook URL Not Accessible**:
+   - Symptom: Webhook set up successfully but no notifications received
+   - Solution: Check firewall, ensure URL is publicly accessible
+
+5. **Sync Token Issues**:
+   - Symptom: Polling works but only fetches old events
+   - Solution: Click "Sync Now" to force comprehensive re-sync

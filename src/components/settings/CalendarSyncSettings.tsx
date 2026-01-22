@@ -232,6 +232,54 @@ export default function CalendarSyncSettings() {
     }
   }
 
+  async function handleDebugSync() {
+    try {
+      // First get diagnostic info
+      const infoResponse = await fetch('/api/google-calendar/debug-sync');
+      if (infoResponse.ok) {
+        const info = await infoResponse.json();
+        console.log('=== WEBHOOK DIAGNOSTIC INFO ===');
+        console.log('Calendar Settings:', info.calendarSettings);
+        console.log('Environment:', info.environment);
+        console.log('Webhook Status:', info.webhookStatus);
+        console.log('=============================');
+
+        // Show webhook status in toast
+        if (!info.webhookStatus.hasChannelId) {
+          toast.error('No webhook configured! Webhook may not have been set up.');
+        } else if (info.webhookStatus.isExpired) {
+          toast.error('Webhook has expired! Need to renew webhook.');
+        } else {
+          toast.info(`Webhook expires in ${info.webhookStatus.expiresIn}`);
+        }
+      }
+
+      // Then trigger manual sync
+      toast.loading('Running diagnostic sync...');
+      const syncResponse = await fetch('/api/google-calendar/debug-sync', {
+        method: 'POST',
+      });
+
+      if (syncResponse.ok) {
+        const data = await syncResponse.json();
+        console.log('=== DEBUG SYNC RESULT ===');
+        console.log(data);
+        console.log('========================');
+
+        toast.success(
+          `Sync complete! Created: ${data.totalCreated}, Updated: ${data.totalUpdated}, Deleted: ${data.totalDeleted}`
+        );
+        await loadSettings();
+      } else {
+        const error = await syncResponse.json();
+        toast.error(`Sync failed: ${error.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error in debug sync:', error);
+      toast.error('Failed to run diagnostic sync');
+    }
+  }
+
   if (isLoading) {
     return (
       <Card>
@@ -343,6 +391,14 @@ export default function CalendarSyncSettings() {
                   >
                     {isCleaningUp && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Remove Duplicates
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleDebugSync}
+                    disabled={isSyncing || isCleaningUp}
+                  >
+                    Debug Sync
                   </Button>
                 </div>
               </div>
