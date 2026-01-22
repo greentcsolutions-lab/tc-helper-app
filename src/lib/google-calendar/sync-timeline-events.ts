@@ -201,10 +201,13 @@ async function syncSingleTaskToCalendar(
     // This prevents duplicates when googleCalendarEventId is missing or stale
     try {
       // Search for events on this date
+      const endDateObj = new Date(eventDate);
+      endDateObj.setUTCDate(endDateObj.getUTCDate() + 1);
+
       const searchResponse = await calendar.events.list({
         calendarId,
         timeMin: eventDate.toISOString(),
-        timeMax: endDate.toISOString(),
+        timeMax: endDateObj.toISOString(),
         singleEvents: true,
         maxResults: 50,
       });

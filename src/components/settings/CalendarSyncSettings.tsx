@@ -72,6 +72,31 @@ export default function CalendarSyncSettings() {
     }
   }, [isBetaTester]);
 
+  // Polling mechanism: Sync every 5 minutes when connected and sync enabled
+  useEffect(() => {
+    if (!isConnected || !settings.syncEnabled) {
+      return;
+    }
+
+    const pollSync = async () => {
+      try {
+        await fetch('/api/google-calendar/poll-sync', {
+          method: 'POST',
+        });
+      } catch (error) {
+        console.error('Poll sync failed:', error);
+      }
+    };
+
+    // Poll immediately on mount
+    pollSync();
+
+    // Set up interval for polling every 5 minutes
+    const intervalId = setInterval(pollSync, 5 * 60 * 1000);
+
+    return () => clearInterval(intervalId);
+  }, [isConnected, settings.syncEnabled]);
+
   async function loadSettings() {
     try {
       const response = await fetch('/api/google-calendar/settings');

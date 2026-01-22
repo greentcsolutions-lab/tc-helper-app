@@ -30,13 +30,21 @@ export async function POST(request: NextRequest) {
     let appToCalendarResult = null;
     let calendarToAppResult = null;
 
+    // For manual sync, clear sync token to force comprehensive re-sync from Google
+    if (direction === 'calendar-to-app' || direction === 'both') {
+      await prisma.calendarSettings.update({
+        where: { userId: user.id },
+        data: { nextSyncToken: null }
+      });
+    }
+
     if (direction === 'app-to-calendar' || direction === 'both') {
       // Sync all tasks to calendar
       appToCalendarResult = await performInitialSync(user.id);
     }
 
     if (direction === 'calendar-to-app' || direction === 'both') {
-      // Sync calendar events to app
+      // Sync calendar events to app (will do full sync since we cleared token)
       calendarToAppResult = await syncCalendarToApp(user.id);
     }
 

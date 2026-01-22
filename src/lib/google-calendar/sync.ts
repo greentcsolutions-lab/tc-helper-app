@@ -176,15 +176,125 @@ export async function performInitialSync(
 
 
 /**
+ * Deletes a task's event from Google Calendar
+ */
+export async function deleteTaskFromCalendar(
+  userId: string,
+  taskId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const calendar = await getGoogleCalendarClient(userId);
+    if (!calendar) {
+      return { success: false, error: 'Calendar client not available' };
+    }
+
+    const settings = await prisma.calendarSettings.findUnique({
+      where: { userId },
+    });
+
+    if (!settings || !settings.primaryCalendarId) {
+      return { success: true }; // No calendar to delete from
+    }
+
+    const task = await prisma.task.findUnique({
+      where: { id: taskId },
+      select: { googleCalendarEventId: true },
+    });
+
+    if (!task?.googleCalendarEventId) {
+      return { success: true }; // No calendar event to delete
+    }
+
+    // Delete the event from Google Calendar
+    try {
+      await calendar.events.delete({
+        calendarId: settings.primaryCalendarId,
+        eventId: task.googleCalendarEventId,
+      });
+    } catch (err: any) {
+      // Ignore 404 errors (event already deleted)
+      if (err.code !== 404) {
+        throw err;
+      }
+    }
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('Delete from Calendar failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Archives a task's event in Google Calendar (moves to archived calendar or deletes)
+ */
+export async function archiveTaskInCalendar(
+  userId: string,
+  taskId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const calendar = await getGoogleCalendarClient(userId);
+    if (!calendar) {
+      return { success: false, error: 'Calendar client not available' };
+    }
+
+    const settings = await prisma.calendarSettings.findUnique({
+      where: { userId },
+    });
+
+    if (!settings || !settings.primaryCalendarId) {
+      return { success: true }; // No calendar configured
+    }
+
+    const task = await prisma.task.findUnique({
+      where: { id: taskId },
+      select: { googleCalendarEventId: true },
+    });
+
+    if (!task?.googleCalendarEventId) {
+      return { success: true }; // No calendar event to archive
+    }
+
+    // For now, just delete the event when archiving
+    // TODO: In future, could move to an "Archived" calendar
+    try {
+      await calendar.events.delete({
+        calendarId: settings.primaryCalendarId,
+        eventId: task.googleCalendarEventId,
+      });
+
+      // Clear the calendar event ID from task
+      await prisma.task.update({
+        where: { id: taskId },
+        data: {
+          googleCalendarEventId: null,
+          syncedToCalendar: false,
+        },
+      });
+    } catch (err: any) {
+      // Ignore 404 errors
+      if (err.code !== 404) {
+        throw err;
+      }
+    }
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('Archive in Calendar failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
  * Helper to transform a Task object into a Google Calendar Event
  */
 function buildEventFromTask(
-  task: any, 
-  includeDetails: boolean, 
+  task: any,
+  includeDetails: boolean,
   excludeFinancial: boolean
 ): calendar_v3.Schema$Event {
   const title = `[${task.parse?.propertyAddress || 'Task'}] ${task.title}`;
-  
+
   let description = '';
   if (includeDetails) {
     description += `${task.description || ''}\n\n`;
