@@ -22,7 +22,7 @@ interface CalendarSettings {
   includeFullDetails: boolean;
   syncNonAppEvents: boolean;
   excludeFinancialData: boolean;
-  lastSyncAt: string | null;
+  lastSyncedAt: string | null;
   lastSyncError: string | null;
   webhookExpiration: string | null;
 }
@@ -39,7 +39,7 @@ export default function CalendarSyncSettings() {
     includeFullDetails: true,
     syncNonAppEvents: true,
     excludeFinancialData: true,
-    lastSyncAt: null,
+    lastSyncedAt: null,
     lastSyncError: null,
     webhookExpiration: null,
   });
@@ -316,8 +316,8 @@ export default function CalendarSyncSettings() {
                 <div>
                   <Label className="text-base">Last Sync</Label>
                   <p className="text-sm text-muted-foreground">
-                    {settings.lastSyncAt
-                      ? new Date(settings.lastSyncAt).toLocaleString()
+                    {settings.lastSyncedAt
+                      ? new Date(settings.lastSyncedAt).toLocaleString()
                       : 'Never'}
                   </p>
                 </div>

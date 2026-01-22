@@ -30,7 +30,7 @@ export interface CalendarSettings {
   webhookExpiration: Date | null;
 
   // Sync Status
-  lastSyncAt: Date | null;
+  lastSyncedAt: Date | null;
   lastSyncError: string | null;
   initialSyncCompleted: boolean;
 

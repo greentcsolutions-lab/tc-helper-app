@@ -167,7 +167,7 @@ Acts as a fallback if webhooks fail or are delayed
 ### Initial Connection
 - [ ] Connect Google Calendar from Settings
 - [ ] Verify "Connect Google Calendar" button disappears
-- [ ] Verify initial sync completes (check lastSyncAt)
+- [ ] Verify initial sync completes (check lastSyncedAt)
 - [ ] Verify tasks appear in Google Calendar
 
 ### TC Helper → Google Calendar
@@ -186,7 +186,7 @@ Acts as a fallback if webhooks fail or are delayed
 ### Manual Sync
 - [ ] Click "Sync Now" → verify comprehensive re-sync happens
 - [ ] Verify sync clears token and re-fetches all events
-- [ ] Verify lastSyncAt updates
+- [ ] Verify lastSyncedAt updates
 
 ### Webhook Renewal
 - [ ] Verify webhook expiration is set (check database)
