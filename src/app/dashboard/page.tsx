@@ -65,10 +65,13 @@ export default async function Dashboard() {
     },
   });
 
-  // Fetch tasks for NextTaskCard
+  // Fetch tasks for NextTaskCard (exclude archived tasks)
   const tasks = await db.task.findMany({
     where: {
       userId: dbUser.id,
+      archived: {
+        not: true, // Exclude archived tasks
+      },
     },
     include: {
       parse: {

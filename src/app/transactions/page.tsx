@@ -92,12 +92,15 @@ export default async function TransactionsPage() {
     lowResZipUrl: parse.renderZipUrl ?? null,
   }));
 
-  // Fetch all timeline tasks for this user
+  // Fetch all timeline tasks for this user (exclude archived tasks)
   const tasks = await db.task.findMany({
     where: {
       userId: dbUser.id,
       taskTypes: {
         has: 'timeline',
+      },
+      archived: {
+        not: true, // Exclude archived tasks
       },
     },
     select: {

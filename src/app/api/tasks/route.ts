@@ -33,11 +33,19 @@ export async function GET(request: NextRequest) {
     const parseId = searchParams.get('parseId');
     const taskType = searchParams.get('taskType'); // Filter by tasks that contain this type
     const status = searchParams.get('status');
+    const includeArchived = searchParams.get('includeArchived') === 'true'; // Default: exclude archived
 
     // Build where clause
     const where: any = {
       userId: dbUser.id,
     };
+
+    // Exclude archived tasks by default (unless explicitly requested)
+    if (!includeArchived) {
+      where.archived = {
+        not: true,
+      };
+    }
 
     if (parseId) {
       where.parseId = parseId;

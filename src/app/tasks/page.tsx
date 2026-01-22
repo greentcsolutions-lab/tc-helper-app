@@ -23,10 +23,13 @@ export default async function TasksPage() {
   // Sync timeline tasks before fetching
   await syncAllTimelineTasks(dbUser.id);
 
-  // Fetch all tasks for the user
+  // Fetch all tasks for the user (exclude archived tasks)
   const tasks = await db.task.findMany({
     where: {
       userId: dbUser.id,
+      archived: {
+        not: true, // Exclude archived tasks
+      },
     },
     include: {
       parse: {

@@ -46,7 +46,6 @@
     "autoprefixer": "^10.4.23",
     "canvas-confetti": "^1.9.4",
     "class-variance-authority": "^0.7.1",
-    "claude": "^0.1.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "googleapis": "^170.0.0",

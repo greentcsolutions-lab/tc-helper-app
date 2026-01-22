@@ -225,9 +225,10 @@ export default function CategoryTimelineContingencies({
     };
 
     // Create onChange handler for waived checkbox
-    const handleWaivedChange = (waived: boolean) => {
+    const handleWaivedChange = async (waived: boolean) => {
       if (!onDataChange) return;
 
+      // Update local state immediately for optimistic UI
       const updatedTimeline = {
         ...timelineData,
         [eventKey]: {
@@ -235,10 +236,42 @@ export default function CategoryTimelineContingencies({
           waived,
         },
       };
-      onDataChange({
+      const updatedData = {
         ...data,
         timelineDataStructured: updatedTimeline as any,
-      });
+      };
+      onDataChange(updatedData);
+
+      // Persist to database immediately (don't wait for "Save" button)
+      try {
+        // Update Parse model (transaction timeline data)
+        const parseResponse = await fetch(`/api/transactions/update/${data.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updatedData),
+        });
+
+        if (!parseResponse.ok) {
+          console.error('Failed to update transaction:', await parseResponse.text());
+        }
+
+        // Also update the corresponding Task's archived status
+        const taskResponse = await fetch('/api/tasks/timeline-update', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            parseId: data.id,
+            timelineEventKey: eventKey,
+            archived: waived, // Archive the task when waived
+          }),
+        });
+
+        if (!taskResponse.ok) {
+          console.error('Failed to update task archived status:', await taskResponse.text());
+        }
+      } catch (error) {
+        console.error('Failed to save waived status:', error);
+      }
     };
 
     // Build field with inline waived checkbox if event is waivable
