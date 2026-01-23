@@ -123,6 +123,7 @@ export async function POST(request: NextRequest) {
       taskTypes, // Optional array of task types (empty array for user-created tasks)
       title,
       description,
+      propertyAddress, // Property address (optional, can be auto-populated from parse)
       dueDate,
       dueDateType,
       dueDateValue,
@@ -206,6 +207,7 @@ export async function POST(request: NextRequest) {
           taskTypes: normalizedTaskTypes, // Array of task types (empty array for user-created tasks)
           title,
           description: description || null,
+          propertyAddress: propertyAddress || null, // Save property address
           dueDate: new Date(dueDate),
           dueDateType: dueDateType || 'specific',
           dueDateValue: dueDateValue || null,

@@ -219,35 +219,55 @@ async function syncCalendarEventToTask(event: CalendarEvent, isDeletion: boolean
         parseId = parse?.id || null;
     }
 
-    // Use title directly (no prefix to strip)
-    const taskData = {
-        title: event.title,
-        description: event.description || '',
-        propertyAddress: event.matchedPropertyAddress || null, // Null for non-property events
-        parseId: parseId, // Null if no property match or archived transaction
-        dueDate: event.start,
-        taskTypes: event.inferredTaskTypes.length > 0 ? event.inferredTaskTypes : [], // Empty array if no match
-        status: TASK_STATUS.NOT_STARTED,
-        syncedToCalendar: true,
-        lastSyncedAt: new Date(),
-    };
-
     if (existingTask) {
-        // Update existing task
+        // SMART MERGE: Only update calendar-controlled fields, preserve user edits
+        // Calendar controls: title, dueDate, description
+        // User controls: status, taskTypes, propertyAddress, parseId
+        const smartUpdateData: any = {
+            title: event.title,
+            dueDate: event.start,
+            description: event.description || '',
+            syncedToCalendar: true,
+            lastSyncedAt: new Date(),
+        };
+
+        // Only update user-controlled fields if they're currently empty/null
+        // This prevents overwriting user edits with AI-inferred data
+        if (!existingTask.propertyAddress && event.matchedPropertyAddress) {
+            smartUpdateData.propertyAddress = event.matchedPropertyAddress;
+        }
+        if (!existingTask.parseId && parseId) {
+            smartUpdateData.parseId = parseId;
+        }
+        if (existingTask.taskTypes.length === 0 && event.inferredTaskTypes.length > 0) {
+            smartUpdateData.taskTypes = event.inferredTaskTypes;
+        }
+        // NEVER overwrite status - user controls this
+
         await prisma.task.update({
             where: { id: existingTask.id },
-            data: taskData
+            data: smartUpdateData
         });
-        console.log(`[Calendar→App] Updated task "${event.title}" (parseId: ${parseId || 'none'})`);
+        console.log(`[Calendar→App] Smart merged task "${event.title}" (preserved user edits)`);
         return { success: true, created: false };
     } else {
-        // Create new task - ALL events create tasks now
+        // Create new task - use full inferred data for new tasks
+        const newTaskData = {
+            userId: event.userId,
+            googleCalendarEventId: event.googleEventId,
+            title: event.title,
+            description: event.description || '',
+            propertyAddress: event.matchedPropertyAddress || null,
+            parseId: parseId,
+            dueDate: event.start,
+            taskTypes: event.inferredTaskTypes.length > 0 ? event.inferredTaskTypes : [],
+            status: TASK_STATUS.NOT_STARTED,
+            syncedToCalendar: true,
+            lastSyncedAt: new Date(),
+        };
+
         await prisma.task.create({
-            data: {
-                ...taskData,
-                userId: event.userId,
-                googleCalendarEventId: event.googleEventId,
-            }
+            data: newTaskData
         });
         console.log(`[Calendar→App] Created task "${event.title}" (parseId: ${parseId || 'none'})`);
         return { success: true, created: true };

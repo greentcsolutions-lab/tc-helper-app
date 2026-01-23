@@ -94,6 +94,14 @@ export async function PATCH(
       updateData.dueDateValue = body.dueDateValue;
     }
 
+    if (body.taskTypes !== undefined) {
+      updateData.taskTypes = body.taskTypes;
+    }
+
+    if (body.propertyAddress !== undefined) {
+      updateData.propertyAddress = body.propertyAddress;
+    }
+
     // Check if task is being archived
     const wasArchived = body.archived === true && task.status !== 'archived';
 

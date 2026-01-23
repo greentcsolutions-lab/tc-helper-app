@@ -103,6 +103,27 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
   const [taskDialogMode, setTaskDialogMode] = useState<'create' | 'edit' | 'view'>('create');
   const searchInputRef = useRef<HTMLInputElement>(null);
 
+  // Fetch fresh task data from API and update state
+  const fetchFreshTasks = useCallback(async () => {
+    try {
+      const response = await fetch('/api/tasks');
+      if (response.ok) {
+        const data = await response.json();
+        // Deserialize dates
+        const freshTasks = data.tasks.map((task: any) => ({
+          ...task,
+          dueDate: new Date(task.dueDate),
+          createdAt: new Date(task.createdAt),
+          updatedAt: new Date(task.updatedAt),
+          completedAt: task.completedAt ? new Date(task.completedAt) : null,
+        }));
+        setTasks(freshTasks);
+      }
+    } catch (error) {
+      console.error('Failed to fetch fresh tasks:', error);
+    }
+  }, []);
+
   const handleRefresh = () => {
     router.refresh();
   };
@@ -130,10 +151,10 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
     }
   }, []);
 
-  const handleTaskUpdated = useCallback(() => {
-    // Refresh the page to get updated data
-    router.refresh();
-  }, [router]);
+  const handleTaskUpdated = useCallback(async () => {
+    // Fetch fresh task data from API
+    await fetchFreshTasks();
+  }, [fetchFreshTasks]);
 
   // Detect screen size changes
   useEffect(() => {
@@ -304,12 +325,9 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
         return;
       }
 
-      // Success - UI already updated by dragOver, just log confirmation
-      const { task: updatedTask } = await response.json();
-      console.log('✅ Server confirmed task update. columnId:', updatedTask.columnId, 'status:', updatedTask.status);
-
-      // Don't update state here - dragOver already did it and we don't want to trigger re-render
-      // The task should stay in the position dragOver put it in
+      // Success - fetch fresh data to ensure consistency
+      console.log('✅ Server confirmed task update, fetching fresh data');
+      await fetchFreshTasks();
     } catch (error) {
       // Rollback on error
       console.error('Exception during persist, rolling back:', error);
@@ -320,7 +338,7 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
       );
       console.error('Failed to persist task column:', error);
     }
-  }, []);
+  }, [fetchFreshTasks]);
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
     const { active } = event;
@@ -462,31 +480,13 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
         throw new Error(error.error || 'Failed to update task');
       }
 
-      const { task: updatedTask } = await response.json();
-
-      // Convert date strings back to Date objects
-      if (updatedTask.dueDate) {
-        updatedTask.dueDate = new Date(updatedTask.dueDate);
-      }
-      if (updatedTask.createdAt) {
-        updatedTask.createdAt = new Date(updatedTask.createdAt);
-      }
-      if (updatedTask.updatedAt) {
-        updatedTask.updatedAt = new Date(updatedTask.updatedAt);
-      }
-      if (updatedTask.completedAt) {
-        updatedTask.completedAt = new Date(updatedTask.completedAt);
-      }
-
-      // Update with real data from server
-      setTasks((prev) =>
-        prev.map((t) => (t.id === taskId ? { ...t, ...updatedTask } : t))
-      );
+      // Fetch fresh data from server to ensure consistency
+      await fetchFreshTasks();
     } catch (error) {
       console.error('Failed to update task column:', error);
       // Rollback already happened above
     }
-  }, [tasks]);
+  }, [tasks, fetchFreshTasks]);
 
   const deleteTasks = useCallback(async (taskIds: string[]) => {
     // Optimistically remove from UI
@@ -519,14 +519,14 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
         }
       }
 
-      // Force refresh from server after successful deletion
-      router.refresh();
+      // Fetch fresh data from server after successful deletion
+      await fetchFreshTasks();
     } catch (error) {
       console.error('Failed to delete tasks:', error);
       // Rollback already happened above if needed
       throw error;
     }
-  }, [tasks, router]);
+  }, [tasks, fetchFreshTasks]);
 
   const toggleColumnVisibility = useCallback((columnId: string) => {
     setColumnVisibility((prev) => ({
@@ -557,7 +557,7 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
           <h1 className="text-2xl font-bold">Tasks</h1>
           <div className="flex gap-2">
             <AddFromTemplateDialog parses={parses} onTasksAdded={handleRefresh} />
-            <NewTaskDialog parses={parses} />
+            <NewTaskDialog parses={parses} onTaskUpdated={handleTaskUpdated} />
           </div>
         </div>
 
@@ -630,7 +630,7 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
           </div>
           <div className="flex gap-2">
             <AddFromTemplateDialog parses={parses} onTasksAdded={handleRefresh} />
-            <NewTaskDialog parses={parses} />
+            <NewTaskDialog parses={parses} onTaskUpdated={handleTaskUpdated} />
           </div>
         </div>
 
