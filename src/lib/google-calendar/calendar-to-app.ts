@@ -8,7 +8,6 @@ import { matchPropertyAddress } from './property-matcher';
 import { inferTaskTypes } from './ai-inference';
 import { TASK_STATUS } from '@/types/task';
 import { CalendarEvent } from '@prisma/client';
-import { stripPrefix } from './title-utils';
 
 /**
  * Syncs changes from Google Calendar to the app
@@ -220,10 +219,9 @@ async function syncCalendarEventToTask(event: CalendarEvent, isDeletion: boolean
         parseId = parse?.id || null;
     }
 
-    // Strip prefix from title to store clean user input in database
-    // Prefix is only for Google Calendar display purposes
+    // Use title directly (no prefix to strip)
     const taskData = {
-        title: stripPrefix(event.title),
+        title: event.title,
         description: event.description || '',
         propertyAddress: event.matchedPropertyAddress || null, // Null for non-property events
         parseId: parseId, // Null if no property match or archived transaction

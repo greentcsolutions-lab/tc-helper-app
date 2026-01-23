@@ -6,7 +6,6 @@ import { getGoogleCalendarClient } from './client';
 import { prisma } from '@/lib/prisma';
 import { EVENT_COLORS } from '@/types/calendar';
 import { Task } from '@prisma/client';
-import { addPrefix } from './title-utils';
 
 /**
  * Syncs a single task to Google Calendar (Create or Update)
@@ -324,25 +323,55 @@ export async function archiveTaskInCalendar(
 
 /**
  * Helper to transform a Task object into a Google Calendar Event
+ * Uses structured description format with metadata (no title prefix)
  */
 function buildEventFromTask(
   task: any,
   includeDetails: boolean,
   excludeFinancial: boolean
 ): calendar_v3.Schema$Event {
-  // Add prefix for Google Calendar display (only if title doesn't already have one)
-  // Task title in DB is stored without prefix (clean user input)
-  const prefix = task.parse?.propertyAddress || 'Task';
-  const title = addPrefix(task.title, prefix);
+  // Use clean title (no prefix)
+  const title = task.title;
 
+  // Build structured description with metadata
   let description = '';
+
+  // Always include structured metadata section
+  description += '━━━━━━━━━━━━━━━━━━━━━━━━━━━\n';
+  description += '📋 TC Helper Task Information\n';
+  description += '━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n';
+
+  // Category (from taskTypes array)
+  const categories = task.taskTypes && task.taskTypes.length > 0
+    ? task.taskTypes.join(', ')
+    : 'None';
+  description += `Category: ${categories}\n`;
+
+  // Property (from task.propertyAddress field)
+  const property = task.propertyAddress || 'Not specified';
+  description += `Property: ${property}\n`;
+
+  // Status
+  const statusDisplay = task.status ? task.status.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()) : 'Not Started';
+  description += `Status: ${statusDisplay}\n\n`;
+
+  // Read-only warning
+  description += '⚠️ This information is read-only and managed by TC Helper.\n';
+  description += 'Any edits to the above metadata will be overwritten on the next sync.\n\n';
+
+  description += '━━━━━━━━━━━━━━━━━━━━━━━━━━━\n';
+  description += 'User Notes:\n';
+  description += '(Add your notes here)\n';
+
+  // Optional: Add additional details if enabled
   if (includeDetails) {
-    description += `${task.description || ''}\n\n`;
-    description += `Status: ${task.status}\n`;
+    if (task.description) {
+      description += `\nTask Description: ${task.description}\n`;
+    }
     if (task.amount && !excludeFinancial) {
       description += `Amount: $${task.amount}\n`;
     }
-    description += `View in App: ${process.env.NEXT_PUBLIC_APP_URL}/tasks/${task.id}`;
+    description += `\nView in App: ${process.env.NEXT_PUBLIC_APP_URL}/tasks/${task.id}`;
   }
 
   // Choose Google Color based on status/type
