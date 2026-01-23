@@ -120,7 +120,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const {
       parseId,
-      taskTypes, // Now expects an array of task types
+      taskTypes, // Optional array of task types (empty array for user-created tasks)
       title,
       description,
       dueDate,
@@ -131,30 +131,35 @@ export async function POST(request: NextRequest) {
       isCustom,
     } = body;
 
-    // Validation
-    if (!title || !taskTypes || !Array.isArray(taskTypes) || taskTypes.length === 0 || !dueDate) {
+    // Validation - taskTypes is optional, defaults to empty array for user-created tasks
+    if (!title || !dueDate) {
       return NextResponse.json(
-        { error: 'Missing required fields. taskTypes must be a non-empty array.' },
+        { error: 'Missing required fields: title and dueDate are required.' },
         { status: 400 }
       );
     }
 
-    // Validate all taskTypes are valid
-    const validTaskTypes = Object.values(TASK_TYPES);
-    const invalidTypes = taskTypes.filter((type: string) => !validTaskTypes.includes(type));
-    if (invalidTypes.length > 0) {
-      return NextResponse.json(
-        { error: `Invalid task types: ${invalidTypes.join(', ')}` },
-        { status: 400 }
-      );
-    }
+    // Normalize taskTypes to empty array if not provided
+    const normalizedTaskTypes = taskTypes && Array.isArray(taskTypes) ? taskTypes : [];
 
-    // Don't allow creating timeline tasks via API (they're auto-synced) unless it's also another type
-    if (taskTypes.includes(TASK_TYPES.TIMELINE) && taskTypes.length === 1) {
-      return NextResponse.json(
-        { error: 'Cannot create timeline-only tasks manually' },
-        { status: 400 }
-      );
+    // Validate taskTypes if provided
+    if (normalizedTaskTypes.length > 0) {
+      const validTaskTypes = Object.values(TASK_TYPES);
+      const invalidTypes = normalizedTaskTypes.filter((type: string) => !validTaskTypes.includes(type));
+      if (invalidTypes.length > 0) {
+        return NextResponse.json(
+          { error: `Invalid task types: ${invalidTypes.join(', ')}` },
+          { status: 400 }
+        );
+      }
+
+      // Don't allow creating timeline-only tasks via API (they're auto-synced) unless it's also another type
+      if (normalizedTaskTypes.includes(TASK_TYPES.TIMELINE) && normalizedTaskTypes.length === 1) {
+        return NextResponse.json(
+          { error: 'Cannot create timeline-only tasks manually' },
+          { status: 400 }
+        );
+      }
     }
 
     // Check custom task limit based on plan type
@@ -198,7 +203,7 @@ export async function POST(request: NextRequest) {
         data: {
           userId: dbUser.id,
           parseId: parseId || null,
-          taskTypes, // Array of task types
+          taskTypes: normalizedTaskTypes, // Array of task types (empty array for user-created tasks)
           title,
           description: description || null,
           dueDate: new Date(dueDate),

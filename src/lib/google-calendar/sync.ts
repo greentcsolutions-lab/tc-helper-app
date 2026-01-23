@@ -6,6 +6,7 @@ import { getGoogleCalendarClient } from './client';
 import { prisma } from '@/lib/prisma';
 import { EVENT_COLORS } from '@/types/calendar';
 import { Task } from '@prisma/client';
+import { addPrefix } from './title-utils';
 
 /**
  * Syncs a single task to Google Calendar (Create or Update)
@@ -329,12 +330,10 @@ function buildEventFromTask(
   includeDetails: boolean,
   excludeFinancial: boolean
 ): calendar_v3.Schema$Event {
-  // Don't add prefix if title already has one (prevents [Task] [Task] duplicates)
-  // Prefix pattern: starts with [ and contains ]
-  const hasPrefix = /^\[.*?\]/.test(task.title);
-  const title = hasPrefix
-    ? task.title
-    : `[${task.parse?.propertyAddress || 'Task'}] ${task.title}`;
+  // Add prefix for Google Calendar display (only if title doesn't already have one)
+  // Task title in DB is stored without prefix (clean user input)
+  const prefix = task.parse?.propertyAddress || 'Task';
+  const title = addPrefix(task.title, prefix);
 
   let description = '';
   if (includeDetails) {
