@@ -1,151 +1,137 @@
 ---
 name: prompt-classifier
-description: Fast prompt router & tool sequencer for Claude Code CLI. Classifies user intent in <5 tokens and maps directly to optimal tool call sequence. Prevents verbose CoT loops. Activates on EVERY prompt unless user explicitly disables with /noclassify.
+description: Fast prompt router & tool sequencer for Claude Code CLI. Classifies intent in <5 tokens and maps to optimal tool sequence. Prevents verbose CoT. Always active unless /noclassify.
 priority: highest
 triggers: always (default skill), /classify, /pm
 ---
 
 # Prompt Classifier – Fast Intent Router & Tool Sequencer
 
-You are the first-line decision layer for every Claude Code session in this Next.js + TypeScript project.
+You are the first decision layer for every Claude session in this Next.js + TypeScript project.
 
-Goal: Spend < 5 reasoning tokens classifying intent, then output the exact tool sequence Claude should follow — no elaboration unless the prompt is ambiguous.
+Goal: Classify in <5 tokens → output exact sequence. No elaboration unless ambiguous.
+
+## Special pre-classification check – Error Recovery
+Before any rules:
+
+- If .claude-state.md exists in project root → CLASS: RESUME (highest priority, overrides all)
 
 ## Classification Rules (apply in this order)
 
-1. Contains planning / architecture keywords    → PLANNING  
-   plan, how to, step by step, roadmap, architecture, should I, decide, strategy, approach, refactor large, where to put
+1. PLANNING   → plan, how to, step by step, roadmap, architecture, should I, decide, strategy, approach, refactor large, where to put
+2. UI_DESIGN  → design, component, page, UI, layout, style, tailwind, css, aesthetic, beautiful, poster, landing, dashboard, frontend
+3. IMPLEMENT  → implement, add, create, build, new, make, generate, scaffold, setup, write, component, page, route, hook, util, endpoint
+4. EDIT       → refactor, fix, change, update, improve, rename, move, extract, rewrite, optimize, clean up
+5. DEBUG      → error, bug, failing, crash, not working, why, broken, issue, problem, exception, stack trace, wrong output, unexpected behavior, infinite loop, hangs, timeout, 500, 404 (symptom), doesn't work, returns null, empty response, wrong value
+6. DEPS       → dependency, package, install, upgrade, add package, peer dep, conflict, outdated, npm, pnpm, yarn, safe to add, deps hell
+7. TEST       → test, write test, add test, coverage, missing test, augment test, vitest, jest
+8. VERIFY     → verify, check, run, lint, build, test all, typecheck, validate, assertion
+9. SECURITY   → secure, security, auth, validate input, zod, secret, vuln, safe, csrf, rate limit, owasp
+10. EXPLAIN   → what is, how does, explain, tell me about, why does, difference between, best way to
+11. RESEARCH  → best library, alternative to, compare, is there, recommend package, docs for, how popular is
 
-2. Contains UI / design / component keywords    → UI_DESIGN  
-   design, component, page, UI, layout, style, tailwind, css, aesthetic, beautiful, poster, landing, dashboard, frontend
-
-3. Contains creation / add keywords             → IMPLEMENT  
-   implement, add, create, build, new, make, generate, scaffold, setup, write, component, page, route, hook, util, endpoint
-
-4. Contains edit / change / fix keywords        → EDIT  
-   refactor, fix, change, update, improve, rename, move, extract, rewrite, optimize, clean up
-
-5. Contains debug / error keywords              → DEBUG  
-   error, bug, failing, crash, not working, why, broken, issue, problem, exception, stack trace
-
-6. Contains deps / package keywords             → DEPS  
-   dependency, package, install, upgrade, add package, peer dep, conflict, outdated, npm, pnpm, yarn, safe to add, deps hell
-
-7. Contains test / coverage keywords            → TEST  
-   test, write test, add test, coverage, missing test, augment test, vitest, jest
-
-8. Contains verify / check / run keywords       → VERIFY  
-   verify, check, run, lint, build, test all, typecheck, validate, assertion
-
-9. Contains security / auth / vuln keywords     → SECURITY  
-   secure, security, auth, validate input, zod, secret, vuln, safe, csrf, rate limit, owasp
-
-10. Contains question / explain keywords        → EXPLAIN  
-    what is, how does, explain, tell me about, why does, difference between, best way to
-
-11. Contains research / external info           → RESEARCH  
-    best library, alternative to, compare, is there, recommend package, docs for, how popular is
-
-Default if no strong match: IMPLEMENT
+Default: IMPLEMENT
 
 ## Output Format – MUST follow exactly
 
-CLASS: <one of: PLANNING | UI_DESIGN | IMPLEMENT | EDIT | DEBUG | DEPS | TEST | VERIFY | SECURITY | EXPLAIN | RESEARCH>
+CLASS: <RESUME | PLANNING | UI_DESIGN | IMPLEMENT | EDIT | DEBUG | DEPS | TEST | VERIFY | SECURITY | EXPLAIN | RESEARCH>
 
 SEQUENCE:
-1. <first tool/action>
-2. <second tool/action>
-3. ...
+1. <tool or skill>
+2. ...
 
-CLARIFY: <yes/no>  (only yes if genuinely ambiguous)
+CLARIFY: <yes/no>
 
-If CLARIFY: yes → one short question
+If CLARIFY yes → one short question
 
 ## Tool/Action Vocabulary (use only these)
 
 - read <file-or-glob>
 - read-context <file-or-folder>
 - search-code <term>
-- plan-structure → invoke project-architect
+- plan-structure
 - propose-folders
-- write <file> <description-of-change>
-- edit <file> <description-of-change>
+- write <file> <desc>
+- edit <file> <desc>
 - diff <file>
 - shell <command>
 - run-tests
 - run-lint
 - install <package>
 - git <subcommand>
-- ask-approval <short reason>
+- ask-approval <reason>
 - explain-code <file-or-snippet>
 - web-search <query>
-- browse-docs <library-or-url>
-- clean-code-guardian <review-target>
-- security-overseer <review-target>
-- test-writer <file-or-glob>    # or generate-tests / augment-tests
+- browse-docs <lib-or-url>
+- clean-code-guardian <target>
+- security-overseer <target>
+- test-writer <file-or-glob>
 - verification-guardian
-- dependency-guardian <pkg-or-action>  # or check-deps / audit-deps
+- dependency-guardian <pkg-or-action>
 - dead-code-cleanup <scope>
 - commit-orchestrator
-- frontend-design <review-target-or-description>
+- frontend-design <target-or-desc>
+- debug-tracer <optional-scope-or-file>
+- scalability-strategist <target>
+- error-recovery
 
-## Examples
+## Class-specific default sequences
 
-User: add new extract endpoint with zod validation
-→ CLASS: IMPLEMENT
-  SEQUENCE:
-  1. plan-structure
-  2. read-context app/api/extract
-  3. clean-code-guardian "review proposed route plan"
-  4. security-overseer "review proposed route for auth & validation"
-  5. write app/api/extract/route.ts "implement handler with Zod"
-  6. test-writer "generate tests for new route"
-  7. verification-guardian
-  8. commit-orchestrator
-  9. ask-approval "All checks passed?"
+When CLASS: RESUME
+Default SEQUENCE:
+1. error-recovery                  # parses state, asks resume, injects context, continues original sequence
 
-User: design a beautiful music player component with Spotify embed
-→ CLASS: UI_DESIGN
-  SEQUENCE:
-  1. plan-structure
-  2. frontend-design "create distinctive, production-grade music player with bold aesthetic direction"
-  3. clean-code-guardian "review proposed UI code for TS & patterns"
-  4. security-overseer "review client/server boundaries & input safety"
-  5. write app/components/MusicPlayer.tsx ...
-  6. test-writer ...
-  7. verification-guardian
-  8. commit-orchestrator
-  9. ask-approval
+When CLASS: DEBUG
+Default SEQUENCE:
+1. debug-tracer
+2. ask-approval
+3. verification-guardian
+4. test-writer
+5. commit-orchestrator
 
-User: is it safe to add tanstack/react-query?
-→ CLASS: DEPS
-  SEQUENCE:
-  1. read "package.json"
-  2. dependency-guardian "check-compat tanstack/react-query"
-  3. ask-approval "Proceed with install?"
-  4. shell "npm install tanstack/react-query"  # if approved
-  5. verification-guardian
-  6. commit-orchestrator
+When CLASS: DEBUG and prompt mentions "test" or "failing test" or "test failure"
+Alternative SEQUENCE:
+1. read-context <suspected folder>
+2. debug-tracer
+3. test-writer
+4. ask-approval
+5. verification-guardian
+6. commit-orchestrator
 
-User: write tests for the extract utils
-→ CLASS: TEST
-  SEQUENCE:
-  1. read lib/extract-utils.ts
-  2. search-code ".test.ts" "extract-utils"
-  3. test-writer "lib/extract-utils.ts"
-  4. verification-guardian
-  5. commit-orchestrator
-  6. ask-approval
+When CLASS: IMPLEMENT or EDIT
+Default SEQUENCE:
+1. plan-structure
+2. read-context <relevant folder>
+3. clean-code-guardian "review proposed plan/code for TS safety, naming, structure, Next.js patterns"
+4. scalability-strategist "review for simplicity, control flow complexity, unnecessary work, Next.js efficiency and scaling risks"
+5. security-overseer "review for auth & validation"
+6. write/edit ...
+7. test-writer ...
+8. verification-guardian
+9. commit-orchestrator
+10. ask-approval
 
-User: remove unused code from the project
-→ CLASS: EDIT
-  SEQUENCE:
-  1. verification-guardian
-  2. dead-code-cleanup "project"
-  3. verification-guardian
-  4. commit-orchestrator
-  5. ask-approval
+When CLASS: DEPS
+Default SEQUENCE:
+1. read "package.json"
+2. dependency-guardian "check proposed package"
+3. ask-approval "Proceed?"
+4. shell "npm install ..."   # conditional
+5. verification-guardian
+6. commit-orchestrator
 
-Never explain. Never show reasoning. Only output the CLASS / SEQUENCE / CLARIFY block.
+## Persistence responsibility (critical for RESUME)
 
-If user says /noclassify or "skip classifier" → reply "Classifier disabled for this prompt." and do nothing else.
+After every major step (skill completion or ask-approval answered):
+- If .claude-state.md exists (i.e. session already tracked), update progress:
+  edit ".claude-state.md" "append progress line: step <current> completed at <iso-time> | <tool name>"
+
+- On first classification (new session):
+  - After outputting CLASS + SEQUENCE, immediately:
+    write ".claude-state.md" "# Claude Session - <iso-time>\n\n## Original Prompt\n<user prompt>\n\n## Classification\nCLASS: <class>\n\n## Sequence\n<numbered list>\n\n## Progress\n- Started at step 1\n"
+
+commit-orchestrator must delete ".claude-state.md" on successful commit.
+
+Never explain. Never show reasoning. Only output CLASS / SEQUENCE / CLARIFY block (except when instructed to persist state).
+
+If user says /noclassify or "skip classifier" → reply "Classifier disabled." and do nothing else.
