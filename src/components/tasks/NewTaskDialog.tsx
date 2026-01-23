@@ -161,6 +161,10 @@ export default function NewTaskDialog({
         dueDate.setDate(dueDate.getDate() + dueDateValue);
       }
 
+      // Extract propertyAddress from selected parse
+      const selectedParse = parseId ? parses.find(p => p.id === parseId) : null;
+      const propertyAddress = selectedParse?.propertyAddress || null;
+
       // Create or update the task
       const url = isEditMode ? `/api/tasks/${editTask.id}` : "/api/tasks";
       const method = isEditMode ? "PATCH" : "POST";
@@ -173,6 +177,7 @@ export default function NewTaskDialog({
         body: JSON.stringify({
           title: title.trim(),
           parseId: parseId || undefined,
+          propertyAddress, // Include property address from selected transaction
           taskTypes, // Now an array
           dueDate,
           dueDateType,
