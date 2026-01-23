@@ -22,7 +22,7 @@ interface CalendarSettings {
   includeFullDetails: boolean;
   syncNonAppEvents: boolean;
   excludeFinancialData: boolean;
-  lastSyncAt: string | null;
+  lastSyncedAt: string | null;
   lastSyncError: string | null;
   webhookExpiration: string | null;
 }
@@ -39,7 +39,7 @@ export default function CalendarSyncSettings() {
     includeFullDetails: true,
     syncNonAppEvents: true,
     excludeFinancialData: true,
-    lastSyncAt: null,
+    lastSyncedAt: null,
     lastSyncError: null,
     webhookExpiration: null,
   });
@@ -71,6 +71,31 @@ export default function CalendarSyncSettings() {
       window.history.replaceState({}, '', newUrl);
     }
   }, [isBetaTester]);
+
+  // Polling mechanism: Sync every 5 minutes when connected and sync enabled
+  useEffect(() => {
+    if (!isConnected || !settings.syncEnabled) {
+      return;
+    }
+
+    const pollSync = async () => {
+      try {
+        await fetch('/api/google-calendar/poll-sync', {
+          method: 'POST',
+        });
+      } catch (error) {
+        console.error('Poll sync failed:', error);
+      }
+    };
+
+    // Poll immediately on mount
+    pollSync();
+
+    // Set up interval for polling every 5 minutes
+    const intervalId = setInterval(pollSync, 5 * 60 * 1000);
+
+    return () => clearInterval(intervalId);
+  }, [isConnected, settings.syncEnabled]);
 
   async function loadSettings() {
     try {
@@ -207,6 +232,54 @@ export default function CalendarSyncSettings() {
     }
   }
 
+  async function handleDebugSync() {
+    try {
+      // First get diagnostic info
+      const infoResponse = await fetch('/api/google-calendar/debug-sync');
+      if (infoResponse.ok) {
+        const info = await infoResponse.json();
+        console.log('=== WEBHOOK DIAGNOSTIC INFO ===');
+        console.log('Calendar Settings:', info.calendarSettings);
+        console.log('Environment:', info.environment);
+        console.log('Webhook Status:', info.webhookStatus);
+        console.log('=============================');
+
+        // Show webhook status in toast
+        if (!info.webhookStatus.hasChannelId) {
+          toast.error('No webhook configured! Webhook may not have been set up.');
+        } else if (info.webhookStatus.isExpired) {
+          toast.error('Webhook has expired! Need to renew webhook.');
+        } else {
+          toast.info(`Webhook expires in ${info.webhookStatus.expiresIn}`);
+        }
+      }
+
+      // Then trigger manual sync
+      toast.loading('Running diagnostic sync...');
+      const syncResponse = await fetch('/api/google-calendar/debug-sync', {
+        method: 'POST',
+      });
+
+      if (syncResponse.ok) {
+        const data = await syncResponse.json();
+        console.log('=== DEBUG SYNC RESULT ===');
+        console.log(data);
+        console.log('========================');
+
+        toast.success(
+          `Sync complete! Created: ${data.totalCreated}, Updated: ${data.totalUpdated}, Deleted: ${data.totalDeleted}`
+        );
+        await loadSettings();
+      } else {
+        const error = await syncResponse.json();
+        toast.error(`Sync failed: ${error.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error in debug sync:', error);
+      toast.error('Failed to run diagnostic sync');
+    }
+  }
+
   if (isLoading) {
     return (
       <Card>
@@ -291,8 +364,8 @@ export default function CalendarSyncSettings() {
                 <div>
                   <Label className="text-base">Last Sync</Label>
                   <p className="text-sm text-muted-foreground">
-                    {settings.lastSyncAt
-                      ? new Date(settings.lastSyncAt).toLocaleString()
+                    {settings.lastSyncedAt
+                      ? new Date(settings.lastSyncedAt).toLocaleString()
                       : 'Never'}
                   </p>
                 </div>
@@ -318,6 +391,14 @@ export default function CalendarSyncSettings() {
                   >
                     {isCleaningUp && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Remove Duplicates
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleDebugSync}
+                    disabled={isSyncing || isCleaningUp}
+                  >
+                    Debug Sync
                   </Button>
                 </div>
               </div>

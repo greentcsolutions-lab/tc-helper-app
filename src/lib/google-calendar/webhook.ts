@@ -48,6 +48,15 @@ export async function setupWebhook(userId: string): Promise<{
     // Ensure this URL is publicly accessible
     const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/google-calendar/webhook`;
 
+    console.log(`[Webhook Setup] Creating watch channel for user ${userId}`);
+    console.log(`[Webhook Setup] Webhook URL: ${webhookUrl}`);
+    console.log(`[Webhook Setup] Channel ID: ${channelId}`);
+
+    if (!process.env.NEXT_PUBLIC_APP_URL) {
+      console.error('[Webhook Setup] NEXT_PUBLIC_APP_URL is not set!');
+      return { success: false, error: 'NEXT_PUBLIC_APP_URL environment variable is not set' };
+    }
+
     const response = await calendar.events.watch({
       calendarId: settings.primaryCalendarId,
       requestBody: {
@@ -56,6 +65,8 @@ export async function setupWebhook(userId: string): Promise<{
         address: webhookUrl,
       },
     });
+
+    console.log(`[Webhook Setup] Watch created successfully. Resource ID: ${response.data.resourceId}, Expiration: ${response.data.expiration}`);
 
     const expiration = response.data.expiration 
       ? new Date(parseInt(response.data.expiration)) 
@@ -83,6 +94,63 @@ export async function setupWebhook(userId: string): Promise<{
     };
   } catch (error: any) {
     console.error('Error setting up webhook:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Stops an existing webhook for a user
+ */
+export async function stopWebhook(userId: string): Promise<{
+  success: boolean;
+  error?: string;
+}> {
+  try {
+    const calendar = await getGoogleCalendarClient(userId);
+    if (!calendar) {
+      return { success: false, error: 'Calendar client not available' };
+    }
+
+    const settings = await prisma.calendarSettings.findUnique({
+      where: { userId },
+    });
+
+    if (!settings || !settings.webhookChannelId || !settings.webhookResourceId) {
+      // No webhook to stop
+      return { success: true };
+    }
+
+    try {
+      await calendar.channels.stop({
+        requestBody: {
+          id: settings.webhookChannelId,
+          resourceId: settings.webhookResourceId,
+        },
+      });
+
+      console.log(`[Webhook] Stopped webhook for user ${userId}`);
+    } catch (e: any) {
+      // If webhook already expired or doesn't exist, that's fine
+      if (e.code === 404 || e.code === 410) {
+        console.log(`[Webhook] Webhook already expired or doesn't exist for user ${userId}`);
+      } else {
+        throw e;
+      }
+    }
+
+    // Clear webhook data from database
+    await prisma.calendarSettings.update({
+      where: { userId },
+      data: {
+        webhookChannelId: null,
+        webhookResourceId: null,
+        webhookExpiration: null,
+      },
+    });
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('[Webhook] Error stopping webhook:', error);
     return { success: false, error: error.message };
   }
 }

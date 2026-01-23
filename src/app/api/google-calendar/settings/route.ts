@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
         excludeFinancialData: true,
         primaryCalendarId: true,
         archivedCalendarId: true,
-        lastSyncAt: true,
+        lastSyncedAt: true,
         lastSyncError: true,
         initialSyncCompleted: true,
         webhookExpiration: true,
@@ -41,6 +41,9 @@ export async function GET(request: NextRequest) {
     });
 
     // Return settings or defaults
+    // User is considered "connected" only if they have a calendar ID AND completed initial sync
+    const isConnected = !!(settings?.primaryCalendarId && settings?.initialSyncCompleted);
+
     return NextResponse.json({
       settings: settings || {
         syncEnabled: false,
@@ -49,12 +52,12 @@ export async function GET(request: NextRequest) {
         excludeFinancialData: true,
         primaryCalendarId: null,
         archivedCalendarId: null,
-        lastSyncAt: null,
+        lastSyncedAt: null,
         lastSyncError: null,
         initialSyncCompleted: false,
         webhookExpiration: null,
       },
-      isConnected: !!settings?.primaryCalendarId,
+      isConnected,
     });
   } catch (error) {
     console.error('Error getting calendar settings:', error);

@@ -4,6 +4,7 @@
 import { NextRequest } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
+import { archiveTaskInCalendar } from "@/lib/google-calendar/sync";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -34,6 +35,15 @@ export async function POST(request: NextRequest) {
     if (!user) {
       return new Response("User not found", { status: 404 });
     }
+
+    // Get all tasks that will be archived (need IDs before transaction)
+    const tasksToArchive = await db.task.findMany({
+      where: {
+        parseId: { in: ids },
+        userId: user.id,
+      },
+      select: { id: true },
+    });
 
     // Archive transactions and associated tasks
     await db.$transaction(async (tx) => {
@@ -98,6 +108,13 @@ export async function POST(request: NextRequest) {
           console.log(`[archive] Decremented user usage counter by ${countToDecrement} (from ${usage.parses} to ${Math.max(0, usage.parses - countToDecrement)})`);
         }
       }
+    });
+
+    // Remove archived tasks from Google Calendar (async, don't block response)
+    tasksToArchive.forEach((task) => {
+      archiveTaskInCalendar(user.id, task.id).catch((error) => {
+        console.error(`Failed to archive task ${task.id} in calendar:`, error);
+      });
     });
 
     console.log(`[archive] ✓ Archived ${ids.length} transaction(s)`);

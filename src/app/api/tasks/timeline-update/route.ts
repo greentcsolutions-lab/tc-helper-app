@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { currentUser } from '@clerk/nextjs/server';
 import { db } from '@/lib/prisma';
+import { syncTaskToCalendar, archiveTaskInCalendar } from '@/lib/google-calendar/sync';
 
 /**
  * PATCH /api/tasks/timeline-update
@@ -81,6 +82,19 @@ export async function PATCH(request: NextRequest) {
     });
 
     console.log(`[timeline-update] Successfully updated task ${task.id} for ${timelineEventKey}`);
+
+    // Sync changes to Google Calendar automatically
+    if (archived === true) {
+      // Archive task in calendar
+      archiveTaskInCalendar(dbUser.id, task.id).catch((error) => {
+        console.error('Failed to archive timeline task in calendar:', error);
+      });
+    } else {
+      // Sync updated task to calendar
+      syncTaskToCalendar(dbUser.id, task.id).catch((error) => {
+        console.error('Failed to sync timeline task to calendar:', error);
+      });
+    }
 
     // Derive timelineEventKey from timelineEventId for response
     const responseEventKey = updatedTask.timelineEventId

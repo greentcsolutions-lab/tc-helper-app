@@ -17,7 +17,7 @@ export async function inferTaskTypes(
   propertyAddress: string
 ): Promise<TaskTypeInferenceResult> {
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
 
     const prompt = `You are an AI assistant helping to categorize real estate transaction tasks.
 

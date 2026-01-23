@@ -57,25 +57,61 @@ export async function syncTaskToCalendar(
           requestBody: eventBody,
         });
         googleEventId = response.data.id || null;
+        console.log(`[App→Calendar] Updated event for task ${task.id}`);
       } catch (err: any) {
-        // If event was deleted in Google, create a new one instead
+        // If event was deleted in Google, search for it or create new
         if (err.code === 404) {
-          const response = await calendar.events.insert({
-            calendarId: settings.primaryCalendarId,
-            requestBody: eventBody,
-          });
-          googleEventId = response.data.id || null;
+          console.log(`[App→Calendar] Event ${googleEventId} not found, searching for existing...`);
+          googleEventId = null; // Clear it so we search below
         } else {
           throw err;
         }
       }
-    } else {
-      // CREATE new event
+    }
+
+    // If no googleEventId or event was deleted, search for existing event by taskId
+    if (!googleEventId) {
+      try {
+        const eventDate = new Date(task.dueDate);
+        const endDateObj = new Date(eventDate);
+        endDateObj.setUTCDate(endDateObj.getUTCDate() + 1);
+
+        const searchResponse = await calendar.events.list({
+          calendarId: settings.primaryCalendarId,
+          timeMin: eventDate.toISOString(),
+          timeMax: endDateObj.toISOString(),
+          singleEvents: true,
+          maxResults: 50,
+        });
+
+        const existingEvents = searchResponse.data.items || [];
+        const matchingEvent = existingEvents.find((event: any) => {
+          return event.extendedProperties?.private?.tcHelperTaskId === task.id;
+        });
+
+        if (matchingEvent?.id) {
+          // Found existing event - update it
+          const response = await calendar.events.update({
+            calendarId: settings.primaryCalendarId,
+            eventId: matchingEvent.id,
+            requestBody: eventBody,
+          });
+          googleEventId = response.data.id || null;
+          console.log(`[App→Calendar] Found and updated existing event for task ${task.id}`);
+        }
+      } catch (searchError) {
+        console.error('[App→Calendar] Error searching for existing event:', searchError);
+      }
+    }
+
+    // If still no event found, create new one
+    if (!googleEventId) {
       const response = await calendar.events.insert({
         calendarId: settings.primaryCalendarId,
         requestBody: eventBody,
       });
       googleEventId = response.data.id || null;
+      console.log(`[App→Calendar] Created new event for task ${task.id}`);
     }
 
     // 3. Save the Google Event ID back to our Task
@@ -176,23 +212,166 @@ export async function performInitialSync(
 
 
 /**
+ * Deletes a task's event from Google Calendar
+ */
+export async function deleteTaskFromCalendar(
+  userId: string,
+  taskId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const calendar = await getGoogleCalendarClient(userId);
+    if (!calendar) {
+      return { success: false, error: 'Calendar client not available' };
+    }
+
+    const settings = await prisma.calendarSettings.findUnique({
+      where: { userId },
+    });
+
+    if (!settings || !settings.primaryCalendarId) {
+      return { success: true }; // No calendar to delete from
+    }
+
+    const task = await prisma.task.findUnique({
+      where: { id: taskId },
+      select: { googleCalendarEventId: true },
+    });
+
+    if (!task?.googleCalendarEventId) {
+      return { success: true }; // No calendar event to delete
+    }
+
+    // Delete the event from Google Calendar
+    try {
+      await calendar.events.delete({
+        calendarId: settings.primaryCalendarId,
+        eventId: task.googleCalendarEventId,
+      });
+    } catch (err: any) {
+      // Ignore 404 errors (event already deleted)
+      if (err.code !== 404) {
+        throw err;
+      }
+    }
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('Delete from Calendar failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Archives a task's event in Google Calendar (moves to archived calendar or deletes)
+ */
+export async function archiveTaskInCalendar(
+  userId: string,
+  taskId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const calendar = await getGoogleCalendarClient(userId);
+    if (!calendar) {
+      return { success: false, error: 'Calendar client not available' };
+    }
+
+    const settings = await prisma.calendarSettings.findUnique({
+      where: { userId },
+    });
+
+    if (!settings || !settings.primaryCalendarId) {
+      return { success: true }; // No calendar configured
+    }
+
+    const task = await prisma.task.findUnique({
+      where: { id: taskId },
+      select: { googleCalendarEventId: true },
+    });
+
+    if (!task?.googleCalendarEventId) {
+      return { success: true }; // No calendar event to archive
+    }
+
+    // For now, just delete the event when archiving
+    // TODO: In future, could move to an "Archived" calendar
+    try {
+      await calendar.events.delete({
+        calendarId: settings.primaryCalendarId,
+        eventId: task.googleCalendarEventId,
+      });
+
+      // Clear the calendar event ID from task
+      await prisma.task.update({
+        where: { id: taskId },
+        data: {
+          googleCalendarEventId: null,
+          syncedToCalendar: false,
+        },
+      });
+    } catch (err: any) {
+      // Ignore 404 errors
+      if (err.code !== 404) {
+        throw err;
+      }
+    }
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('Archive in Calendar failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
  * Helper to transform a Task object into a Google Calendar Event
+ * Uses structured description format with metadata (no title prefix)
  */
 function buildEventFromTask(
-  task: any, 
-  includeDetails: boolean, 
+  task: any,
+  includeDetails: boolean,
   excludeFinancial: boolean
 ): calendar_v3.Schema$Event {
-  const title = `[${task.parse?.propertyAddress || 'Task'}] ${task.title}`;
-  
+  // Use clean title (no prefix)
+  const title = task.title;
+
+  // Build structured description with metadata
   let description = '';
+
+  // Always include structured metadata section
+  description += '━━━━━━━━━━━━━━━━━━━━━━━━━━━\n';
+  description += '📋 TC Helper Task Information\n';
+  description += '━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n';
+
+  // Category (from taskTypes array)
+  const categories = task.taskTypes && task.taskTypes.length > 0
+    ? task.taskTypes.join(', ')
+    : 'None';
+  description += `Category: ${categories}\n`;
+
+  // Property (from task.propertyAddress field)
+  const property = task.propertyAddress || 'Not specified';
+  description += `Property: ${property}\n`;
+
+  // Status
+  const statusDisplay = task.status ? task.status.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()) : 'Not Started';
+  description += `Status: ${statusDisplay}\n\n`;
+
+  // Read-only warning
+  description += '⚠️ This information is read-only and managed by TC Helper.\n';
+  description += 'Any edits to the above metadata will be overwritten on the next sync.\n\n';
+
+  description += '━━━━━━━━━━━━━━━━━━━━━━━━━━━\n';
+  description += 'User Notes:\n';
+  description += '(Add your notes here)\n';
+
+  // Optional: Add additional details if enabled
   if (includeDetails) {
-    description += `${task.description || ''}\n\n`;
-    description += `Status: ${task.status}\n`;
+    if (task.description) {
+      description += `\nTask Description: ${task.description}\n`;
+    }
     if (task.amount && !excludeFinancial) {
       description += `Amount: $${task.amount}\n`;
     }
-    description += `View in App: ${process.env.NEXT_PUBLIC_APP_URL}/tasks/${task.id}`;
+    description += `\nView in App: ${process.env.NEXT_PUBLIC_APP_URL}/tasks/${task.id}`;
   }
 
   // Choose Google Color based on status/type
@@ -215,7 +394,7 @@ function buildEventFromTask(
     end: { date: dateStr },
     extendedProperties: {
       private: {
-        appTaskId: task.id,
+        tcHelperTaskId: task.id, // Use consistent naming with sync-timeline-events
         parseId: task.parseId || '',
       }
     }
