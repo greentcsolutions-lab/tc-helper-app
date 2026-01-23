@@ -135,7 +135,10 @@ export default function NewTaskDialog({
         if (!specificDate) {
           throw new Error("Please specify a due date");
         }
-        dueDate = new Date(specificDate);
+        // Create date at midnight in user's local timezone (not UTC)
+        // This prevents the date from shifting to the previous day
+        const [year, month, day] = specificDate.split('-').map(Number);
+        dueDate = new Date(year, month - 1, day); // month is 0-indexed
       } else {
         if (!relativeDays || parseInt(relativeDays) < 0) {
           throw new Error("Please specify the number of days");

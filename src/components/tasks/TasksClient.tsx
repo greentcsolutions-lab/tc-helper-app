@@ -557,7 +557,7 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
           <h1 className="text-2xl font-bold">Tasks</h1>
           <div className="flex gap-2">
             <AddFromTemplateDialog parses={parses} onTasksAdded={handleRefresh} />
-            <NewTaskDialog parses={parses} />
+            <NewTaskDialog parses={parses} onTaskUpdated={handleTaskUpdated} />
           </div>
         </div>
 
@@ -630,7 +630,7 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
           </div>
           <div className="flex gap-2">
             <AddFromTemplateDialog parses={parses} onTasksAdded={handleRefresh} />
-            <NewTaskDialog parses={parses} />
+            <NewTaskDialog parses={parses} onTaskUpdated={handleTaskUpdated} />
           </div>
         </div>
 
