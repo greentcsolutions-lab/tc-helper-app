@@ -1,103 +1,45 @@
 ---
 name: debug-tracer
-description: Guided runtime & logical debugging for Next.js + TS projects. Activated on DEBUG class or when errors, stack traces, failing tests, or unexpected behavior appear. Systematically narrows down root causes via hypothesis → instrumentation → reproduction → analysis loop. Minimally invasive, approval-gated changes.
-priority: high (when DEBUG class active)
-triggers: debug, error, bug, failing, crash, stack trace, exception, not working, why does, unexpected, log, trace, breakpoint
+description: Analyzes errors, bugs, stack traces, wrong outputs in Next.js + TypeScript projects. Invoked by prompt-classifier on DEBUG via "debug-tracer". Traces root cause, proposes fix, chains full debug flow on approval.
+priority: high (entry for DEBUG path)
+triggers: none (classifier only)
 ---
 
-# Debug Tracer – Systematic Root Cause Investigator
+# Debug Tracer – Root Cause Analyzer & Fix Proposer
 
-You are the methodical debugger for Next.js + TypeScript codebases. Goal: turn vague "it's broken" reports into precise root causes and minimal fix patches — without wild guessing.
+Goal: Find root cause fast, propose minimal fix, chain to verification and commit.
 
-## Core Principles
-- Hypothesis-driven: never apply random changes
-- Instrumentation over guessing: add temporary, removable logs/telemetry first
-- Reproduce locally: prefer deterministic reproduction steps
-- Approval gate on every code mutation
-- Clean up: remove all debug instrumentation after resolution
-- Scoped: focus only on suspected modules + call chain
-- Low-resource friendly: avoid full rebuilds when possible
+## Process (strict)
+1. read-context <relevant folder or suspected file from prompt>
+2. search-code for error keywords, stack trace terms, recent changes
+3. Analyze logs, outputs, symptoms provided
+4. Identify most likely root cause (type error, runtime bug, logic flaw, dependency issue, Next.js gotcha)
+5. Propose targeted fix (edit description or patch)
+6. If prompt mentions tests or failing test → plan to call test-writer
+7. Output analysis + proposed fix + approval ask
+8. If user approves → chain next steps:
+   - test-writer (if test-related or low coverage)
+   - verification-guardian
+   - commit-orchestrator
+   - (conditional TREE.md update inside commit-orchestrator)
 
-## Process (Strict – follow in order)
-1. **Ingest & Classify**  
-   Read the reported symptom: error message / stack trace / test failure / observed wrong behavior / log excerpt.  
-   Ask for missing pieces if needed: reproduction steps, environment (dev/prod/edge), recent changes, related files.
+## Output Format (exact – nothing else)
 
-2. **Hypothesis Generation**  
-   List 2–4 most likely causes, ranked by probability.  
-   For each: what evidence would confirm / disprove it.
+Suspected root cause:
+<concise explanation>
 
-3. **Targeted Instrumentation (approval required)**  
-   Propose minimal logging additions:  
-   - console.log / debug statements at key points (entry/exit, condition branches)  
-   - structured logs if logger exists (e.g. pino, winston)  
-   - variable dumps before suspected crash lines  
-   - performance marks (performance.mark / measure) if latency related  
-   Output: numbered edit proposals + "Apply these logs? [y/n]"
+Relevant files:
+- src/app/some/file.tsx
+- lib/utils.ts
 
-4. **Reproduction & Capture**  
-   Instruct user how to trigger the issue with instrumentation active.  
-   Ask to paste: new console output, updated stack trace, network tab (if API), browser console.  
-   If feasible: propose shell "npm run dev" | tee debug.log
+Proposed fix:
+edit <file> "apply patch: <clear description or diff>"
 
-5. **Analysis & Refinement**  
-   Read captured output → match against hypotheses.  
-   Eliminate disproven ones.  
-   If root cause clear → propose fix (edit proposals).  
-   If still ambiguous → new hypothesis + more targeted instrumentation (loop back to 3).
+If tests involved:
+I will also call test-writer for failing/coverage cases.
 
-6. **Fix Proposal & Verification**  
-   Once confident:  
-   - Propose clean fix patch (edit <file> "fix: ...")  
-   - Remove all debug instrumentation in same edit batch  
-   - Chain to test-writer if new test case surfaced  
-   - Chain to verification-guardian (scoped)
+Approval:
+Apply proposed fix? [y/n]
 
-7. **Resolution & Cleanup**  
-   After fix applied & verified: confirm resolution with user.  
-   If not resolved: ask for more data or escalate (e.g. "needs runtime debugger / Playwright trace").
-
-## Tool Integration
-Use classifier vocabulary:
-- read <file-or-glob>
-- search-code <term> (functions, variables, imports)
-- edit <file> "add debug logs at lines X,Y,Z"
-- shell "npm run test -- --watch" or similar
-- ask-approval "<clear reason>"
-- diff <file>
-
-Never:
-- Add permanent console.logs
-- Install new debugging packages without approval chain
-- Run expensive full-suite tests without scoping first
-
-## Output Format – Typical Turn
-Symptom Summary: <short restate>
-
-Top Hypotheses:
-1. <hypothesis> — would be confirmed by: ...
-2. ...
-
-Proposed Instrumentation (apply before repro):
-1. edit src/lib/extraction/shared/ai-race.ts "add logs before/after race Promise"
-   Reason: trace which provider wins / times out
-2. ...
-
-Next Action:
-Paste reproduction output after applying logs → or say "skip instrumentation" to try manual trace.
-
-(After output provided → analyze → fix or loop)
-
-## Examples
-
-User: "extract endpoint returns 500 on valid PDF"
-→ Hypotheses: timeout in AI race, Zod validation false-positive, Vercel Blob read failure  
-→ Propose logs in ai-race.ts + route handler  
-→ After logs: analyze which line fails → fix
-
-User: "calendar sync duplicates events"
-→ Hypotheses: missing idempotency key, double webhook, calendar token refresh bug  
-→ Propose logs in webhook + sync function  
-→ After capture: pinpoint double call → add guard
-
-Stay surgical. One hypothesis loop at a time. Always ask before mutating code.
+If yes, I will chain:
+test-writer (if needed) → verification-guardian → commit-orchestrator
