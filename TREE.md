@@ -1,6 +1,4 @@
-# Project Structure
-
-Last updated: 2026-01-23
+# Project Structure (last updated: 2026-01-24 08:58)
 
 ```
 .
@@ -109,6 +107,8 @@ Last updated: 2026-01-23
 │   │   │   ├── credits
 │   │   │   │   └── route.ts
 │   │   │   ├── cron
+│   │   │   │   ├── cleanup-disconnected-calendars
+│   │   │   │   │   └── route.ts
 │   │   │   │   ├── cleanup-stale-temp-data
 │   │   │   │   │   └── route.ts
 │   │   │   │   ├── renew-calendar-webhooks
@@ -300,6 +300,7 @@ Last updated: 2026-01-23
 │   │   │   │   ├── processing-view.tsx
 │   │   │   │   ├── results-view.tsx
 │   │   │   │   ├── types.ts
+│   │   │   │   ├── upload-layout.tsx
 │   │   │   │   └── upload-zone.tsx
 │   │   │   ├── alert.tsx
 │   │   │   ├── badge.tsx
@@ -353,6 +354,7 @@ Last updated: 2026-01-23
 │   │   └── classifier.schema.json
 │   ├── hooks
 │   │   ├── useCleanupEffects.ts
+│   │   ├── useExtractionStream.ts
 │   │   ├── useFileUpload.ts
 │   │   └── useParseOrchestrator.ts
 │   ├── lib
@@ -374,8 +376,8 @@ Last updated: 2026-01-23
 │   │   │   │   └── extractPdf.ts
 │   │   │   ├── extract
 │   │   │   │   └── universal
-│   │   │   │   │       └── helpers
-│   │   │   │   │           └── date-utils.ts
+│   │   │   │       └── helpers
+│   │   │   │           └── date-utils.ts
 │   │   │   ├── gemini
 │   │   │   │   └── extractPdf.ts
 │   │   │   ├── grok
@@ -428,6 +430,7 @@ Last updated: 2026-01-23
 ├── ChangeLog.md
 ├── .claude-branch
 ├── CLAUDE.md
+├── .claude-state.md
 ├── components.json
 ├── .env
 ├── .env.example
@@ -451,5 +454,5 @@ Last updated: 2026-01-23
 ├── WEBHOOK_FIX_REQUIRED.md
 └── WHOP_INTEGRATION_SETUP.md
 
-167 directories, 280 files
+168 directories, 284 files
 ```

@@ -1,64 +1,97 @@
 // src/components/ui/upload/processing-view.tsx
-// Version: 1.0.0 - 2025-12-30
-// Displays processing state with progress messages and jokes
+// Version: 3.0.0 - 2026-01-24
+// Displays real-time extraction progress with SSE stream + flavor text
 
 "use client";
 
-import { Loader2 } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
-import { ParseState } from "@/hooks/useParseOrchestrator";
+import { useState, useEffect } from "react";
+import { ExtractionProgress } from "@/hooks/useExtractionStream";
 
 type ProcessingViewProps = {
-  state: ParseState;
-  currentJoke: string;
+  progress: ExtractionProgress;
 };
 
-export function ProcessingView({ state, currentJoke }: ProcessingViewProps) {
-  const getMessage = (): string => {
-    if (state.message) {
-      return state.message;
+const FLAVOR_TEXT_BY_PHASE: Record<string, string[]> = {
+  loading: [
+    "Got your document",
+    "Checking the file...",
+    "Almost ready...",
+  ],
+  extract: [
+    "Reading through your contract",
+    "PDFs can be tricky, hang tight...",
+    "Scanning all those pages...",
+    "The AI is working its magic...",
+    "Teaching the AI to read realtor handwriting...",
+    "Parsing through the legal jargon...",
+  ],
+  processing: [
+    "Organizing the details",
+    "Cleaning up the data...",
+    "Double-checking everything...",
+  ],
+  saving: [
+    "Saving your information",
+    "Writing to the database...",
+    "Finishing up...",
+  ],
+};
+
+export function ProcessingView({ progress }: ProcessingViewProps) {
+  const [displayMessage, setDisplayMessage] = useState(progress.message);
+  const [flavorIndex, setFlavorIndex] = useState(0);
+  const [lastPhase, setLastPhase] = useState(progress.phase);
+
+  // Reset flavor index when phase changes
+  useEffect(() => {
+    if (progress.phase !== lastPhase) {
+      setFlavorIndex(0);
+      setLastPhase(progress.phase);
     }
-    return currentJoke;
-  };
+  }, [progress.phase, lastPhase]);
 
-  const getProgressDetails = (): string => {
-    const parts: string[] = [];
-
-    if (state.pageCount) {
-      parts.push(`${state.pageCount} pages`);
+  // Update display message from SSE or use current message
+  useEffect(() => {
+    if (progress.message) {
+      setDisplayMessage(progress.message);
     }
+  }, [progress.message]);
 
-    if (state.criticalPageCount) {
-      parts.push(`${state.criticalPageCount} critical`);
-    }
+  // Rotate flavor text every 5 seconds if on same phase
+  useEffect(() => {
+    const flavorTexts = FLAVOR_TEXT_BY_PHASE[progress.phase] || [];
+    if (flavorTexts.length <= 1) return;
 
-    if (state.phase === 'extract') {
-      parts.push('extracting data');
-    }
+    const timer = setInterval(() => {
+      setFlavorIndex((prev) => {
+        const next = (prev + 1) % flavorTexts.length;
+        setDisplayMessage(flavorTexts[next]);
+        return next;
+      });
+    }, 5000);
 
-    if (state.phase === 'cleanup') {
-      parts.push('cleaning up');
-    }
-
-    return parts.length > 0 ? `(${parts.join(', ')})` : '';
-  };
+    return () => clearInterval(timer);
+  }, [progress.phase]);
 
   return (
-    <Card className="border-2">
-      <CardContent className="p-12 text-center space-y-4">
-        <Loader2 className="h-12 w-12 mx-auto animate-spin text-primary" />
-        <div>
-          <p className="text-lg font-medium">{getMessage()}</p>
-          <p className="text-sm text-muted-foreground mt-1">
-            {getProgressDetails()}
-          </p>
-          {state.detectedForms && state.detectedForms.length > 0 && (
-            <p className="text-xs text-muted-foreground mt-2">
-              Detected: {state.detectedForms.join(", ")}
-            </p>
-          )}
+    <div className="fixed inset-0 flex items-start justify-center pt-[25vh]">
+      <div className="text-center space-y-6 max-w-md mx-auto px-4">
+        {/* Spinner */}
+        <div className="relative w-16 h-16 mx-auto">
+          <div className="absolute inset-0 rounded-full border-4 border-blue-200/30" />
+          <div className="absolute inset-0 rounded-full border-4 border-t-blue-600 border-r-blue-600 border-b-transparent border-l-transparent animate-spin" />
         </div>
-      </CardContent>
-    </Card>
+
+        {/* Message */}
+        <div className="space-y-2">
+          <p className="text-2xl md:text-3xl font-semibold text-gray-900 dark:text-gray-100 animate-fade-in">
+            {displayMessage}
+          </p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 capitalize">
+            {progress.phase === "complete" ? "Done" : progress.phase}
+          </p>
+        </div>
+      </div>
+    </div>
   );
 }
