@@ -189,43 +189,31 @@ Example: "Buyer has 5 days to review after seller delivers disclosures" means an
 - Be state-agnostic: Extract ALL timeline events regardless of state
 - Better to extract MORE timeline events than miss some
 
-**Processing Approach:**
-Before providing your final JSON output, use the scratchpad to:
-1. Identify all relevant sections (original contract, counters, addenda)
-2. Extract values from each section
-3. Apply override logic to determine final values
-4. Identify ALL timeline events and their calculation structure
-5. Verify all required schema fields are populated
+**Response Format:**
 
-**IMPORTANT - Your response must contain exactly TWO parts:**
+Your response should contain two parts:
 
-1. First, your working/reasoning in <scratchpad> tags:
-<scratchpad>
-Use this space to:
-- Note which pages contain which information (be concise)
-- Track which fields are mentioned in counters/addenda vs original contract
-- Identify timeline events and how each date is calculated
-- Note any events that depend on other timeline events
-- Reason through any ambiguities or conflicts
-- Map extracted information to schema fields
-Keep this section brief and focused - a few bullet points per topic is sufficient.
-</scratchpad>
+1. **Working/Reasoning** (optional but recommended):
+   - Briefly note which pages contain which information
+   - Track which fields are mentioned in counters/addenda vs original contract
+   - Identify timeline events and how each date is calculated
+   - Note any events that depend on other timeline events
+   - Reason through any ambiguities or conflicts
+   - Map extracted information to schema fields
+   - Keep this section concise (a few bullet points per topic is sufficient)
 
-2. Then, immediately after the scratchpad, provide your final output as valid JSON inside <json> tags:
-<json>
-{
-  "extracted": { ... },
-  "confidence": { ... },
-  "handwriting_detected": ...
-}
-</json>
+2. **Final JSON Output** (required):
+   Provide the complete extraction result as valid JSON matching the schema above.
 
-Requirements for the JSON output:
-- Must be valid, parseable JSON
-- Must match the exact structure of the provided schema
-- Must include all required fields from the schema
-- Use null for any fields that cannot be found in the document
-- Extract ALL timeline events with their calculation structure (no date calculations!)
+   You may format the JSON output using any of these methods:
+   - XML-style tags: <json>{ ... }</json>
+   - Markdown code block: ```json\n{ ... }\n```
+   - Plain JSON object starting with {
 
-Do not include ANY text outside of the <scratchpad> and <json> tags.`;
+   The JSON must:
+   - Be valid, parseable JSON
+   - Match the exact structure of the provided schema
+   - Include all required fields from the schema
+   - Use null for any fields that cannot be found in the document
+   - Extract ALL timeline events with their calculation structure (no date calculations!)`;
 }

@@ -131,7 +131,7 @@ export async function extractWithClaude(
               },
               {
                 type: 'text',
-                text: 'Extract structured data from this PDF according to the schema and rules. Use scratchpad for reasoning, then output ONLY the JSON inside <json> tags with no additional text.',
+                text: 'Extract structured data from this PDF according to the schema and rules provided in the system prompt.',
               },
             ],
           },
