@@ -460,10 +460,10 @@ export default function Home() {
               features={["1 AI parse lifetime", "1 concurrent transaction", "10 custom tasks"]}
               buttonText="Start Free"
             />
-            <PricingCard 
-              title="Basic" price="$20" 
-              description="or $200/year (save $40)" 
-              features={["5 AI parses per month", "5 concurrent transactions", "100 custom tasks", "Priority support"]}
+            <PricingCard
+              title="Basic" price="$20"
+              description="or $200/year (save $40)"
+              features={["5 AI parses per month", "20 concurrent transactions", "100 custom tasks", "Priority support"]}
               buttonText="Get Started"
               highlighted={true}
             />
