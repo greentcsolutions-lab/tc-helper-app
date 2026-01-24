@@ -114,7 +114,7 @@ export async function extractWithClaude(
       },
       body: JSON.stringify({
         model: modelName,
-        max_tokens: 4096,
+        max_tokens: 8192, // Increased from 4096 to allow for longer reasoning + JSON output
         temperature: 0.1,
         system: STATIC_SYSTEM_BLOCKS,
         messages: [
@@ -148,8 +148,14 @@ export async function extractWithClaude(
     const durationMs = Date.now() - startTime;
     console.log(`[claude-extract] Response received after ${durationMs}ms`);
 
-    // Log cache usage
+    // Log cache usage and stop reason
     console.log('[claude-extract] Usage stats:', JSON.stringify(result.usage, null, 2));
+    console.log(`[claude-extract] Stop reason: ${result.stop_reason}`);
+
+    // Check if response was cut off before JSON output
+    if (result.stop_reason === 'max_tokens') {
+      console.warn('[claude-extract] ⚠️ Response hit max_tokens limit - may be incomplete!');
+    }
 
     const text = result.content[0].text;
     console.log(`[claude-extract] Received response (${text.length} chars)`);

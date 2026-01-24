@@ -197,22 +197,35 @@ Before providing your final JSON output, use the scratchpad to:
 4. Identify ALL timeline events and their calculation structure
 5. Verify all required schema fields are populated
 
+**IMPORTANT - Your response must contain exactly TWO parts:**
+
+1. First, your working/reasoning in <scratchpad> tags:
 <scratchpad>
 Use this space to:
-- Note which pages contain which information
+- Note which pages contain which information (be concise)
 - Track which fields are mentioned in counters/addenda vs original contract
 - Identify timeline events and how each date is calculated
 - Note any events that depend on other timeline events
 - Reason through any ambiguities or conflicts
 - Map extracted information to schema fields
+Keep this section brief and focused - a few bullet points per topic is sufficient.
 </scratchpad>
 
-Now provide your final output as valid JSON matching the schema. Your output must:
-- Be valid, parseable JSON
-- Match the exact structure of the provided schema
-- Include all fields from the schema
+2. Then, immediately after the scratchpad, provide your final output as valid JSON inside <json> tags:
+<json>
+{
+  "extracted": { ... },
+  "confidence": { ... },
+  "handwriting_detected": ...
+}
+</json>
+
+Requirements for the JSON output:
+- Must be valid, parseable JSON
+- Must match the exact structure of the provided schema
+- Must include all required fields from the schema
 - Use null for any fields that cannot be found in the document
 - Extract ALL timeline events with their calculation structure (no date calculations!)
 
-Your final response should contain ONLY the JSON output inside <json> tags, with no additional commentary or explanation outside those tags.`;
+Do not include ANY text outside of the <scratchpad> and <json> tags.`;
 }
