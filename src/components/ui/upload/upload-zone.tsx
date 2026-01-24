@@ -63,19 +63,22 @@ export default function UploadZone() {
   }, [error, resetUpload, setIsProcessing, setIsComplete]);
 
   const onFileSelect = async (file: File) => {
-    setView("uploading");
+    // Immediately trigger animations and switch to processing view
+    console.log("[upload-zone] File dropped, starting animations");
+    setView("processing");
+    setIsProcessing(true); // Trigger sidebar slide-out immediately
 
+    // Upload happens in background
     const newParseId = await handleFile(file);
     if (!newParseId) {
       setView("idle");
+      setIsProcessing(false);
+      setIsComplete(false);
       return;
     }
 
-    console.log("[upload-zone] Upload complete, starting SSE stream:", newParseId);
-
-    // Switch to processing view - this will trigger the SSE stream via useExtractionStream
-    setView("processing");
-    setIsProcessing(true); // Trigger sidebar slide-out
+    console.log("[upload-zone] Upload complete, SSE stream will start:", newParseId);
+    // SSE stream will start automatically via useExtractionStream when parseId is set and view is "processing"
   };
 
   const loadExtractionResults = async (parseId: string) => {

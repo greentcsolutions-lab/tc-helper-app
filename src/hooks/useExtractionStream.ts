@@ -18,7 +18,7 @@ export type ExtractionProgress = {
 export function useExtractionStream(parseId: string | null, enabled: boolean) {
   const [progress, setProgress] = useState<ExtractionProgress>({
     phase: "loading",
-    message: "Getting ready...",
+    message: "Got your document",
   });
   const [isComplete, setIsComplete] = useState(false);
   const [error, setError] = useState<string | null>(null);
