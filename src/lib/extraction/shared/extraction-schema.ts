@@ -207,7 +207,7 @@ Your response should contain two parts:
 
    You may format the JSON output using any of these methods:
    - XML-style tags: <json>{ ... }</json>
-   - Markdown code block: ```json\n{ ... }\n```
+   - Markdown code block: \`\`\`json\\n{ ... }\\n\`\`\`
    - Plain JSON object starting with {
 
    The JSON must:
