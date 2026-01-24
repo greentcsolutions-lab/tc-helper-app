@@ -36,6 +36,12 @@ You are the git safety layer. Invoke only via classifier SEQUENCE (after verific
    - If yes → shell "git push origin <branch-name>"
 5. On success: delete .claude-branch (clean up) or keep for PR flow
 
+6. After successful commit/push (or when user approves the final step):
+   - Run: shell "git diff --name-status HEAD~1 HEAD"  # or git status --porcelain if no previous commit
+   - If output contains A (added), M (modified is ok but we care about path), R (renamed), D (deleted) → invoke update-tree-md
+   - Else → skip (pure content change)
+   - Output one line: "TREE.md updated." or nothing
+
 ## Tool Integration
 - Use classifier vocab:
   - shell "git checkout ...", "git add ...", "git commit ...", "git push ..."
