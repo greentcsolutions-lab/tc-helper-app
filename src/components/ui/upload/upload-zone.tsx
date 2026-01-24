@@ -141,7 +141,6 @@ export default function UploadZone() {
     <div
       className={`
         max-w-6xl mx-auto space-y-8 transition-all duration-500 ease-in-out
-        ${view === "processing" ? "upload-zone-centered" : ""}
       `}
     >
       {/* Upload screen */}
