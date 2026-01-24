@@ -51,94 +51,201 @@ interface PricingCardProps {
   highlighted?: boolean;
 }
 
-const AnimatedWorkflowMockup = () => (
-  <div className="relative max-w-6xl mx-auto mt-16 rounded-3xl overflow-hidden border-2 border-blue-200/50 shadow-2xl bg-gradient-to-br from-slate-50 via-blue-50/30 to-purple-50/20 p-8">
+const AnimatedWorkflowMockup = () => {
+  const steps = [
+    { label: 'Upload PDF', delay: 0, duration: 2 },
+    { label: 'AI Processing', delay: 2, duration: 2 },
+    { label: 'Extract Data', delay: 4, duration: 2 },
+    { label: 'Results Ready', delay: 6, duration: 2 }
+  ];
 
-    {/* Step Indicator */}
-    <div className="flex justify-between mb-8 relative">
-      {['Upload', 'Process', 'Extract', 'Results'].map((label, i) => (
-        <div key={i} className="flex flex-col items-center flex-1">
-          <div
-            className="w-3 h-3 rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 animate-glow-pulse"
-            style={{ animationDelay: `${i * 2}s` }}
-          />
-          <span className="text-xs font-medium text-muted-foreground mt-2">{label}</span>
-        </div>
-      ))}
-      <div className="absolute top-1.5 left-0 right-0 h-0.5 bg-gradient-to-r from-cyan-200 via-blue-200 to-purple-200 -z-10" />
-    </div>
-
-    {/* Animated Workflow */}
-    <div className="grid md:grid-cols-4 gap-4 relative">
-
-      {/* Step 1: Upload */}
-      <div className="bg-white rounded-xl p-4 border border-slate-200 relative overflow-hidden">
-        <div className="text-xs font-bold text-slate-500 mb-2">1. Upload PDF</div>
-        <div className="aspect-square bg-gradient-to-br from-slate-100 to-slate-200 rounded-lg flex items-center justify-center relative">
-          <div className="absolute inset-4 border-2 border-dashed border-slate-300 rounded-lg animate-file-drop"
-               style={{ animationDelay: '0s', animationIterationCount: 'infinite', animationDuration: '8s' }}>
-            <Upload className="absolute inset-0 m-auto h-8 w-8 text-slate-400" />
-          </div>
-        </div>
-      </div>
-
-      {/* Step 2: AI Processing */}
-      <div className="bg-white rounded-xl p-4 border border-blue-200 relative overflow-hidden">
-        <div className="text-xs font-bold text-blue-600 mb-2 flex items-center gap-1">
-          <Brain className="h-3 w-3" /> 2. AI Scan
-        </div>
-        <div className="aspect-square bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg relative overflow-hidden">
-          {/* Scanning line effect */}
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="absolute inset-0 bg-gradient-to-b from-transparent via-blue-500/30 to-transparent h-8 animate-scanning-line"
-                 style={{ animationDelay: '2s', animationIterationCount: 'infinite', animationDuration: '8s' }} />
-            <div className="text-4xl font-mono text-blue-400/30">PDF</div>
-          </div>
-        </div>
-      </div>
-
-      {/* Step 3: Data Extraction */}
-      <div className="bg-white rounded-xl p-4 border border-purple-200 relative overflow-hidden">
-        <div className="text-xs font-bold text-purple-600 mb-2">3. Extract Data</div>
-        <div className="aspect-square bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg p-3 flex flex-col justify-center gap-1.5">
-          {[0, 1, 2, 3].map((i) => (
+  return (
+    <div className="relative max-w-4xl mx-auto mt-16">
+      {/* Step Indicator */}
+      <div className="flex justify-center mb-8 gap-4">
+        {steps.map((step, i) => (
+          <div key={i} className="flex items-center gap-2">
             <div
-              key={i}
-              className="h-2 bg-gradient-to-r from-purple-400 to-purple-600 rounded animate-data-extract opacity-0"
-              style={{
-                animationDelay: `${4 + i * 0.2}s`,
-                animationIterationCount: 'infinite',
-                animationDuration: '8s',
-                width: `${100 - i * 15}%`
-              }}
+              className="w-2.5 h-2.5 rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 animate-glow-pulse"
+              style={{ animationDelay: `${step.delay}s`, animationDuration: '8s' }}
             />
-          ))}
-        </div>
-      </div>
-
-      {/* Step 4: Results */}
-      <div className="bg-white rounded-xl p-4 border border-green-200 relative overflow-hidden">
-        <div className="text-xs font-bold text-green-600 mb-2 flex items-center gap-1">
-          <Check className="h-3 w-3" /> 4. Done!
-        </div>
-        <div className="aspect-square bg-gradient-to-br from-green-50 to-green-100 rounded-lg flex items-center justify-center">
-          <div className="animate-results-pop opacity-0"
-               style={{ animationDelay: '6s', animationIterationCount: 'infinite', animationDuration: '8s' }}>
-            <CheckSquare className="h-12 w-12 text-green-500" />
+            <span className="text-xs font-medium text-muted-foreground">{step.label}</span>
+            {i < steps.length - 1 && <ArrowRight className="h-3 w-3 text-muted-foreground/30" />}
           </div>
+        ))}
+      </div>
+
+      {/* Unified Workflow Container */}
+      <div className="relative rounded-3xl overflow-hidden border-2 border-blue-200/50 shadow-2xl bg-white">
+        <div className="aspect-[16/10] relative">
+
+          {/* State 1: Upload PDF (0-2s) */}
+          <div
+            className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 transition-opacity duration-500"
+            style={{
+              opacity: 'var(--upload-opacity, 1)',
+              animation: 'stateTransition 8s infinite',
+              animationDelay: '0s'
+            }}
+          >
+            <div className="text-sm font-bold text-slate-600 mb-8">Drop Your PDF Contract</div>
+            <div className="relative w-64 h-64 border-2 border-dashed border-slate-300 rounded-2xl flex items-center justify-center animate-file-drop"
+                 style={{ animationDuration: '8s', animationIterationCount: 'infinite' }}>
+              <Upload className="h-20 w-20 text-slate-400" />
+              <div className="absolute -bottom-12 text-xs text-slate-500">contract.pdf</div>
+            </div>
+          </div>
+
+          {/* State 2: AI Scan (2-4s) - EYE-CATCHING */}
+          <div
+            className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-blue-600 via-blue-500 to-cyan-500 opacity-0 transition-opacity duration-500"
+            style={{
+              animation: 'stateTransition 8s infinite',
+              animationDelay: '2s'
+            }}
+          >
+            <div className="text-sm font-bold text-white mb-8 flex items-center gap-2">
+              <Brain className="h-5 w-5 animate-pulse" />
+              AI Analyzing Contract
+            </div>
+
+            {/* Neural network visualization */}
+            <div className="relative w-80 h-80">
+              {/* Center brain icon with pulse */}
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="relative">
+                  <Brain className="h-24 w-24 text-white/90 relative z-10" />
+                  {/* Pulsing circles */}
+                  {[0, 1, 2].map((i) => (
+                    <div
+                      key={i}
+                      className="absolute inset-0 border-2 border-white/40 rounded-full"
+                      style={{
+                        animation: 'aiScanPulse 2s ease-out infinite',
+                        animationDelay: `${i * 0.3 + 2}s`,
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {/* Sweeping beams */}
+              {[0, 1, 2].map((i) => (
+                <div
+                  key={`beam-${i}`}
+                  className="absolute inset-0 overflow-hidden"
+                >
+                  <div
+                    className="absolute inset-y-0 w-32 bg-gradient-to-r from-transparent via-white/60 to-transparent blur-xl"
+                    style={{
+                      animation: 'aiBeamSweep 3s ease-in-out infinite',
+                      animationDelay: `${2 + i * 0.5}s`,
+                    }}
+                  />
+                </div>
+              ))}
+
+              {/* Floating particles */}
+              {Array.from({ length: 12 }).map((_, i) => {
+                const angle = (i * 30) * (Math.PI / 180);
+                const distance = 100;
+                const tx = Math.cos(angle) * distance;
+                const ty = Math.sin(angle) * distance;
+
+                return (
+                  <div
+                    key={`particle-${i}`}
+                    className="absolute top-1/2 left-1/2 w-3 h-3 bg-white rounded-full"
+                    style={{
+                      animation: 'particleFloat 2s ease-out infinite',
+                      animationDelay: `${2 + i * 0.1}s`,
+                      ['--tx' as string]: `${tx}px`,
+                      ['--ty' as string]: `${ty}px`,
+                    }}
+                  />
+                );
+              })}
+            </div>
+
+            <div className="mt-8 text-white/90 text-xs font-medium animate-pulse">
+              Scanning 47 pages...
+            </div>
+          </div>
+
+          {/* State 3: Data Extraction (4-6s) */}
+          <div
+            className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-purple-50 to-purple-100 opacity-0 transition-opacity duration-500"
+            style={{
+              animation: 'stateTransition 8s infinite',
+              animationDelay: '4s'
+            }}
+          >
+            <div className="text-sm font-bold text-purple-600 mb-8">Extracting Structured Data</div>
+            <div className="w-96 space-y-3">
+              {[
+                { label: 'Acceptance Date', width: '90%', delay: 4 },
+                { label: 'Inspection Period', width: '85%', delay: 4.2 },
+                { label: 'Buyer & Seller Info', width: '95%', delay: 4.4 },
+                { label: 'Property Address', width: '80%', delay: 4.6 },
+                { label: 'Closing Date', width: '88%', delay: 4.8 },
+              ].map((item, i) => (
+                <div key={i} className="flex items-center gap-3">
+                  <Check className="h-4 w-4 text-purple-600 opacity-0 animate-data-extract"
+                         style={{ animationDelay: `${item.delay}s`, animationDuration: '8s', animationIterationCount: 'infinite' }} />
+                  <div className="flex-1">
+                    <div className="h-7 bg-gradient-to-r from-purple-400 to-purple-600 rounded opacity-0 animate-data-extract"
+                         style={{
+                           animationDelay: `${item.delay}s`,
+                           animationDuration: '8s',
+                           animationIterationCount: 'infinite',
+                           width: item.width
+                         }}>
+                      <span className="text-white text-xs px-3 leading-7">{item.label}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* State 4: Results (6-8s) */}
+          <div
+            className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-green-50 to-emerald-100 opacity-0 transition-opacity duration-500"
+            style={{
+              animation: 'stateTransition 8s infinite',
+              animationDelay: '6s'
+            }}
+          >
+            <div
+              className="opacity-0 animate-results-pop flex flex-col items-center"
+              style={{ animationDelay: '6s', animationDuration: '8s', animationIterationCount: 'infinite' }}
+            >
+              <CheckSquare className="h-24 w-24 text-green-600 mb-6" />
+              <div className="text-xl font-bold text-green-700 mb-2">Contract Processed!</div>
+              <div className="text-sm text-green-600">All dates and contacts extracted</div>
+            </div>
+          </div>
+
+        </div>
+
+        {/* Progress bar at bottom */}
+        <div className="h-1 bg-gradient-to-r from-cyan-500 via-blue-500 via-purple-500 to-green-500"
+             style={{
+               animation: 'progressBar 8s linear infinite'
+             }}
+        />
+      </div>
+
+      {/* Loop Indicator */}
+      <div className="text-center mt-6">
+        <div className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+          <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
+          <span>Live demo • Automatically progresses through workflow</span>
         </div>
       </div>
     </div>
-
-    {/* Loop Indicator */}
-    <div className="text-center mt-6">
-      <div className="inline-flex items-center gap-2 text-xs text-muted-foreground">
-        <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
-        <span>Live demo • Loops every 8 seconds</span>
-      </div>
-    </div>
-  </div>
-);
+  );
+};
 
 const HeroSection = () => (
   <section className="pt-24 pb-16 px-4">
