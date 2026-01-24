@@ -51,15 +51,104 @@ interface PricingCardProps {
   highlighted?: boolean;
 }
 
+const AnimatedWorkflowMockup = () => (
+  <div className="relative max-w-6xl mx-auto mt-16 rounded-3xl overflow-hidden border-2 border-blue-200/50 shadow-2xl bg-gradient-to-br from-slate-50 via-blue-50/30 to-purple-50/20 p-8">
+
+    {/* Step Indicator */}
+    <div className="flex justify-between mb-8 relative">
+      {['Upload', 'Process', 'Extract', 'Results'].map((label, i) => (
+        <div key={i} className="flex flex-col items-center flex-1">
+          <div
+            className="w-3 h-3 rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 animate-glow-pulse"
+            style={{ animationDelay: `${i * 2}s` }}
+          />
+          <span className="text-xs font-medium text-muted-foreground mt-2">{label}</span>
+        </div>
+      ))}
+      <div className="absolute top-1.5 left-0 right-0 h-0.5 bg-gradient-to-r from-cyan-200 via-blue-200 to-purple-200 -z-10" />
+    </div>
+
+    {/* Animated Workflow */}
+    <div className="grid md:grid-cols-4 gap-4 relative">
+
+      {/* Step 1: Upload */}
+      <div className="bg-white rounded-xl p-4 border border-slate-200 relative overflow-hidden">
+        <div className="text-xs font-bold text-slate-500 mb-2">1. Upload PDF</div>
+        <div className="aspect-square bg-gradient-to-br from-slate-100 to-slate-200 rounded-lg flex items-center justify-center relative">
+          <div className="absolute inset-4 border-2 border-dashed border-slate-300 rounded-lg animate-file-drop"
+               style={{ animationDelay: '0s', animationIterationCount: 'infinite', animationDuration: '8s' }}>
+            <Upload className="absolute inset-0 m-auto h-8 w-8 text-slate-400" />
+          </div>
+        </div>
+      </div>
+
+      {/* Step 2: AI Processing */}
+      <div className="bg-white rounded-xl p-4 border border-blue-200 relative overflow-hidden">
+        <div className="text-xs font-bold text-blue-600 mb-2 flex items-center gap-1">
+          <Brain className="h-3 w-3" /> 2. AI Scan
+        </div>
+        <div className="aspect-square bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg relative overflow-hidden">
+          {/* Scanning line effect */}
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="absolute inset-0 bg-gradient-to-b from-transparent via-blue-500/30 to-transparent h-8 animate-scanning-line"
+                 style={{ animationDelay: '2s', animationIterationCount: 'infinite', animationDuration: '8s' }} />
+            <div className="text-4xl font-mono text-blue-400/30">PDF</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Step 3: Data Extraction */}
+      <div className="bg-white rounded-xl p-4 border border-purple-200 relative overflow-hidden">
+        <div className="text-xs font-bold text-purple-600 mb-2">3. Extract Data</div>
+        <div className="aspect-square bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg p-3 flex flex-col justify-center gap-1.5">
+          {[0, 1, 2, 3].map((i) => (
+            <div
+              key={i}
+              className="h-2 bg-gradient-to-r from-purple-400 to-purple-600 rounded animate-data-extract opacity-0"
+              style={{
+                animationDelay: `${4 + i * 0.2}s`,
+                animationIterationCount: 'infinite',
+                animationDuration: '8s',
+                width: `${100 - i * 15}%`
+              }}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* Step 4: Results */}
+      <div className="bg-white rounded-xl p-4 border border-green-200 relative overflow-hidden">
+        <div className="text-xs font-bold text-green-600 mb-2 flex items-center gap-1">
+          <Check className="h-3 w-3" /> 4. Done!
+        </div>
+        <div className="aspect-square bg-gradient-to-br from-green-50 to-green-100 rounded-lg flex items-center justify-center">
+          <div className="animate-results-pop opacity-0"
+               style={{ animationDelay: '6s', animationIterationCount: 'infinite', animationDuration: '8s' }}>
+            <CheckSquare className="h-12 w-12 text-green-500" />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {/* Loop Indicator */}
+    <div className="text-center mt-6">
+      <div className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+        <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
+        <span>Live demo • Loops every 8 seconds</span>
+      </div>
+    </div>
+  </div>
+);
+
 const HeroSection = () => (
   <section className="pt-24 pb-16 px-4">
     <div className="max-w-6xl mx-auto text-center">
-      <div className="inline-flex items-center gap-2 bg-primary/10 text-primary px-4 py-2 rounded-full text-sm font-medium mb-8">
+      <div className="inline-flex items-center gap-2 bg-primary/10 text-primary px-4 py-2 rounded-full text-sm font-medium mb-8 animate-hero-badge-pulse">
         <Sparkles className="h-4 w-4" />
         AI-Powered Extraction
       </div>
 
-      <h1 className="text-5xl md:text-7xl font-bold tracking-tight mb-6 text-left md:text-center">
+      <h1 className="text-5xl md:text-7xl font-bold tracking-tight mb-6 text-left md:text-center animate-hero-fade-up stagger-delay-1">
         <span className="bg-gradient-to-r from-cyan-600 via-blue-600 to-purple-600 bg-clip-text text-transparent">
           Stop Typing Your Contracts.
         </span>
@@ -67,20 +156,20 @@ const HeroSection = () => (
         <span className="text-foreground">Start Managing Them.</span>
       </h1>
 
-      <p className="text-xl md:text-2xl text-muted-foreground mb-8 max-w-3xl mx-auto leading-relaxed text-left md:text-center">
+      <p className="text-xl md:text-2xl text-muted-foreground mb-8 max-w-3xl mx-auto leading-relaxed text-left md:text-center animate-hero-fade-up stagger-delay-2">
         Upload any real estate contract. Our AI extracts every date, contact, and contingency in 60 seconds. You just execute.
       </p>
 
-      <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-16">
+      <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-16 animate-hero-fade-up stagger-delay-3">
         <SignedOut>
           <SignUpButton mode="modal">
-            <Button size="lg" className="h-14 px-10 text-lg font-semibold shadow-xl hover:shadow-2xl transition-all w-full sm:w-auto">
+            <Button size="lg" className="h-14 px-10 text-lg font-semibold shadow-xl hover:shadow-2xl transition-all hover-scale w-full sm:w-auto bg-gradient-to-r from-cyan-600 via-blue-600 to-purple-600 hover-gradient-shift">
               <Sparkles className="mr-2 h-5 w-5" />
               Extract Your First Contract Free
             </Button>
           </SignUpButton>
         </SignedOut>
-        <Button size="lg" variant="outline" className="h-14 px-8 text-lg w-full sm:w-auto" asChild>
+        <Button size="lg" variant="outline" className="h-14 px-8 text-lg w-full sm:w-auto hover-scale" asChild>
           <a href="#how-it-works">
             See the Extraction
             <ArrowRight className="ml-2 h-5 w-5" />
@@ -88,29 +177,7 @@ const HeroSection = () => (
         </Button>
       </div>
 
-      <div className="relative max-w-5xl mx-auto mt-12 rounded-2xl overflow-hidden border shadow-2xl bg-card">
-        <div className="grid md:grid-cols-2 gap-0 text-left">
-          <div className="p-4 bg-muted/50 border-r">
-            <p className="text-xs font-bold text-muted-foreground uppercase mb-4">The Messy PDF</p>
-            <div className="aspect-[4/3] bg-slate-200 rounded-lg flex items-center justify-center text-slate-400 border border-slate-300">
-               <Upload className="h-12 w-12 opacity-20" />
-            </div>
-          </div>
-          <div className="p-4 bg-background relative flex flex-col justify-center">
-            <div className="absolute inset-0 bg-blue-500/5 animate-pulse pointer-events-none" />
-            <p className="text-xs font-bold text-blue-600 uppercase mb-4 flex items-center gap-1">
-              <Brain className="h-3 w-3" /> TCHelper AI Output
-            </p>
-            <div className="space-y-4">
-              <div className="h-8 bg-muted rounded animate-pulse w-3/4" />
-              <div className="h-8 bg-muted rounded animate-pulse w-full" />
-              <div className="h-32 border-2 border-dashed border-blue-200 rounded-xl flex items-center justify-center text-blue-500 text-sm font-medium italic bg-blue-50/30 text-center px-4">
-                Extracting Dates, Parties, and Contingencies...
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      <AnimatedWorkflowMockup />
     </div>
   </section>
 );
@@ -120,9 +187,9 @@ const WorkflowStep = ({ step, icon: Icon, title, description, color, isLast }: W
     {!isLast && (
       <div className="hidden md:block absolute top-16 left-[60%] w-[80%] h-0.5 bg-gradient-to-r from-muted-foreground/20 to-transparent" />
     )}
-    <Card className="p-6 text-center relative z-10 hover:shadow-lg transition-all duration-300 border-0 bg-card/50 backdrop-blur">
+    <Card className="p-6 text-center relative z-10 hover-card-lift hover-glow transition-all duration-300 border-0 bg-card/50 backdrop-blur">
       <div className="text-5xl font-bold text-muted-foreground/10 mb-2">{step}</div>
-      <div className={`w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br ${color} flex items-center justify-center`}>
+      <div className={`w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br ${color} flex items-center justify-center transition-transform hover-scale`}>
         <Icon className="w-8 h-8 text-white" />
       </div>
       <h3 className="text-xl font-semibold mb-3">{title}</h3>
@@ -132,9 +199,9 @@ const WorkflowStep = ({ step, icon: Icon, title, description, color, isLast }: W
 );
 
 const FeatureCard = ({ icon: Icon, title, subtitle, items, gradient }: FeatureCardProps) => (
-  <Card className="p-8 border-0 bg-card/50 backdrop-blur hover:shadow-xl transition-all duration-300">
+  <Card className="p-8 border-0 bg-card/50 backdrop-blur hover-card-lift transition-all duration-300">
     <div className="flex items-start gap-4 mb-6">
-      <div className={`w-14 h-14 rounded-xl bg-gradient-to-br ${gradient} flex items-center justify-center shrink-0`}>
+      <div className={`w-14 h-14 rounded-xl bg-gradient-to-br ${gradient} flex items-center justify-center shrink-0 hover-scale`}>
         <Icon className="w-7 h-7 text-white" />
       </div>
       <div className="text-left">
@@ -220,7 +287,9 @@ export default function Home() {
           </div>
           <div className="grid md:grid-cols-4 gap-8">
             {steps.map((item, i) => (
-              <WorkflowStep key={i} {...item} isLast={i === steps.length - 1} />
+              <div key={i} className={`animate-card-slide-up stagger-delay-${i + 1}`}>
+                <WorkflowStep {...item} isLast={i === steps.length - 1} />
+              </div>
             ))}
           </div>
         </div>
@@ -252,15 +321,15 @@ export default function Home() {
       <section className="py-20 px-4">
         <div className="max-w-6xl mx-auto text-center">
           <div className="grid md:grid-cols-3 gap-8 mb-16">
-            <div>
+            <div className="animate-stats-reveal stagger-delay-1">
               <div className="text-4xl font-bold text-primary mb-2">95%</div>
               <p className="text-muted-foreground">Extraction Accuracy</p>
             </div>
-            <div>
+            <div className="animate-stats-reveal stagger-delay-2">
               <div className="text-4xl font-bold text-primary mb-2">20+ Min</div>
               <p className="text-muted-foreground">Saved Per Transaction</p>
             </div>
-            <div>
+            <div className="animate-stats-reveal stagger-delay-3">
               <div className="text-4xl font-bold text-primary mb-2">10+ Years</div>
               <p className="text-muted-foreground">Industry Expertise</p>
             </div>
