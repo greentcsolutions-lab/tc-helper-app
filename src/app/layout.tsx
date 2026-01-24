@@ -53,8 +53,10 @@ export default async function RootLayout({
 
             {user ? (
               <div className="relative min-h-screen">
-                <ModernSidebar />
-                <div className="lg:pl-64 transition-all duration-300">
+                <div data-nav-sidebar>
+                  <ModernSidebar />
+                </div>
+                <div className="lg:pl-64 transition-all duration-300" data-main-content>
                   <ModernHeader credits={credits} />
                   <main className="min-h-[calc(100vh-4rem)]">{children}</main>
                 </div>

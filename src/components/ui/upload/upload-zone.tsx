@@ -28,7 +28,7 @@ export default function UploadZone() {
 
   const router = useRouter();
   const { currentFile, parseId, handleFile, resetUpload } = useFileUpload();
-  const { setIsProcessing } = useUploadLayout();
+  const { setIsProcessing, setIsComplete } = useUploadLayout();
 
   // SSE streaming hook - only enabled when processing
   const { progress, isComplete, error } = useExtractionStream(
@@ -47,8 +47,9 @@ export default function UploadZone() {
     setNeedsReview(progress.needsReview || false);
     loadExtractionResults(parseId);
     setView("done");
-    setIsProcessing(false); // Allow sidebar to slide back in (though we'll show results fullscreen)
-  }, [isComplete, parseId, progress.needsReview, setIsProcessing]);
+    setIsProcessing(false); // Done processing
+    setIsComplete(true); // Mark as complete to keep sidebars hidden
+  }, [isComplete, parseId, progress.needsReview, setIsProcessing, setIsComplete]);
 
   // Handle stream errors
   useEffect(() => {
@@ -57,8 +58,9 @@ export default function UploadZone() {
     toast.error("Extraction failed", { description: error });
     setView("idle");
     setIsProcessing(false); // Reset processing state
+    setIsComplete(false); // Reset complete state
     resetUpload();
-  }, [error, resetUpload, setIsProcessing]);
+  }, [error, resetUpload, setIsProcessing, setIsComplete]);
 
   const onFileSelect = async (file: File) => {
     setView("uploading");
