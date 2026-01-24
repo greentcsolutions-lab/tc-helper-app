@@ -25,32 +25,17 @@ export async function sendWelcomeEmail({ email, firstName }: SendWelcomeEmailPar
       return { success: false, error: 'Invalid first name format' };
     }
 
-    // Send email using Resend template
-    // Note: Update 'from' domain to match your verified domain in Resend
+    // Send email using Resend dashboard template 'welcome-email'
     const { data, error } = await resend.emails.send({
-      from: 'TC Helper <onboarding@updates.tchelper.app>', // Update with your verified domain
+      from: 'TC Helper <onboarding@updates.tchelper.app>',
       to: emailValidation.data,
-      subject: 'Welcome to TC Helper!',
-      // For Resend dashboard templates, use the template ID or name
-      // If using React Email components, replace with react: WelcomeEmail
-      html: `
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <meta charset="utf-8">
-          </head>
-          <body>
-            <p>Welcome ${firstNameValidation.data}!</p>
-            <p>Thank you for joining TC Helper. We're excited to help you manage your real estate transactions.</p>
-          </body>
-        </html>
-      `,
-      // Uncomment and update when using Resend dashboard template:
-      // template: 'welcome-email',
-      // variables: {
-      //   first_name: firstNameValidation.data,
-      // },
-    });
+      template: {
+        id: 'welcome-email',
+        variables: {
+          first_name: firstNameValidation.data,
+        },
+      },
+    } as any);
 
     if (error) {
       console.error('[send-welcome-email] Resend API error:', error);

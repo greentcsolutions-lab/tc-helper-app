@@ -54,6 +54,7 @@ taskTemplates        UserTaskTemplate[]
 calendarSettings     CalendarSettings?
 calendarEvents       CalendarEvent[]
 teamMembers          TeamMember[]
+communications       Communication[]
 
 @@map("users")
 }
@@ -157,6 +158,7 @@ updatedAt             DateTime  @updatedAt
 finalizedAt           DateTime?
 
 tasks                 Task[]
+communications        Communication[]
 
 @@index([userId, createdAt])
 @@map("parses")
@@ -381,4 +383,40 @@ assignedTasks        Task[]    @relation("TaskAssignee")
 @@index([userId])
 @@index([clerkUserId])
 @@map("team_members")
+}
+
+model Communication {
+id                   String    @id @default(cuid())
+userId               String
+user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+direction            String    // "inbound" | "outbound"
+type                 String    @default("email") // "email" | "sms" (future)
+
+from                 String
+to                   String
+subject              String?
+
+bodyText             String?   @db.Text
+bodyHtml             String?   @db.Text
+
+attachments          Json?     // Array of attachment metadata
+
+status               String    @default("pending") // "pending" | "validated" | "rejected" | "processing" | "completed" | "failed"
+
+rejectionReason      String?
+errorMessage         String?
+
+parseId              String?
+parse                Parse?    @relation(fields: [parseId], references: [id], onDelete: SetNull)
+
+metadata             Json?     // Email-specific metadata (headers, etc.)
+
+createdAt            DateTime  @default(now())
+updatedAt            DateTime  @updatedAt
+
+@@index([userId, createdAt])
+@@index([userId, status])
+@@index([direction, createdAt])
+@@map("communications")
 }
