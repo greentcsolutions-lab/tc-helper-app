@@ -1,64 +1,35 @@
 // src/components/ui/upload/processing-view.tsx
-// Version: 1.0.0 - 2025-12-30
-// Displays processing state with progress messages and jokes
+// Version: 2.0.0 - 2026-01-24
+// Displays real-time extraction progress with SSE stream
 
 "use client";
 
-import { Loader2 } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
-import { ParseState } from "@/hooks/useParseOrchestrator";
+import { ExtractionProgress } from "@/hooks/useExtractionStream";
 
 type ProcessingViewProps = {
-  state: ParseState;
-  currentJoke: string;
+  progress: ExtractionProgress;
 };
 
-export function ProcessingView({ state, currentJoke }: ProcessingViewProps) {
-  const getMessage = (): string => {
-    if (state.message) {
-      return state.message;
-    }
-    return currentJoke;
-  };
-
-  const getProgressDetails = (): string => {
-    const parts: string[] = [];
-
-    if (state.pageCount) {
-      parts.push(`${state.pageCount} pages`);
-    }
-
-    if (state.criticalPageCount) {
-      parts.push(`${state.criticalPageCount} critical`);
-    }
-
-    if (state.phase === 'extract') {
-      parts.push('extracting data');
-    }
-
-    if (state.phase === 'cleanup') {
-      parts.push('cleaning up');
-    }
-
-    return parts.length > 0 ? `(${parts.join(', ')})` : '';
-  };
-
+export function ProcessingView({ progress }: ProcessingViewProps) {
   return (
-    <Card className="border-2">
-      <CardContent className="p-12 text-center space-y-4">
-        <Loader2 className="h-12 w-12 mx-auto animate-spin text-primary" />
-        <div>
-          <p className="text-lg font-medium">{getMessage()}</p>
-          <p className="text-sm text-muted-foreground mt-1">
-            {getProgressDetails()}
-          </p>
-          {state.detectedForms && state.detectedForms.length > 0 && (
-            <p className="text-xs text-muted-foreground mt-2">
-              Detected: {state.detectedForms.join(", ")}
-            </p>
-          )}
+    <div className="min-h-[60vh] flex items-center justify-center">
+      <div className="text-center space-y-6 max-w-md mx-auto px-4">
+        {/* Spinner */}
+        <div className="relative w-16 h-16 mx-auto">
+          <div className="absolute inset-0 rounded-full border-4 border-blue-200/30" />
+          <div className="absolute inset-0 rounded-full border-4 border-t-blue-600 border-r-blue-600 border-b-transparent border-l-transparent animate-spin" />
         </div>
-      </CardContent>
-    </Card>
+
+        {/* Message */}
+        <div className="space-y-2">
+          <p className="text-2xl md:text-3xl font-semibold text-gray-900 dark:text-gray-100 animate-fade-in">
+            {progress.message}
+          </p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 capitalize">
+            {progress.phase === "complete" ? "Done" : progress.phase}
+          </p>
+        </div>
+      </div>
+    </div>
   );
 }

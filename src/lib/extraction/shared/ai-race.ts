@@ -119,7 +119,8 @@ export async function raceAIProviders(timeoutMs: number = 5000): Promise<AIProvi
  */
 export async function extractWithFastestAI(
   pdfUrl: string,
-  totalPages: number
+  totalPages: number,
+  onProgress?: (message: string) => void
 ): Promise<{
   finalTerms: any;
   needsReview: boolean;
@@ -139,6 +140,16 @@ export async function extractWithFastestAI(
   // Try extraction with the winner
   try {
     console.log(`[ai-race] Extracting with ${winner.name} (${winner.model})...`);
+
+    // Send progress update if callback provided
+    if (onProgress) {
+      if (winner.name === 'Gemini') {
+        onProgress('Reading through your contract');
+      } else {
+        onProgress('Analyzing your document');
+      }
+    }
+
     const result = await winner.extract(pdfUrl, totalPages, winner.model);
     console.log(`[ai-race] Extraction successful with ${winner.name}`);
     return result;
@@ -147,6 +158,10 @@ export async function extractWithFastestAI(
 
     // Try fallback to other providers
     console.log(`[ai-race] Attempting fallback to other providers...`);
+
+    if (onProgress) {
+      onProgress('Taking a closer look');
+    }
 
     for (const provider of AI_PROVIDERS) {
       if (provider.name === winner.name) continue; // Skip the one that failed
