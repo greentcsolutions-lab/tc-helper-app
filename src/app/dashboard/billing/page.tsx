@@ -254,7 +254,7 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
                   </li>
                   <li className="flex items-center gap-2">
                     <CheckCircle2 className="h-4 w-4 text-green-500" />
-                    5 concurrent transactions
+                    20 concurrent transactions
                   </li>
                   <li className="flex items-center gap-2">
                     <CheckCircle2 className="h-4 w-4 text-green-500" />
