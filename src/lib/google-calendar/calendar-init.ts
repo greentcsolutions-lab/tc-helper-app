@@ -63,7 +63,9 @@ export async function initializeCalendars(userId: string): Promise<{
         lastSyncedAt: new Date(),
         lastSyncError: null,
         // Reset sync token to null to force a fresh start on the first webhook
-        nextSyncToken: null 
+        nextSyncToken: null,
+        // Clear disconnectedAt if user reconnects (resets 30-day deletion countdown)
+        disconnectedAt: null,
       },
     });
 

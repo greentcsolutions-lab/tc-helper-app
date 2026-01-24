@@ -154,7 +154,7 @@ export async function revokeAccess(userId: string): Promise<boolean> {
       // Continue anyway to clean up our database
     }
 
-    // Clear tokens from database
+    // Clear tokens from database and set disconnection timestamp
     await prisma.calendarSettings.update({
       where: { userId },
       data: {
@@ -165,6 +165,7 @@ export async function revokeAccess(userId: string): Promise<boolean> {
         webhookChannelId: null,
         webhookResourceId: null,
         webhookExpiration: null,
+        disconnectedAt: new Date(), // Track when user disconnected for 30-day cleanup
       },
     });
 

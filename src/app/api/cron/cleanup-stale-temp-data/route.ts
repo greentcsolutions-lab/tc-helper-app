@@ -35,12 +35,14 @@ export async function GET() {
           in: ['RENDER_FAILED', 'CLASSIFICATION_FAILED', 'EXTRACTION_FAILED']
         },
         OR: [
+          { pdfPublicUrl: { not: null } },
           { lowResZipKey: { not: null } },
           { highResZipKey: { not: null } },
         ]
       },
       select: {
         id: true,
+        pdfPublicUrl: true,
         lowResZipKey: true,
         highResZipKey: true,
       }
@@ -49,6 +51,20 @@ export async function GET() {
     // Delete Blob files for failed records
     const blobDeletions = failedWithBlobs.flatMap(parse => {
       const tasks = [];
+      if (parse.pdfPublicUrl) {
+        // Extract key from public URL
+        try {
+          const url = new URL(parse.pdfPublicUrl);
+          const key = url.pathname.slice(1); // remove leading slash
+          tasks.push(
+            del(key)
+              .then(() => console.log(`[cron:cleanup]   ✓ Deleted PDF blob for ${parse.id}`))
+              .catch(err => console.warn(`[cron:cleanup]   ⚠️ Failed to delete PDF blob:`, err))
+          );
+        } catch (err) {
+          console.warn(`[cron:cleanup]   ⚠️ Failed to parse pdfPublicUrl for ${parse.id}:`, err);
+        }
+      }
       if (parse.lowResZipKey) {
         tasks.push(
           del(parse.lowResZipKey)
@@ -89,17 +105,74 @@ export async function GET() {
 
     console.log('[cron:cleanup] 🧹 Cleaning temp data from old records...');
 
+    // First, find and delete blob files for old records
+    const oldRecordsWithBlobs = await db.parse.findMany({
+      where: {
+        createdAt: { lt: tempDataCutoff },
+        OR: [
+          { pdfPublicUrl: { not: null } },
+          { lowResZipKey: { not: null } },
+          { highResZipKey: { not: null } },
+        ]
+      },
+      select: {
+        id: true,
+        pdfPublicUrl: true,
+        lowResZipKey: true,
+        highResZipKey: true,
+      }
+    });
+
+    // Delete blobs from old records
+    const oldBlobDeletions = oldRecordsWithBlobs.flatMap(parse => {
+      const tasks = [];
+      if (parse.pdfPublicUrl) {
+        try {
+          const url = new URL(parse.pdfPublicUrl);
+          const key = url.pathname.slice(1);
+          tasks.push(
+            del(key)
+              .then(() => console.log(`[cron:cleanup]   ✓ Deleted old PDF blob for ${parse.id}`))
+              .catch(err => console.warn(`[cron:cleanup]   ⚠️ Failed to delete old PDF blob:`, err))
+          );
+        } catch (err) {
+          console.warn(`[cron:cleanup]   ⚠️ Failed to parse pdfPublicUrl for ${parse.id}:`, err);
+        }
+      }
+      if (parse.lowResZipKey) {
+        tasks.push(
+          del(parse.lowResZipKey)
+            .then(() => console.log(`[cron:cleanup]   ✓ Deleted old low-res blob for ${parse.id}`))
+            .catch(err => console.warn(`[cron:cleanup]   ⚠️ Failed to delete old low-res blob:`, err))
+        );
+      }
+      if (parse.highResZipKey) {
+        tasks.push(
+          del(parse.highResZipKey)
+            .then(() => console.log(`[cron:cleanup]   ✓ Deleted old high-res blob for ${parse.id}`))
+            .catch(err => console.warn(`[cron:cleanup]   ⚠️ Failed to delete old high-res blob:`, err))
+        );
+      }
+      return tasks;
+    });
+
+    await Promise.allSettled(oldBlobDeletions);
+    results.blobsDeleted += oldBlobDeletions.length;
+
+    // Now clear the database fields
     const tempDataResult = await db.parse.updateMany({
       where: {
         createdAt: { lt: tempDataCutoff },
         OR: [
           { pdfBuffer: { not: null } },
+          { pdfPublicUrl: { not: null } },
           { lowResZipKey: { not: null } },
           { highResZipKey: { not: null } },
         ]
       },
       data: {
         pdfBuffer: null,
+        pdfPublicUrl: null,
         classificationCache: Prisma.JsonNull,
         lowResZipUrl: null,
         lowResZipKey: null,

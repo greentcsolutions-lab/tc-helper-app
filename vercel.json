@@ -3,11 +3,15 @@
   "crons": [
     {
       "path": "/api/cron/cleanup-stale-temp-data",
-      "schedule": "0 0 * * *"
+      "schedule": "0 */2 * * *"
     },
     {
       "path": "/api/cron/renew-calendar-webhooks",
       "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/cron/cleanup-disconnected-calendars",
+      "schedule": "0 0 * * *"
     }
   ]
 }

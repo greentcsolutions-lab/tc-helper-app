@@ -281,6 +281,8 @@ lastSyncedAt            DateTime? // Timestamp of last success
 
 initialSyncCompleted    Boolean   @default(false)
 
+disconnectedAt          DateTime? // Timestamp when user disconnected calendar (for 30-day deletion cron)
+
 createdAt               DateTime  @default(now())
 updatedAt               DateTime  @updatedAt
 
