@@ -1,6 +1,6 @@
 # Project Structure
 
-Last updated: 2026-01-23
+Last updated: 2026-01-24
 
 ```
 .
@@ -79,6 +79,8 @@ Last updated: 2026-01-23
 │   │   │   └── migration.sql
 │   │   ├── 20260120172840_add_calendar_sync_memory
 │   │   │   └── migration.sql
+│   │   ├── 20260124121225_add_communications_model
+│   │   │   └── migration.sql
 │   │   ├── migration_lock.toml
 │   │   └── migration.sql
 │   └── schema.prisma
@@ -109,6 +111,8 @@ Last updated: 2026-01-23
 │   │   │   ├── credits
 │   │   │   │   └── route.ts
 │   │   │   ├── cron
+│   │   │   │   ├── cleanup-disconnected-calendars
+│   │   │   │   │   └── route.ts
 │   │   │   │   ├── cleanup-stale-temp-data
 │   │   │   │   │   └── route.ts
 │   │   │   │   ├── renew-calendar-webhooks
@@ -116,6 +120,9 @@ Last updated: 2026-01-23
 │   │   │   │   └── renew-webhooks
 │   │   │   ├── debug
 │   │   │   │   └── whop-config
+│   │   │   │       └── route.ts
+│   │   │   ├── email
+│   │   │   │   └── inbound
 │   │   │   │       └── route.ts
 │   │   │   ├── google-calendar
 │   │   │   │   ├── callback
@@ -365,7 +372,13 @@ Last updated: 2026-01-23
 │   │   │   └── parse-logger.ts
 │   │   ├── email
 │   │   │   ├── client.ts
-│   │   │   └── send-welcome-email.ts
+│   │   │   ├── parse-email-notes.ts
+│   │   │   ├── rate-limiter.ts
+│   │   │   ├── send-extraction-failed-email.ts
+│   │   │   ├── send-extraction-success-email.ts
+│   │   │   ├── send-rejection-email.ts
+│   │   │   ├── send-welcome-email.ts
+│   │   │   └── validate-inbound.ts
 │   │   ├── extraction
 │   │   │   ├── classify
 │   │   │   │   ├── markdown-classifier.ts
@@ -374,8 +387,8 @@ Last updated: 2026-01-23
 │   │   │   │   └── extractPdf.ts
 │   │   │   ├── extract
 │   │   │   │   └── universal
-│   │   │   │   │       └── helpers
-│   │   │   │   │           └── date-utils.ts
+│   │   │   │       └── helpers
+│   │   │   │           └── date-utils.ts
 │   │   │   ├── gemini
 │   │   │   │   └── extractPdf.ts
 │   │   │   ├── grok
@@ -428,6 +441,7 @@ Last updated: 2026-01-23
 ├── ChangeLog.md
 ├── .claude-branch
 ├── CLAUDE.md
+├── .claude-state.md
 ├── components.json
 ├── .env
 ├── .env.example
@@ -451,5 +465,5 @@ Last updated: 2026-01-23
 ├── WEBHOOK_FIX_REQUIRED.md
 └── WHOP_INTEGRATION_SETUP.md
 
-167 directories, 280 files
+171 directories, 290 files
 ```

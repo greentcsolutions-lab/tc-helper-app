@@ -77,7 +77,7 @@ export default function TermsPage() {
         <section className="pt-8 border-t">
           <h2>7. Contact</h2>
           <p>
-            For support or legal inquiries: <strong>info@tchelper.app</strong><br />
+            For support or legal inquiries: <strong>greentcsolutions@gmail.com</strong><br />
             Mountain Grove, Missouri 65711
           </p>
         </section>
