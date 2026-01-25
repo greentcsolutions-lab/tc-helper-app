@@ -6,6 +6,7 @@ import { currentUser } from '@clerk/nextjs/server';
 import { db } from '@/lib/prisma';
 import { TASK_TYPES, TASK_STATUS } from '@/types/task';
 import { syncTaskToCalendar } from '@/lib/google-calendar/sync';
+import { PLAN_CONFIGS } from '@/lib/whop';
 
 /**
  * GET /api/tasks
@@ -177,13 +178,16 @@ export async function POST(request: NextRequest) {
       });
 
       // Determine limit based on plan type
-      const customTaskLimit = dbUser.planType === 'BASIC' ? 100 : 1;
+      const planConfig = PLAN_CONFIGS[dbUser.planType as 'FREE' | 'BASIC' | 'STANDARD'];
+      const customTaskLimit = planConfig.customTaskLimit;
 
       if (currentCustomTaskCount >= customTaskLimit) {
         const upgradeMessage =
           dbUser.planType === 'FREE'
-            ? 'Free tier limited to 1 custom task. Upgrade to Basic for 100 custom tasks.'
-            : 'Basic plan limited to 100 custom tasks.';
+            ? 'Free tier limited to 10 custom tasks. Upgrade to Basic for 100 custom tasks or Standard for unlimited.'
+            : dbUser.planType === 'BASIC'
+            ? 'Basic plan limited to 100 custom tasks. Upgrade to Standard for unlimited.'
+            : 'You have reached the custom task limit for your plan.';
 
         return NextResponse.json(
           {

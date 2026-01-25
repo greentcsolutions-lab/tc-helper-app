@@ -75,34 +75,41 @@ async function handleMembershipActivated(data: any) {
     return;
   }
 
-  // Check if this is the Basic plan
-  if (product?.id !== WHOP_PRODUCTS.BASIC_PLAN) {
-    console.log('Not a Basic plan subscription, skipping');
+  // Determine which plan based on product ID
+  const productId = product?.id;
+  let planType: 'BASIC' | 'STANDARD' | null = null;
+  let planConfig;
+
+  if (productId === WHOP_PRODUCTS.BASIC_PLAN) {
+    planType = 'BASIC';
+    planConfig = PLAN_CONFIGS.BASIC;
+  } else if (productId === WHOP_PRODUCTS.STANDARD_PLAN) {
+    planType = 'STANDARD';
+    planConfig = PLAN_CONFIGS.STANDARD;
+  } else {
+    console.log('Not a recognized plan subscription, skipping');
     return;
   }
 
-  console.log(`Activating Basic plan for user ${userId}`);
+  console.log(`Activating ${planType} plan for user ${userId}`);
 
-  // Get plan configuration
-  const planConfig = PLAN_CONFIGS.BASIC;
-
-  // Update user with Basic plan
+  // Update user with plan
   await db.user.update({
     where: { id: userId },
     data: {
-      planType: 'BASIC',
+      planType,
       quota: planConfig.quota,
       parseLimit: planConfig.parseLimit,
       parseCount: 0, // Reset count on subscription
       parseResetDate: calculateNextResetDate(),
       stripeCustomerId: membershipId, // Store Whop membership ID
       stripeSubscriptionId: product?.id,
-      priceId: data.plan_id || 'basic', // Store plan variant (monthly/annual)
+      priceId: data.plan_id || planType.toLowerCase(), // Store plan variant (monthly/annual)
       currentPeriodEnd: data.expires_at ? new Date(data.expires_at) : null,
     },
   });
 
-  console.log(`Successfully activated Basic plan for user ${userId}`);
+  console.log(`Successfully activated ${planType} plan for user ${userId}`);
 }
 
 /**

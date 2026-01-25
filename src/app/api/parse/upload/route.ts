@@ -59,13 +59,13 @@ export async function POST(req: NextRequest) {
     console.log("[upload] REJECTED: User not found in database");
     return Response.json({ error: "User not found" }, { status: 404 });
   }
-  // Check if parse count needs to be reset (monthly refresh for BASIC plan only)
+  // Check if parse count needs to be reset (monthly refresh for BASIC and STANDARD plans)
   const now = new Date();
   let parseCount = user.parseCount;
   let needsReset = false;
-  // Only reset for BASIC plan users (FREE plan never resets)
-  if (user.planType === 'BASIC' && user.parseResetDate && now >= user.parseResetDate) {
-    console.log("[upload] Parse count reset is due for BASIC user, resetting to 0");
+  // Only reset for paid plan users (FREE plan never resets)
+  if ((user.planType === 'BASIC' || user.planType === 'STANDARD') && user.parseResetDate && now >= user.parseResetDate) {
+    console.log(`[upload] Parse count reset is due for ${user.planType} user, resetting to 0`);
     needsReset = true;
     parseCount = 0;
     // Calculate next reset date (one month from now)
@@ -191,7 +191,7 @@ export async function POST(req: NextRequest) {
   // Create parse record and increment parseCount
   try {
     const transactionResult = await db.$transaction(async (tx) => {
-      // Reset parseCount if needed (BASIC only)
+      // Reset parseCount if needed (BASIC and STANDARD plans)
       if (needsReset) {
         const nextReset = new Date(now);
         nextReset.setMonth(nextReset.getMonth() + 1);

@@ -261,3 +261,12 @@ User: "is it safe to add tanstack/react-query?"
 - **Scoped verification**: Only check changed files + dependents
 - **Build skipping**: Full `next build` may be skipped if low-resource detected
 - **Fallback modes**: Skills will ask for approval before expensive operations
+
+## TODOs & Known Issues
+
+### Database Schema
+
+- **TODO**: Investigate the usage of the `credits` field in the User model (schema.prisma:34)
+  - Currently using `parseLimit` for monthly AI parse resets
+  - Need to clarify the distinction between `credits` and `parseLimit`
+  - May be related to one-time credit purchases vs subscription limits

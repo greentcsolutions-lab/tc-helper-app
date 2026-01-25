@@ -27,7 +27,7 @@ export async function GET() {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    const planConfig = PLAN_CONFIGS[user.planType as 'FREE' | 'BASIC'];
+    const planConfig = PLAN_CONFIGS[user.planType as 'FREE' | 'BASIC' | 'STANDARD'];
 
     return NextResponse.json({
       planType: user.planType,

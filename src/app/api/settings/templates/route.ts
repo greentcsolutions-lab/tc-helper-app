@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Check template limit
-    const planConfig = PLAN_CONFIGS[user.planType as 'FREE' | 'BASIC'];
+    const planConfig = PLAN_CONFIGS[user.planType as 'FREE' | 'BASIC' | 'STANDARD'];
     if (user.templateCount >= planConfig.templateLimit) {
       return NextResponse.json(
         { error: `Template limit reached (${planConfig.templateLimit} templates)` },

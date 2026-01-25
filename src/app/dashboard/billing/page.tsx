@@ -8,6 +8,8 @@ import { PLAN_CONFIGS } from "@/lib/whop";
 import { lazy, Suspense } from "react";
 import { CheckCircle2, XCircle, Zap, Loader2 } from "lucide-react";
 import { UpgradeButton, BuyCreditsButton } from "@/components/billing/BillingActions";
+import { PlanComparison } from "@/components/billing/PlanComparison";
+import { SubscriptionManagement } from "@/components/billing/SubscriptionManagement";
 
 const CreditsBadge = lazy(() => import("@/components/ui/CreditsBadge"));
 
@@ -58,7 +60,7 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
     },
   });
 
-  const planConfig = PLAN_CONFIGS[user.planType as 'FREE' | 'BASIC'];
+  const planConfig = PLAN_CONFIGS[user.planType as 'FREE' | 'BASIC' | 'STANDARD'];
   const isFreeUser = user.planType === 'FREE';
 
   return (
@@ -67,14 +69,14 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
       {params.success && (
         <Alert variant="success">
           <CheckCircle2 className="h-4 w-4" />
-          <AlertTitle>Welcome to TC Helper Basic! 🎉</AlertTitle>
+          <AlertTitle>Welcome to TC Helper {planConfig.name}! 🎉</AlertTitle>
           <AlertDescription>
             <p className="mb-2">
               Your subscription is being activated. This usually takes just a few seconds.
             </p>
             <p className="text-xs flex items-center gap-1">
               <Loader2 className="h-3 w-3 animate-spin" />
-              If your plan hasn't updated yet, refresh the page in a moment.
+              If your plan hasn&apos;t updated yet, refresh the page in a moment.
             </p>
           </AlertDescription>
         </Alert>
@@ -101,7 +103,7 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
           <XCircle className="h-4 w-4" />
           <AlertTitle>Checkout Canceled</AlertTitle>
           <AlertDescription>
-            Your checkout was canceled. No charges were made. Feel free to try again when you're ready!
+            Your checkout was canceled. No charges were made. Feel free to try again when you&apos;re ready!
           </AlertDescription>
         </Alert>
       )}
@@ -208,76 +210,11 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
         </CardContent>
       </Card>
 
-      {/* Plan Comparison Card */}
-      {isFreeUser && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Plan Comparison</CardTitle>
-            <CardDescription>See what you get with the Basic plan</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 md:grid-cols-2">
-              <div>
-                <h4 className="font-semibold mb-3 flex items-center gap-2">
-                  <XCircle className="h-5 w-5 text-muted-foreground" />
-                  Free Plan
-                </h4>
-                <ul className="space-y-2 text-sm">
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-green-500" />
-                    1 AI parse (total, no reset)
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-green-500" />
-                    1 concurrent transaction
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-green-500" />
-                    10 custom tasks
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-green-500" />
-                    1 task template
-                  </li>
-                </ul>
-              </div>
+      {/* Plan Comparison */}
+      <PlanComparison currentPlan={user.planType as 'FREE' | 'BASIC' | 'STANDARD'} />
 
-              <div>
-                <h4 className="font-semibold mb-3 flex items-center gap-2">
-                  <Zap className="h-5 w-5 text-primary" />
-                  Basic Plan
-                </h4>
-                <ul className="space-y-2 text-sm">
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-green-500" />
-                    5 AI parses per month
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-green-500" />
-                    20 concurrent transactions
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-green-500" />
-                    100 custom tasks
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-green-500" />
-                    10 task templates
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-green-500" />
-                    Monthly or annual billing
-                  </li>
-                </ul>
-              </div>
-            </div>
-
-            <div className="mt-6 pt-6 border-t flex justify-center">
-              <UpgradeButton size="lg" />
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      {/* Subscription Management */}
+      {!isFreeUser && <SubscriptionManagement />}
     </div>
   );
 }

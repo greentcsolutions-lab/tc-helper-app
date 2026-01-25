@@ -139,54 +139,59 @@ export default function PlansPage() {
             </Card>
 
             {/* STANDARD PLAN */}
-            <Card className="p-8 border-2 border-dashed border-muted-foreground/30 hover:shadow-xl transition-all duration-300 relative opacity-90">
-              <Badge variant="secondary" className="absolute -top-3 right-8">
-                Coming Soon
+            <Card className="p-8 border-2 hover:shadow-xl transition-all duration-300 relative">
+              <Badge variant="outline" className="absolute -top-3 left-8">
+                Available Now
               </Badge>
               <div className="mb-6">
                 <h3 className="text-2xl font-bold mb-2">Standard</h3>
                 <div className="flex items-baseline gap-2 mb-2">
-                  <span className="text-4xl font-bold text-muted-foreground">—</span>
+                  <span className="text-4xl font-bold">$50</span>
+                  <span className="text-muted-foreground">/month</span>
                 </div>
-                <p className="text-muted-foreground">Pricing to be announced</p>
+                <p className="text-muted-foreground">or $500/year (save $100)</p>
               </div>
               <ul className="space-y-3 mb-8">
                 <li className="flex items-start gap-2">
-                  <Check className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
-                  <span><strong>Higher usage limits</strong> on all features</span>
+                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                  <span><strong>50 AI parses per month</strong> (resets monthly)</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <Check className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
-                  <span>More AI parses per month</span>
+                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                  <span>200 concurrent transactions</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <Check className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
-                  <span>Increased transactions & tasks</span>
+                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                  <span>Unlimited custom tasks</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <Check className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
-                  <span>Unlimited task templates</span>
+                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                  <span>50 task templates</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                  <span>All core features included</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <MessageSquare className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
-                  <span><strong>Communications Center unlocked</strong></span>
+                  <span><strong>Communications Center</strong> (coming soon)</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Calendar className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
-                  <span><strong>Google Calendar integration</strong></span>
+                  <span><strong>Google Calendar integration</strong> (coming soon)</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <Home className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
-                  <span><strong>Listing workflows</strong></span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <Check className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
+                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
                   <span>Priority support</span>
                 </li>
               </ul>
-              <Button variant="outline" className="w-full h-12 text-base" disabled>
-                Coming Soon
-              </Button>
+              <SignedOut>
+                <SignUpButton mode="modal">
+                  <Button className="w-full h-12 text-base">
+                    Get Started
+                  </Button>
+                </SignUpButton>
+              </SignedOut>
             </Card>
           </div>
 
@@ -320,7 +325,7 @@ export default function PlansPage() {
       <section className="py-20 px-4 bg-muted/30">
         <div className="max-w-6xl mx-auto">
           <h2 className="text-3xl md:text-4xl font-bold text-center mb-4">
-            What's Included in Every Plan
+            What&apos;s Included in Every Plan
           </h2>
           <p className="text-xl text-muted-foreground text-center mb-12">
             All plans include these core features
@@ -360,7 +365,7 @@ export default function PlansPage() {
             Building the Future of Transaction Coordination
           </h2>
           <p className="text-xl text-muted-foreground mb-8 leading-relaxed">
-            We're actively developing Standard, Pro, and Teams plans with enhanced capabilities.
+            We&apos;re actively developing Standard, Pro, and Teams plans with enhanced capabilities.
             Our focus is on higher usage limits, advanced communications features, and seamless team collaboration.
           </p>
           <div className="flex flex-wrap gap-4 justify-center">
@@ -406,7 +411,7 @@ export default function PlansPage() {
             <Card className="p-6">
               <h3 className="text-lg font-semibold mb-2">What happens to my data if I downgrade?</h3>
               <p className="text-muted-foreground">
-                Your existing data remains safe. If you exceed the limits of your new plan, you'll need to archive some transactions or upgrade again to access them.
+                Your existing data remains safe. If you exceed the limits of your new plan, you&apos;ll need to archive some transactions or upgrade again to access them.
               </p>
             </Card>
 
@@ -420,14 +425,14 @@ export default function PlansPage() {
             <Card className="p-6">
               <h3 className="text-lg font-semibold mb-2">When will Standard, Pro, and Teams plans be available?</h3>
               <p className="text-muted-foreground">
-                We're actively developing these plans and will announce availability soon. Sign up for our free plan to stay updated on new releases.
+                We&apos;re actively developing these plans and will announce availability soon. Sign up for our free plan to stay updated on new releases.
               </p>
             </Card>
 
             <Card className="p-6">
               <h3 className="text-lg font-semibold mb-2">Can I try the Basic plan before committing?</h3>
               <p className="text-muted-foreground">
-                Absolutely! Start with our Free plan to test the platform with 1 AI parse. When you're ready, upgrade to Basic for full access.
+                Absolutely! Start with our Free plan to test the platform with 1 AI parse. When you&apos;re ready, upgrade to Basic for full access.
               </p>
             </Card>
           </div>
@@ -442,7 +447,7 @@ export default function PlansPage() {
               Ready to Get Started?
             </h2>
             <p className="text-xl text-muted-foreground mb-8">
-              Start with our free plan and upgrade when you're ready
+              Start with our free plan and upgrade when you&apos;re ready
             </p>
             <SignedOut>
               <SignUpButton mode="modal">

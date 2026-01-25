@@ -29,18 +29,18 @@ onboardingOptedOut       Boolean @default(false) // User clicked "don't ask agai
 lastOnboardingPrompt     DateTime?               // Last time we showed the modal
 
 // Plan & Subscription (Repurposed for Whop)
-planType             String    @default("FREE") // "FREE" | "BASIC"
-quota                Int       @default(1)      // Concurrent active transactions (1 for FREE, 5 for BASIC)
-credits              Int       @default(1)      // AI parse credits (1 for FREE, resets monthly for BASIC)
+planType             String    @default("FREE") // "FREE" | "BASIC" | "STANDARD"
+quota                Int       @default(1)      // Concurrent active transactions (1 for FREE, 20 for BASIC, 200 for STANDARD)
+credits              Int       @default(1)      // AI parse credits (1 for FREE, resets monthly for BASIC/STANDARD)
 stripeCustomerId     String?                    // Repurposed: Whop membership ID
 stripeSubscriptionId String?                    // Repurposed: Whop product ID
 priceId              String?                    // Repurposed: Whop plan variant (monthly/annual)
 currentPeriodEnd     DateTime?                  // Subscription period end
 
 // Usage Tracking
-customTaskCount      Int       @default(0)      // Current custom tasks (max 10 for FREE, 100 for BASIC)
-templateCount        Int       @default(0)      // Current task templates (max 1 for FREE, 10 for BASIC)
-parseLimit           Int       @default(1)      // Monthly parse limit (1 for FREE, 5 for BASIC)
+customTaskCount      Int       @default(0)      // Current custom tasks (max 10 for FREE, 100 for BASIC, unlimited for STANDARD)
+templateCount        Int       @default(0)      // Current task templates (max 1 for FREE, 10 for BASIC, 50 for STANDARD)
+parseLimit           Int       @default(1)      // Monthly parse limit (1 for FREE, 5 for BASIC, 50 for STANDARD)
 parseCount           Int       @default(0)      // Current month's parse count
 parseResetDate       DateTime? @default(now())  // When to reset parseCount to 0
 

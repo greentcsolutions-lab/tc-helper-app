@@ -30,12 +30,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    // Check if parse count needs to be reset (monthly refresh for BASIC plan only)
+    // Check if parse count needs to be reset (monthly refresh for BASIC and STANDARD plans)
     const now = new Date();
     let parseCount = dbUser.parseCount;
 
-    // Only reset for BASIC plan users (FREE plan never resets)
-    if (dbUser.planType === 'BASIC' && dbUser.parseResetDate && now >= dbUser.parseResetDate) {
+    // Only reset for paid plan users (FREE plan never resets)
+    if ((dbUser.planType === 'BASIC' || dbUser.planType === 'STANDARD') && dbUser.parseResetDate && now >= dbUser.parseResetDate) {
       parseCount = 0;
 
       // Calculate next reset date (one month from now)
