@@ -1,4 +1,4 @@
-# Project Structure (last updated: 2026-01-24 08:58)
+# Project Structure (last updated: 2026-01-25 16:05)
 
 ```
 .
@@ -77,6 +77,8 @@
 │   │   │   └── migration.sql
 │   │   ├── 20260120172840_add_calendar_sync_memory
 │   │   │   └── migration.sql
+│   │   ├── 20260124121225_add_communications_model
+│   │   │   └── migration.sql
 │   │   ├── migration_lock.toml
 │   │   └── migration.sql
 │   └── schema.prisma
@@ -116,6 +118,9 @@
 │   │   │   │   └── renew-webhooks
 │   │   │   ├── debug
 │   │   │   │   └── whop-config
+│   │   │   │       └── route.ts
+│   │   │   ├── email
+│   │   │   │   └── inbound
 │   │   │   │       └── route.ts
 │   │   │   ├── google-calendar
 │   │   │   │   ├── callback
@@ -367,7 +372,13 @@
 │   │   │   └── parse-logger.ts
 │   │   ├── email
 │   │   │   ├── client.ts
-│   │   │   └── send-welcome-email.ts
+│   │   │   ├── parse-email-notes.ts
+│   │   │   ├── rate-limiter.ts
+│   │   │   ├── send-extraction-failed-email.ts
+│   │   │   ├── send-extraction-success-email.ts
+│   │   │   ├── send-rejection-email.ts
+│   │   │   ├── send-welcome-email.ts
+│   │   │   └── validate-inbound.ts
 │   │   ├── extraction
 │   │   │   ├── classify
 │   │   │   │   ├── markdown-classifier.ts
@@ -428,7 +439,6 @@
 ├── .vscode
 │   └── settings.json
 ├── ChangeLog.md
-├── .claude-branch
 ├── CLAUDE.md
 ├── .claude-state.md
 ├── components.json
@@ -454,5 +464,5 @@
 ├── WEBHOOK_FIX_REQUIRED.md
 └── WHOP_INTEGRATION_SETUP.md
 
-168 directories, 284 files
+171 directories, 289 files
 ```

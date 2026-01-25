@@ -2,7 +2,7 @@ import { auth, clerkClient } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/prisma';
-import { sendWelcomeEmail } from '@/lib/email/send-welcome-email';
+import { sendWelcomeEmail } from '@/lib/email/outbound/system/welcome';
 
 const ALLOWED_FIELDS = ['name', 'phone', 'role', 'problems', 'referralSource', 'onboarded'] as const;
 

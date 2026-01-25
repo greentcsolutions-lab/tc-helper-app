@@ -131,7 +131,7 @@ export default function PrivacyPage() {
           </p>
           <p className="font-medium">
             TC Helper App<br />
-            Email: <a href="mailto:info@tchelper.app" className="underline">info@tchelper.app</a><br />
+            Email: <a href="mailto:greentcsolutions@gmail.com" className="underline">greentcsolutions@gmail.com</a><br />
             Mountain Grove, Missouri 65711
           </p>
         </section>
