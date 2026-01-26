@@ -469,20 +469,20 @@ export default function Home() {
             <PricingCard
               title="Free" price="$0"
               description="No credit card required"
-              features={["1 AI parse lifetime", "1 concurrent transaction", "10 custom tasks"]}
+              features={["1 AI extraction lifetime", "1 concurrent transaction", "10 custom tasks"]}
               buttonText="Start Free"
             />
             <PricingCard
               title="Basic" price="$20"
               description="or $200/year (save $40)"
-              features={["5 AI parses per month", "20 concurrent transactions", "100 custom tasks", "Priority support"]}
+              features={["15 AI extractions per month", "Unlimited Transactions", "100 custom tasks", "Priority support"]}
               buttonText="Get Started"
               highlighted={true}
             />
             <PricingCard
               title="Standard" price="$50"
               description="or $500/year (save $100)"
-              features={["50 AI parses per month", "500 concurrent transactions", "Unlimited custom tasks", "50 task templates", "Calendar sync (coming soon)", "Communications (coming soon)"]}
+              features={["60 AI extractions per month", "Unlimited Transactions", "Unlimited custom tasks", "50 task templates", "Calendar sync (coming soon)", "Communications (coming soon)"]}
               buttonText="Get Started"
             />
           </div>

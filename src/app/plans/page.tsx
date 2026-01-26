@@ -59,7 +59,7 @@ export default function PlansPage() {
               <ul className="space-y-3 mb-8">
                 <li className="flex items-start gap-2">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span>1 AI parse (lifetime, no reset)</span>
+                  <span>1 AI extraction (lifetime, no reset)</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
@@ -106,11 +106,11 @@ export default function PlansPage() {
               <ul className="space-y-3 mb-8">
                 <li className="flex items-start gap-2">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span><strong>5 AI parses per month</strong> (resets monthly)</span>
+                  <span><strong>15 AI extractions per month</strong> (resets monthly)</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span>20 concurrent transactions</span>
+                  <span>Unlimited Transactions</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
@@ -154,11 +154,11 @@ export default function PlansPage() {
               <ul className="space-y-3 mb-8">
                 <li className="flex items-start gap-2">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span><strong>50 AI parses per month</strong> (resets monthly)</span>
+                  <span><strong>60 AI extractions per month</strong> (resets monthly)</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span>500 concurrent transactions</span>
+                  <span>Unlimited Transactions</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
@@ -212,7 +212,7 @@ export default function PlansPage() {
                 </li>
                 <li className="flex items-start gap-2">
                   <Check className="h-5 w-5 text-purple-600 shrink-0 mt-0.5" />
-                  <span>Maximum AI parses per month</span>
+                  <span>Maximum AI extractions per month</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Check className="h-5 w-5 text-purple-600 shrink-0 mt-0.5" />

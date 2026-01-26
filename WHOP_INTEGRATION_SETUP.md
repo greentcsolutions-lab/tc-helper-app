@@ -31,20 +31,20 @@ This document explains the complete Whop integration that has been added to your
 **Plan Configurations**:
 ```typescript
 FREE:
-  - 1 AI parse (total, never resets)
+  - 1 AI extraction (total, never resets)
   - 1 concurrent transaction
   - 10 custom tasks
   - 1 task template
 
 BASIC ($20/mo or $200/yr):
-  - 5 AI parses per month (resets monthly)
-  - 20 concurrent transactions
+  - 15 AI extractions per month (resets monthly)
+  - Unlimited Transactions (soft limit)
   - 100 custom tasks
   - 10 task templates
 
 STANDARD ($50/mo or $500/yr):
-  - 50 AI parses per month (resets monthly)
-  - 500 concurrent transactions
+  - 60 AI extractions per month (resets monthly)
+  - Unlimited Transactions (soft limit)
   - Unlimited custom tasks (soft limit 9999)
   - 50 task templates
   - Google Calendar integration (coming soon)
@@ -163,7 +163,7 @@ npx prisma migrate deploy
 2. Verify they have:
    - 1 parse limit
    - 1 concurrent transaction
-   - 1 custom task
+   - 10 custom tasks
 3. Try to exceed limits and confirm error messages appear
 
 ### 3. Test Basic Plan Upgrade Flow
@@ -172,9 +172,9 @@ npx prisma migrate deploy
 3. Complete checkout on Whop (use test mode if available)
 4. Webhook should fire and upgrade user automatically
 5. Verify new limits:
-   - 5 parses per month
-   - 5 concurrent transactions
-   - 10 custom tasks
+   - 15 AI extractions per month
+   - Unlimited Transactions
+   - 100 custom tasks
 
 ### 4. Test Credit Purchase
 1. Navigate to `/dashboard/billing`
@@ -194,8 +194,9 @@ npx prisma migrate deploy
 ## Important Notes
 
 ### Parse Reset Logic
-- **FREE Plan**: 1 parse total, NEVER resets (lifetime limit)
-- **BASIC Plan**: 5 parses per month, resets on the anniversary of their signup date
+- **FREE Plan**: 1 AI extraction total, NEVER resets (lifetime limit)
+- **BASIC Plan**: 15 AI extractions per month, resets on the anniversary of their signup date
+- **STANDARD Plan**: 60 AI extractions per month, resets on the anniversary of their signup date
 - Reset happens automatically on next upload/transaction after reset date passes
 - Works for both monthly and annual billing (annual subscribers still get monthly parse resets)
 
@@ -306,9 +307,9 @@ If you encounter issues:
 ## Summary
 
 You now have a complete payment integration with:
-- ✅ FREE and BASIC plan tiers
+- ✅ FREE, BASIC, and STANDARD plan tiers
 - ✅ Automatic monthly parse limit resets
-- ✅ Quota enforcement for concurrent transactions
+- ✅ Soft quota limit for concurrent transactions
 - ✅ Custom task limits
 - ✅ One-time credit purchases
 - ✅ Webhook automation for subscriptions

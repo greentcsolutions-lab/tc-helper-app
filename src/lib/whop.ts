@@ -29,8 +29,8 @@ export type PlanType = 'FREE' | 'BASIC' | 'STANDARD' | 'DEV';
 // Plan Configuration
 export interface PlanConfig {
   name: string;
-  quota: number;           // Concurrent active transactions
-  parseLimit: number;      // AI parses (FREE: total, BASIC: per month)
+  quota: number;           // Max concurrent transactions (soft limit)
+  parseLimit: number;      // AI extractions (FREE: total, others: per month)
   customTaskLimit: number; // Custom tasks limit
   templateLimit: number;   // Task templates limit
   price: {
@@ -43,7 +43,7 @@ export const PLAN_CONFIGS: Record<PlanType, PlanConfig> = {
   FREE: {
     name: 'Free',
     quota: 1,              // 1 concurrent transaction
-    parseLimit: 1,         // 1 AI parse total (never resets)
+    parseLimit: 1,         // 1 AI extraction total (never resets)
     customTaskLimit: 10,   // 10 custom tasks
     templateLimit: 1,      // 1 task template
     price: {
@@ -53,8 +53,8 @@ export const PLAN_CONFIGS: Record<PlanType, PlanConfig> = {
   },
   BASIC: {
     name: 'Basic',
-    quota: 20,             // 20 concurrent transactions
-    parseLimit: 5,         // 5 AI parses per month (resets monthly)
+    quota: 9999,           // Unlimited transactions (soft limit)
+    parseLimit: 15,        // 15 AI extractions per month (resets monthly)
     customTaskLimit: 100,  // 100 custom tasks
     templateLimit: 10,     // 10 task templates
     price: {
@@ -64,8 +64,8 @@ export const PLAN_CONFIGS: Record<PlanType, PlanConfig> = {
   },
   STANDARD: {
     name: 'Standard',
-    quota: 500,            // 500 concurrent transactions
-    parseLimit: 50,        // 50 AI parses per month (resets monthly)
+    quota: 9999,           // Unlimited transactions (soft limit)
+    parseLimit: 60,        // 60 AI extractions per month (resets monthly)
     customTaskLimit: 9999, // Unlimited (soft limit)
     templateLimit: 50,     // 50 task templates
     price: {
