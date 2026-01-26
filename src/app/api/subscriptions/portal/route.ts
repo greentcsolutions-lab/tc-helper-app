@@ -2,7 +2,9 @@
  * Get Whop Customer Portal URL
  *
  * GET /api/subscriptions/portal
- * Returns the manage_url for the user's active subscription
+ * Returns the manage_url for subscription management
+ * - Paid users: Whop billing portal to manage/cancel
+ * - Free users: Plans page to upgrade
  */
 
 import { NextResponse } from 'next/server';
@@ -32,23 +34,19 @@ export async function GET() {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    // Free users don't have a subscription to manage
-    if (user.planType === 'FREE') {
-      return NextResponse.json(
-        { error: 'No active subscription' },
-        { status: 400 }
-      );
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+
+    // Free users → redirect to plans page to upgrade
+    if (user.planType === 'FREE' || !user.stripeCustomerId) {
+      return NextResponse.json({
+        url: `${appUrl}/plans`,
+        status: 'free',
+        cancelAtPeriodEnd: false,
+        renewalPeriodEnd: null,
+      });
     }
 
-    // Need membership ID to get portal URL
-    if (!user.stripeCustomerId) {
-      return NextResponse.json(
-        { error: 'Subscription data not found' },
-        { status: 400 }
-      );
-    }
-
-    // Fetch membership details from Whop API
+    // Paid users → fetch Whop billing portal URL
     const apiKey = getWhopApiKey();
     const response = await fetch(
       `https://api.whop.com/api/v5/company/memberships/${user.stripeCustomerId}`,
@@ -62,19 +60,25 @@ export async function GET() {
 
     if (!response.ok) {
       console.error('Whop API error:', response.status, await response.text());
-      return NextResponse.json(
-        { error: 'Failed to retrieve subscription details' },
-        { status: 500 }
-      );
+      // Fallback to plans page if Whop API fails
+      return NextResponse.json({
+        url: `${appUrl}/plans`,
+        status: 'error',
+        cancelAtPeriodEnd: false,
+        renewalPeriodEnd: null,
+      });
     }
 
     const membership = await response.json();
 
+    // Fallback if manage_url not available
     if (!membership.manage_url) {
-      return NextResponse.json(
-        { error: 'Portal URL not available' },
-        { status: 500 }
-      );
+      return NextResponse.json({
+        url: `${appUrl}/plans`,
+        status: membership.status || 'unknown',
+        cancelAtPeriodEnd: false,
+        renewalPeriodEnd: null,
+      });
     }
 
     return NextResponse.json({
