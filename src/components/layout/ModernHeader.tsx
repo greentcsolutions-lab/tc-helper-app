@@ -4,15 +4,18 @@ import { UserButton, SignedIn, SignedOut, SignInButton, SignUpButton } from "@cl
 import { Button } from "@/components/ui/button";
 import ThemeToggle from "./ThemeToggle";
 import CreditsBadge from "@/components/ui/CreditsBadge";
+import PlanBadge from "@/components/ui/PlanBadge";
 import { Sparkles } from "lucide-react";
 import Link from "next/link";
+import type { PlanType } from "@/lib/whop";
 
 interface ModernHeaderProps {
   credits?: number;
+  planType?: PlanType;
   sidebarCollapsed?: boolean;
 }
 
-export default function ModernHeader({ credits, sidebarCollapsed }: ModernHeaderProps) {
+export default function ModernHeader({ credits, planType, sidebarCollapsed }: ModernHeaderProps) {
   return (
     <header className="h-16 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-30">
       <div className="h-full flex items-center justify-between px-6 gap-4">
@@ -40,6 +43,13 @@ export default function ModernHeader({ credits, sidebarCollapsed }: ModernHeader
         {/* Right side - Global actions */}
         <div className="flex-1 flex items-center justify-end gap-3">
           <SignedIn>
+            {/* Plan Badge */}
+            {planType && (
+              <div className="hidden sm:block">
+                <PlanBadge planType={planType} />
+              </div>
+            )}
+
             {/* Credits Badge */}
             {credits !== undefined && (
               <div className="hidden sm:block">
