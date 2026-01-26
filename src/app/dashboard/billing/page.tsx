@@ -7,7 +7,7 @@ import { db } from "@/lib/prisma";
 import { PLAN_CONFIGS } from "@/lib/whop";
 import { lazy, Suspense } from "react";
 import { CheckCircle2, XCircle, Zap, Loader2 } from "lucide-react";
-import { UpgradeButton, BuyCreditsButton } from "@/components/billing/BillingActions";
+import { UpgradeButton, BuyCreditsButton, ManageSubscriptionButton } from "@/components/billing/BillingActions";
 
 const CreditsBadge = lazy(() => import("@/components/ui/CreditsBadge"));
 
@@ -123,7 +123,23 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
                 {isFreeUser ? 'Free forever' : `$${planConfig.price.monthly}/month or $${planConfig.price.annual}/year`}
               </p>
             </div>
-            {isFreeUser && <UpgradeButton size="lg" />}
+            <div className="flex items-center gap-3">
+              {isFreeUser && (
+                <>
+                  <UpgradeButton size="default" plan="basic" />
+                  <UpgradeButton size="default" plan="standard" />
+                </>
+              )}
+              {isBasicUser && (
+                <>
+                  <UpgradeButton size="default" plan="standard" />
+                  <ManageSubscriptionButton />
+                </>
+              )}
+              {!isFreeUser && !isBasicUser && (
+                <ManageSubscriptionButton />
+              )}
+            </div>
           </div>
 
           {/* Usage Metrics */}
