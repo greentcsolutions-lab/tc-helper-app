@@ -5,7 +5,12 @@ import { Zap, CreditCard } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
-export function UpgradeButton({ size = 'default' }: { size?: 'default' | 'lg' | 'sm' }) {
+interface UpgradeButtonProps {
+  size?: 'default' | 'lg' | 'sm';
+  plan?: 'basic' | 'standard';
+}
+
+export function UpgradeButton({ size = 'default', plan = 'basic' }: UpgradeButtonProps) {
   const [loading, setLoading] = useState(false);
 
   const handleUpgrade = async () => {
@@ -13,6 +18,8 @@ export function UpgradeButton({ size = 'default' }: { size?: 'default' | 'lg' | 
       setLoading(true);
       const response = await fetch('/api/subscriptions/checkout', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan }),
       });
 
       if (!response.ok) {
@@ -31,6 +38,8 @@ export function UpgradeButton({ size = 'default' }: { size?: 'default' | 'lg' | 
     }
   };
 
+  const label = plan === 'standard' ? 'Upgrade to Standard' : 'Upgrade to Basic';
+
   return (
     <Button
       size={size}
@@ -39,7 +48,7 @@ export function UpgradeButton({ size = 'default' }: { size?: 'default' | 'lg' | 
       disabled={loading}
     >
       <Zap className="h-4 w-4" />
-      {loading ? 'Loading...' : 'Upgrade to Basic'}
+      {loading ? 'Loading...' : label}
     </Button>
   );
 }

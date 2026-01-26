@@ -480,11 +480,10 @@ export default function Home() {
               highlighted={true}
             />
             <PricingCard
-              title="Standard" price="—"
-              description="Pricing to be announced"
-              features={["Higher usage limits", "Google Calendar sync", "Communications Center", "Listing workflows"]}
-              buttonText="Coming Soon"
-              comingSoon={true}
+              title="Standard" price="$50"
+              description="or $500/year (save $100)"
+              features={["50 AI parses per month", "500 concurrent transactions", "Unlimited custom tasks", "50 task templates", "Calendar sync (coming soon)", "Communications (coming soon)"]}
+              buttonText="Get Started"
             />
           </div>
         </div>

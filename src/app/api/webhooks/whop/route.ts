@@ -14,6 +14,7 @@ import {
   PLAN_CONFIGS,
   calculateNextResetDate,
   WHOP_PRODUCTS,
+  WHOP_PLANS,
 } from '@/lib/whop';
 
 export async function POST(req: NextRequest) {
@@ -69,40 +70,44 @@ export async function POST(req: NextRequest) {
 async function handleMembershipActivated(data: any) {
   const { id: membershipId, product, user, metadata } = data;
   const userId = metadata?.userId || user?.id;
+  const planId = data.plan_id;
 
   if (!userId) {
     console.error('No userId found in membership data');
     return;
   }
 
-  // Check if this is the Basic plan
-  if (product?.id !== WHOP_PRODUCTS.BASIC_PLAN) {
-    console.log('Not a Basic plan subscription, skipping');
+  // Determine which plan based on Whop plan ID
+  const isBasicPlan = planId === WHOP_PLANS.BASIC_MONTHLY || planId === WHOP_PLANS.BASIC_YEARLY;
+  const isStandardPlan = planId === WHOP_PLANS.STANDARD_MONTHLY || planId === WHOP_PLANS.STANDARD_YEARLY;
+
+  if (!isBasicPlan && !isStandardPlan) {
+    console.log(`Unknown plan ${planId}, skipping`);
     return;
   }
 
-  console.log(`Activating Basic plan for user ${userId}`);
+  const planType = isStandardPlan ? 'STANDARD' : 'BASIC';
+  const planConfig = isStandardPlan ? PLAN_CONFIGS.STANDARD : PLAN_CONFIGS.BASIC;
 
-  // Get plan configuration
-  const planConfig = PLAN_CONFIGS.BASIC;
+  console.log(`Activating ${planType} plan for user ${userId}`);
 
-  // Update user with Basic plan
+  // Update user with the plan
   await db.user.update({
     where: { id: userId },
     data: {
-      planType: 'BASIC',
+      planType,
       quota: planConfig.quota,
       parseLimit: planConfig.parseLimit,
       parseCount: 0, // Reset count on subscription
       parseResetDate: calculateNextResetDate(),
       stripeCustomerId: membershipId, // Store Whop membership ID
       stripeSubscriptionId: product?.id,
-      priceId: data.plan_id || 'basic', // Store plan variant (monthly/annual)
+      priceId: planId,
       currentPeriodEnd: data.expires_at ? new Date(data.expires_at) : null,
     },
   });
 
-  console.log(`Successfully activated Basic plan for user ${userId}`);
+  console.log(`Successfully activated ${planType} plan for user ${userId}`);
 }
 
 /**

@@ -139,54 +139,55 @@ export default function PlansPage() {
             </Card>
 
             {/* STANDARD PLAN */}
-            <Card className="p-8 border-2 border-dashed border-muted-foreground/30 hover:shadow-xl transition-all duration-300 relative opacity-90">
-              <Badge variant="secondary" className="absolute -top-3 right-8">
-                Coming Soon
+            <Card className="p-8 border-2 hover:shadow-xl transition-all duration-300 relative">
+              <Badge variant="outline" className="absolute -top-3 left-8">
+                Available Now
               </Badge>
               <div className="mb-6">
                 <h3 className="text-2xl font-bold mb-2">Standard</h3>
                 <div className="flex items-baseline gap-2 mb-2">
-                  <span className="text-4xl font-bold text-muted-foreground">—</span>
+                  <span className="text-4xl font-bold">$50</span>
+                  <span className="text-muted-foreground">/month</span>
                 </div>
-                <p className="text-muted-foreground">Pricing to be announced</p>
+                <p className="text-muted-foreground">or $500/year (save $100)</p>
               </div>
               <ul className="space-y-3 mb-8">
                 <li className="flex items-start gap-2">
-                  <Check className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
-                  <span><strong>Higher usage limits</strong> on all features</span>
+                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                  <span><strong>50 AI parses per month</strong> (resets monthly)</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <Check className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
-                  <span>More AI parses per month</span>
+                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                  <span>500 concurrent transactions</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <Check className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
-                  <span>Increased transactions & tasks</span>
+                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                  <span>Unlimited custom tasks</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <Check className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
-                  <span>Unlimited task templates</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <MessageSquare className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
-                  <span><strong>Communications Center unlocked</strong></span>
+                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+                  <span>50 task templates</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Calendar className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
-                  <span><strong>Google Calendar integration</strong></span>
+                  <span className="text-muted-foreground"><strong>Google Calendar integration</strong> (coming soon)</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <Home className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
-                  <span><strong>Listing workflows</strong></span>
+                  <MessageSquare className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
+                  <span className="text-muted-foreground"><strong>Communications Center</strong> (coming soon)</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <Check className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
+                  <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
                   <span>Priority support</span>
                 </li>
               </ul>
-              <Button variant="outline" className="w-full h-12 text-base" disabled>
-                Coming Soon
-              </Button>
+              <SignedOut>
+                <SignUpButton mode="modal">
+                  <Button variant="outline" className="w-full h-12 text-base">
+                    Get Started
+                  </Button>
+                </SignUpButton>
+              </SignedOut>
             </Card>
           </div>
 

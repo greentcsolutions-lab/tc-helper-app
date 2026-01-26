@@ -7,7 +7,7 @@ This document explains the complete Whop integration that has been added to your
 ### 1. Database Schema Updates
 - **Migration**: `prisma/migrations/20260109122422_add_basic_plan_support/migration.sql`
 - **New Fields Added to User Model**:
-  - `planType`: User's current plan (FREE or BASIC)
+  - `planType`: User's current plan (FREE, BASIC, or STANDARD)
   - `parseLimit`: Monthly AI parse limit
   - `parseCount`: Current month's parse usage
   - `parseResetDate`: When to reset the monthly parse count
@@ -21,6 +21,11 @@ This document explains the complete Whop integration that has been added to your
 
 **Product IDs**:
 - Basic Plan: `prod_qBP7zVT60nXmZ` ($20/month or $200/year)
+  - Monthly: `plan_jiXiD1lGMTEy6`
+  - Yearly: `plan_z80DjYcElspeg`
+- Standard Plan: ($50/month or $500/year)
+  - Monthly: `plan_3JSwKKwDFDnXv`
+  - Yearly: `plan_C8psS1XZsT7hd`
 - Credit Pack: `prod_NolysBAikHLtP` ($10 for 5 credits)
 
 **Plan Configurations**:
@@ -28,12 +33,22 @@ This document explains the complete Whop integration that has been added to your
 FREE:
   - 1 AI parse (total, never resets)
   - 1 concurrent transaction
-  - 1 custom task
-
-BASIC:
-  - 5 AI parses per month (resets monthly)
-  - 5 concurrent transactions
   - 10 custom tasks
+  - 1 task template
+
+BASIC ($20/mo or $200/yr):
+  - 5 AI parses per month (resets monthly)
+  - 20 concurrent transactions
+  - 100 custom tasks
+  - 10 task templates
+
+STANDARD ($50/mo or $500/yr):
+  - 50 AI parses per month (resets monthly)
+  - 500 concurrent transactions
+  - Unlimited custom tasks (soft limit 9999)
+  - 50 task templates
+  - Google Calendar integration (coming soon)
+  - Communications Center (coming soon)
 ```
 
 ### 3. API Endpoints Created
