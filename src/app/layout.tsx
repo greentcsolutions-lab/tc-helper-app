@@ -11,6 +11,7 @@ import TopLoader from "@/components/ui/TopLoader";
 
 import ModernSidebar from "@/components/layout/ModernSidebar";
 import ModernHeader from "@/components/layout/ModernHeader";
+import type { PlanType } from "@/lib/whop";
 import ProgressiveOnboardingModal from "@/components/ProgressiveOnboardingModal";
 import { TestingBanner } from "@/components/layout/TestingBanner";
 
@@ -33,13 +34,15 @@ export default async function RootLayout({
 }) {
   const user = await currentUser();
   let credits = 0;
+  let planType: PlanType = "FREE";
 
   if (user) {
     const dbUser = await db.user.findUnique({
       where: { clerkId: user.id },
-      select: { credits: true },
+      select: { credits: true, planType: true },
     });
     credits = dbUser?.credits ?? 0;
+    planType = (dbUser?.planType as PlanType) ?? "FREE";
   }
 
   return (
@@ -57,7 +60,7 @@ export default async function RootLayout({
                   <ModernSidebar />
                 </div>
                 <div className="lg:pl-64 transition-all duration-300" data-main-content>
-                  <ModernHeader credits={credits} />
+                  <ModernHeader credits={credits} planType={planType} />
                   <main className="min-h-[calc(100vh-4rem)]">{children}</main>
                 </div>
               </div>

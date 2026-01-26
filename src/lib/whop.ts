@@ -24,7 +24,7 @@ export const WHOP_PRODUCTS = {
 } as const;
 
 // Plan Types
-export type PlanType = 'FREE' | 'BASIC' | 'STANDARD';
+export type PlanType = 'FREE' | 'BASIC' | 'STANDARD' | 'DEV';
 
 // Plan Configuration
 export interface PlanConfig {
@@ -71,6 +71,17 @@ export const PLAN_CONFIGS: Record<PlanType, PlanConfig> = {
     price: {
       monthly: 50,
       annual: 500,
+    },
+  },
+  DEV: {
+    name: 'Developer',
+    quota: 99999,          // Unlimited concurrent transactions
+    parseLimit: 99999,     // Unlimited AI parses
+    customTaskLimit: 99999,// Unlimited custom tasks
+    templateLimit: 99999,  // Unlimited task templates
+    price: {
+      monthly: 0,
+      annual: 0,
     },
   },
 };
