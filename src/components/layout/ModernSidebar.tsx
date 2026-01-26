@@ -1,10 +1,10 @@
 // src/components/layout/ModernSidebar.tsx
-// Version: 1.1.0 - Added Timeline navigation item
+// Version: 1.2.0 - Added Comms Center (DEV plan only), renamed from Email
 "use client";
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   LayoutDashboard,
   FileText,
@@ -22,8 +22,17 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import type { PlanType } from "@/lib/whop";
 
-const navItems = [
+interface NavItem {
+  name: string;
+  href: string;
+  icon: typeof LayoutDashboard;
+  soon?: boolean;
+  devOnly?: boolean;
+}
+
+const baseNavItems: NavItem[] = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Upload", href: "/upload", icon: FileUp },
   { name: "Timeline", href: "/timeline", icon: Calendar },
@@ -31,19 +40,33 @@ const navItems = [
   { name: "Listings", href: "#", icon: Building2, soon: true },
   { name: "Tasks", href: "/tasks", icon: CheckSquare },
   { name: "Teams", href: "/teams", icon: Users, soon: true },
-  { name: "Email", href: "#", icon: Mail, soon: true },
+  { name: "Comms Center", href: "/comms", icon: Mail, devOnly: true },
   { name: "Settings", href: "/settings", icon: Settings },
   { name: "Billing", href: "/dashboard/billing", icon: CreditCard },
 ];
 
 interface ModernSidebarProps {
   defaultCollapsed?: boolean;
+  planType?: PlanType;
 }
 
-export default function ModernSidebar({ defaultCollapsed = false }: ModernSidebarProps) {
+export default function ModernSidebar({ defaultCollapsed = false, planType = "FREE" }: ModernSidebarProps) {
   const pathname = usePathname();
   const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+
+  // Filter nav items based on plan type
+  // DEV plan gets full access, others see devOnly items as "soon"
+  const navItems = useMemo(() => {
+    const isDevPlan = planType === "DEV";
+    return baseNavItems.map((item) => {
+      if (item.devOnly && !isDevPlan) {
+        // Show as "coming soon" for non-DEV users
+        return { ...item, href: "#", soon: true };
+      }
+      return item;
+    });
+  }, [planType]);
 
   return (
     <>

@@ -1,6 +1,6 @@
 // prisma/schema.prisma
-// Version: 3.1.1 - 2026-01-20
-// UPDATED: Added Google Calendar sync memory fields (nextSyncToken, etc.)
+// Version: 3.2.0 - 2026-01-26
+// UPDATED: Added Gmail integration (GmailSettings, SentEmail) for Comms Center
 
 generator client {
 provider = "prisma-client-js"
@@ -55,6 +55,8 @@ calendarSettings     CalendarSettings?
 calendarEvents       CalendarEvent[]
 teamMembers          TeamMember[]
 communications       Communication[]
+gmailSettings        GmailSettings?
+sentEmails           SentEmail[]
 
 @@map("users")
 }
@@ -159,6 +161,7 @@ finalizedAt           DateTime?
 
 tasks                 Task[]
 communications        Communication[]
+sentEmails            SentEmail[]
 
 @@index([userId, createdAt])
 @@map("parses")
@@ -419,4 +422,81 @@ updatedAt            DateTime  @updatedAt
 @@index([userId, status])
 @@index([direction, createdAt])
 @@map("communications")
+}
+
+// ============================================
+// GMAIL INTEGRATION (Comms Center)
+// ============================================
+
+model GmailSettings {
+id                      String    @id @default(cuid())
+userId                  String    @unique
+user                    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+// OAuth Tokens (encrypted at application level)
+googleAccessToken       String?   @db.Text
+googleRefreshToken      String?   @db.Text
+googleTokenExpiry       DateTime?
+
+// Gmail-specific settings
+primaryEmailAddress     String?   // User's Gmail address
+tcHelperLabelId         String?   // ID of the "TC Helper" label in Gmail
+
+// Push Notification Webhook (for real-time email updates)
+webhookHistoryId        String?   // Gmail's history ID for incremental sync
+webhookExpiration       DateTime?
+
+// Custom Signature
+useCustomSignature      Boolean   @default(false)
+customSignature         String?   @db.Text  // HTML signature to append
+
+// Sync State
+lastSyncStatus          String?   // SUCCESS | ERROR
+lastSyncError           String?
+lastSyncedAt            DateTime?
+
+// Disconnection tracking
+disconnectedAt          DateTime?
+
+createdAt               DateTime  @default(now())
+updatedAt               DateTime  @updatedAt
+
+@@map("gmail_settings")
+}
+
+model SentEmail {
+id                   String    @id @default(cuid())
+userId               String
+user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+// Gmail Message Info
+gmailMessageId       String?   // Gmail's message ID
+gmailThreadId        String?   // Gmail's thread ID
+
+// Email Content
+to                   String[]  // Recipients
+cc                   String[]  @default([])
+bcc                  String[]  @default([])
+subject              String
+bodyText             String?   @db.Text
+bodyHtml             String?   @db.Text
+
+// Attachments metadata (not stored, just names/sizes for audit)
+attachmentsMeta      Json?     // Array of { name, size, mimeType }
+
+// Linking
+parseId              String?   // Link to a transaction if applicable
+parse                Parse?    @relation(fields: [parseId], references: [id], onDelete: SetNull)
+
+// Audit Trail
+sentAt               DateTime  @default(now())
+sentVia              String    @default("gmail") // "gmail" | "resend" (for system emails)
+ipAddress            String?   // For audit
+userAgent            String?   // For audit
+
+createdAt            DateTime  @default(now())
+
+@@index([userId, sentAt])
+@@index([gmailThreadId])
+@@map("sent_emails")
 }
