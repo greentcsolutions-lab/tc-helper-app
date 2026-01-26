@@ -20,7 +20,7 @@ This document explains the complete Whop integration that has been added to your
 **File**: `src/lib/whop.ts`
 
 **Product IDs**:
-- Basic Plan: `prod_qBP7zVT60nXmZ` ($15/month or $150/year)
+- Basic Plan: `prod_qBP7zVT60nXmZ` ($20/month or $200/year)
 - Credit Pack: `prod_NolysBAikHLtP` ($10 for 5 credits)
 
 **Plan Configurations**:

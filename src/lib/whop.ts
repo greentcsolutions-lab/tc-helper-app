@@ -9,8 +9,8 @@
 
 // Whop Plan IDs - Direct from Whop dashboard
 export const WHOP_PLANS = {
-  BASIC_MONTHLY: 'plan_jiXiD1lGMTEy6',   // $15/month Basic plan
-  BASIC_YEARLY: 'plan_z80DjYcElspeg',    // $150/year Basic plan
+  BASIC_MONTHLY: 'plan_jiXiD1lGMTEy6',   // $20/month Basic plan
+  BASIC_YEARLY: 'plan_z80DjYcElspeg',    // $200/year Basic plan
   CREDIT_PACK: 'plan_aNk5dVMU4VTtf',     // $10 for 5 credits
 } as const;
 
@@ -55,8 +55,8 @@ export const PLAN_CONFIGS: Record<PlanType, PlanConfig> = {
     customTaskLimit: 100,  // 100 custom tasks
     templateLimit: 10,     // 10 task templates
     price: {
-      monthly: 15,
-      annual: 150,
+      monthly: 20,
+      annual: 200,
     },
   },
 };
