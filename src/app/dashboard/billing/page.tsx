@@ -124,7 +124,21 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
               </p>
             </div>
             <div className="flex items-center gap-3">
-              <ManageSubscriptionButton />
+              {isFreeUser && (
+                <>
+                  <UpgradeButton size="default" plan="basic" />
+                  <UpgradeButton size="default" plan="standard" />
+                </>
+              )}
+              {isBasicUser && (
+                <>
+                  <UpgradeButton size="default" plan="standard" />
+                  <ManageSubscriptionButton />
+                </>
+              )}
+              {!isFreeUser && !isBasicUser && (
+                <ManageSubscriptionButton />
+              )}
             </div>
           </div>
 
