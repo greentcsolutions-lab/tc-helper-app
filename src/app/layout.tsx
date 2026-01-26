@@ -57,7 +57,7 @@ export default async function RootLayout({
             {user ? (
               <div className="relative min-h-screen">
                 <div data-nav-sidebar>
-                  <ModernSidebar />
+                  <ModernSidebar planType={planType} />
                 </div>
                 <div className="lg:pl-64 transition-all duration-300" data-main-content>
                   <ModernHeader credits={credits} planType={planType} />
