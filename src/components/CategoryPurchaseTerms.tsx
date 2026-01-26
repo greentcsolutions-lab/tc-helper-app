@@ -32,20 +32,32 @@ export default function CategoryPurchaseTerms({
   // HELPER: Safe currency display (zero = extraction error)
   // ═══════════════════════════════════════════════════════════════════════
   const formatCurrency = (
-    amount: number | null | undefined,
+    amount: number | string | null | undefined,
     fieldName: string
-  ): string | null => {
-    if (typeof amount !== 'number') return null;
+  ): string => {
+    let numericAmount: number | null = null;
+
+    if (typeof amount === 'number') {
+      numericAmount = amount;
+    } else if (typeof amount === 'string') {
+      const cleanedString = amount.replace(/[^0-9.-]+/g,"");
+      numericAmount = parseFloat(cleanedString);
+      if (isNaN(numericAmount)) {
+        numericAmount = null;
+      }
+    }
+
+    if (numericAmount === null) return "N/A";
 
     // CRITICAL: purchasePrice: 0 means extraction failed
-    if (fieldName === 'purchasePrice' && amount === 0) {
+    if (fieldName === 'purchasePrice' && numericAmount === 0) {
       return "⚠️ EXTRACTION ERROR (0)";
     }
 
     // Other zero values are valid (e.g., seller credit = $0)
-    if (amount === 0) return "$0";
+    if (numericAmount === 0) return "$0";
 
-    return `$${amount.toLocaleString()}`;
+    return `$${numericAmount.toLocaleString()}`;
   };
 
   // ═══════════════════════════════════════════════════════════════════════

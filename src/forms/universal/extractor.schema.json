@@ -83,7 +83,10 @@
               "properties": {
                 "buyerPays": { "type": ["array", "null"], "items": { "type": "string" } },
                 "sellerPays": { "type": ["array", "null"], "items": { "type": "string" } },
-                "sellerCreditAmount": { "type": ["number", "null"] }
+                "sellerCreditAmount": {
+                  "type": ["number", "null"],
+                  "description": "Total seller credit to buyer, in USD. This can be named 'seller credit', 'seller concession', 'seller contribution', or 'seller assist'. Extract only the final numeric value."
+                }
               }
             },
             "brokers": {
