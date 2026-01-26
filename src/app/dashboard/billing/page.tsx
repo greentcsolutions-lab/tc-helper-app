@@ -58,8 +58,9 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
     },
   });
 
-  const planConfig = PLAN_CONFIGS[user.planType as 'FREE' | 'BASIC'];
+  const planConfig = PLAN_CONFIGS[user.planType as 'FREE' | 'BASIC' | 'STANDARD'] ?? PLAN_CONFIGS.FREE;
   const isFreeUser = user.planType === 'FREE';
+  const isBasicUser = user.planType === 'BASIC';
 
   return (
     <div className="container mx-auto p-6 space-y-6">
@@ -67,7 +68,7 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
       {params.success && (
         <Alert variant="success">
           <CheckCircle2 className="h-4 w-4" />
-          <AlertTitle>Welcome to TC Helper Basic! 🎉</AlertTitle>
+          <AlertTitle>Welcome to TC Helper! 🎉</AlertTitle>
           <AlertDescription>
             <p className="mb-2">
               Your subscription is being activated. This usually takes just a few seconds.
@@ -209,15 +210,17 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
       </Card>
 
       {/* Plan Comparison Card */}
-      {isFreeUser && (
+      {(isFreeUser || isBasicUser) && (
         <Card>
           <CardHeader>
             <CardTitle>Plan Comparison</CardTitle>
-            <CardDescription>See what you get with the Basic plan</CardDescription>
+            <CardDescription>
+              {isFreeUser ? 'See what you get with our paid plans' : 'Upgrade to Standard for more power'}
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-4 md:grid-cols-2">
-              <div>
+            <div className="grid gap-4 md:grid-cols-3">
+              <div className={isFreeUser ? '' : 'opacity-50'}>
                 <h4 className="font-semibold mb-3 flex items-center gap-2">
                   <XCircle className="h-5 w-5 text-muted-foreground" />
                   Free Plan
@@ -225,11 +228,11 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
                 <ul className="space-y-2 text-sm">
                   <li className="flex items-center gap-2">
                     <CheckCircle2 className="h-4 w-4 text-green-500" />
-                    1 AI parse (total, no reset)
+                    1 AI parse (total)
                   </li>
                   <li className="flex items-center gap-2">
                     <CheckCircle2 className="h-4 w-4 text-green-500" />
-                    1 concurrent transaction
+                    1 transaction
                   </li>
                   <li className="flex items-center gap-2">
                     <CheckCircle2 className="h-4 w-4 text-green-500" />
@@ -237,24 +240,25 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
                   </li>
                   <li className="flex items-center gap-2">
                     <CheckCircle2 className="h-4 w-4 text-green-500" />
-                    1 task template
+                    1 template
                   </li>
                 </ul>
               </div>
 
-              <div>
+              <div className={isBasicUser ? '' : isFreeUser ? '' : 'opacity-50'}>
                 <h4 className="font-semibold mb-3 flex items-center gap-2">
                   <Zap className="h-5 w-5 text-primary" />
                   Basic Plan
+                  <span className="text-xs text-muted-foreground font-normal">$20/mo</span>
                 </h4>
                 <ul className="space-y-2 text-sm">
                   <li className="flex items-center gap-2">
                     <CheckCircle2 className="h-4 w-4 text-green-500" />
-                    5 AI parses per month
+                    5 AI parses/month
                   </li>
                   <li className="flex items-center gap-2">
                     <CheckCircle2 className="h-4 w-4 text-green-500" />
-                    20 concurrent transactions
+                    20 transactions
                   </li>
                   <li className="flex items-center gap-2">
                     <CheckCircle2 className="h-4 w-4 text-green-500" />
@@ -262,18 +266,54 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
                   </li>
                   <li className="flex items-center gap-2">
                     <CheckCircle2 className="h-4 w-4 text-green-500" />
-                    10 task templates
+                    10 templates
+                  </li>
+                </ul>
+                {isFreeUser && (
+                  <div className="mt-4">
+                    <UpgradeButton size="sm" plan="basic" />
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <h4 className="font-semibold mb-3 flex items-center gap-2">
+                  <Zap className="h-5 w-5 text-blue-500" />
+                  Standard Plan
+                  <span className="text-xs text-muted-foreground font-normal">$50/mo</span>
+                </h4>
+                <ul className="space-y-2 text-sm">
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-green-500" />
+                    50 AI parses/month
                   </li>
                   <li className="flex items-center gap-2">
                     <CheckCircle2 className="h-4 w-4 text-green-500" />
-                    Monthly or annual billing
+                    500 transactions
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-green-500" />
+                    Unlimited tasks
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-green-500" />
+                    50 templates
+                  </li>
+                  <li className="flex items-center gap-2 text-muted-foreground">
+                    <CheckCircle2 className="h-4 w-4 text-blue-400" />
+                    Calendar sync (soon)
+                  </li>
+                  <li className="flex items-center gap-2 text-muted-foreground">
+                    <CheckCircle2 className="h-4 w-4 text-blue-400" />
+                    Communications (soon)
                   </li>
                 </ul>
+                {(isFreeUser || isBasicUser) && (
+                  <div className="mt-4">
+                    <UpgradeButton size="sm" plan="standard" />
+                  </div>
+                )}
               </div>
-            </div>
-
-            <div className="mt-6 pt-6 border-t flex justify-center">
-              <UpgradeButton size="lg" />
             </div>
           </CardContent>
         </Card>

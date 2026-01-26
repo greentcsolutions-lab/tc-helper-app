@@ -114,7 +114,7 @@ export default async function Dashboard() {
                 <div className="flex-1">
                   <h3 className="font-semibold text-lg mb-1">Unlock the Power of Basic Plan</h3>
                   <p className="text-sm text-muted-foreground mb-2">
-                    Get 5 AI parses per month, 20 concurrent transactions, and 100 custom tasks for just $15/month
+                    Get 5 AI parses per month, 20 concurrent transactions, and 100 custom tasks for just $20/month
                   </p>
                   <ul className="text-sm text-muted-foreground space-y-1">
                     <li>• 5x more AI parses</li>

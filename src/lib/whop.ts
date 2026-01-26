@@ -9,19 +9,22 @@
 
 // Whop Plan IDs - Direct from Whop dashboard
 export const WHOP_PLANS = {
-  BASIC_MONTHLY: 'plan_jiXiD1lGMTEy6',   // $15/month Basic plan
-  BASIC_YEARLY: 'plan_z80DjYcElspeg',    // $150/year Basic plan
-  CREDIT_PACK: 'plan_aNk5dVMU4VTtf',     // $10 for 5 credits
+  BASIC_MONTHLY: 'plan_jiXiD1lGMTEy6',      // $20/month Basic plan
+  BASIC_YEARLY: 'plan_z80DjYcElspeg',       // $200/year Basic plan
+  STANDARD_MONTHLY: 'plan_3JSwKKwDFDnXv',   // $50/month Standard plan
+  STANDARD_YEARLY: 'plan_C8psS1XZsT7hd',    // $500/year Standard plan
+  CREDIT_PACK: 'plan_aNk5dVMU4VTtf',        // $10 for 5 credits
 } as const;
 
 // Legacy naming for backwards compatibility (defaults to monthly)
 export const WHOP_PRODUCTS = {
   BASIC_PLAN: WHOP_PLANS.BASIC_MONTHLY,
+  STANDARD_PLAN: WHOP_PLANS.STANDARD_MONTHLY,
   CREDIT_PACK: WHOP_PLANS.CREDIT_PACK,
 } as const;
 
 // Plan Types
-export type PlanType = 'FREE' | 'BASIC';
+export type PlanType = 'FREE' | 'BASIC' | 'STANDARD';
 
 // Plan Configuration
 export interface PlanConfig {
@@ -55,8 +58,19 @@ export const PLAN_CONFIGS: Record<PlanType, PlanConfig> = {
     customTaskLimit: 100,  // 100 custom tasks
     templateLimit: 10,     // 10 task templates
     price: {
-      monthly: 15,
-      annual: 150,
+      monthly: 20,
+      annual: 200,
+    },
+  },
+  STANDARD: {
+    name: 'Standard',
+    quota: 500,            // 500 concurrent transactions
+    parseLimit: 50,        // 50 AI parses per month (resets monthly)
+    customTaskLimit: 9999, // Unlimited (soft limit)
+    templateLimit: 50,     // 50 task templates
+    price: {
+      monthly: 50,
+      annual: 500,
     },
   },
 };
@@ -91,6 +105,30 @@ export async function createBasicPlanCheckout(userId: string, email: string): Pr
   const planId = WHOP_PRODUCTS.BASIC_PLAN; // Defaults to monthly plan
 
   console.log('[Whop] Creating checkout URL for Basic plan:', {
+    plan_id: planId,
+    userId,
+  });
+
+  // Build direct checkout URL with metadata
+  const redirectUrl = encodeURIComponent(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard/billing?success=true`);
+  const checkoutUrl = `https://whop.com/checkout/${planId}?redirect_url=${redirectUrl}&d[userId]=${userId}&d[email]=${email}`;
+
+  console.log('[Whop] Checkout URL created:', {
+    plan_id: planId,
+    checkout_url: checkoutUrl,
+  });
+
+  return { url: checkoutUrl };
+}
+
+/**
+ * Create a checkout session for the Standard plan
+ * Uses direct Whop checkout URLs (no API call needed)
+ */
+export async function createStandardPlanCheckout(userId: string, email: string): Promise<{ url: string }> {
+  const planId = WHOP_PRODUCTS.STANDARD_PLAN; // Defaults to monthly plan
+
+  console.log('[Whop] Creating checkout URL for Standard plan:', {
     plan_id: planId,
     userId,
   });

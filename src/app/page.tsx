@@ -49,6 +49,7 @@ interface PricingCardProps {
   features: string[];
   buttonText: string;
   highlighted?: boolean;
+  comingSoon?: boolean;
 }
 
 const AnimatedWorkflowMockup = () => {
@@ -327,36 +328,47 @@ const FeatureCard = ({ icon: Icon, title, subtitle, items, gradient }: FeatureCa
   </Card>
 );
 
-const PricingCard = ({ title, price, description, features, buttonText, highlighted = false }: PricingCardProps) => (
-  <Card className={`p-8 border-2 transition-all duration-300 relative ${highlighted ? 'border-primary shadow-xl scale-105 z-10' : 'hover:shadow-xl'}`}>
+const PricingCard = ({ title, price, description, features, buttonText, highlighted = false, comingSoon = false }: PricingCardProps) => (
+  <Card className={`p-8 border-2 transition-all duration-300 relative ${highlighted ? 'border-primary shadow-xl scale-105 z-10' : comingSoon ? 'border-dashed border-muted-foreground/30 opacity-90' : 'hover:shadow-xl'}`}>
     {highlighted && (
       <Badge className="absolute -top-3 right-8 bg-gradient-to-r from-cyan-600 to-blue-600">
         Most Popular
       </Badge>
     )}
+    {comingSoon && (
+      <Badge variant="secondary" className="absolute -top-3 right-8">
+        Coming Soon
+      </Badge>
+    )}
     <div className="mb-6 text-left">
       <h3 className="text-2xl font-bold mb-2">{title}</h3>
       <div className="flex items-baseline gap-2 mb-2">
-        <span className="text-4xl font-bold">{price}</span>
-        {price !== "$0" && <span className="text-muted-foreground">/month</span>}
+        <span className={`text-4xl font-bold ${comingSoon ? 'text-muted-foreground' : ''}`}>{price}</span>
+        {price !== "$0" && price !== "—" && <span className="text-muted-foreground">/month</span>}
       </div>
       <p className="text-muted-foreground">{description}</p>
     </div>
     <ul className="space-y-3 mb-8 text-left">
       {features.map((feature, idx) => (
         <li key={idx} className="flex items-start gap-2">
-          <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
+          <Check className={`h-5 w-5 ${comingSoon ? 'text-blue-600' : 'text-green-600'} shrink-0 mt-0.5`} />
           <span className="text-sm">{feature}</span>
         </li>
       ))}
     </ul>
-    <SignedOut>
-      <SignUpButton mode="modal">
-        <Button variant={highlighted ? "default" : "outline"} className="w-full h-12 text-base">
-          {buttonText}
-        </Button>
-      </SignUpButton>
-    </SignedOut>
+    {comingSoon ? (
+      <Button variant="outline" className="w-full h-12 text-base" disabled>
+        {buttonText}
+      </Button>
+    ) : (
+      <SignedOut>
+        <SignUpButton mode="modal">
+          <Button variant={highlighted ? "default" : "outline"} className="w-full h-12 text-base">
+            {buttonText}
+          </Button>
+        </SignUpButton>
+      </SignedOut>
+    )}
   </Card>
 );
 
@@ -451,12 +463,12 @@ export default function Home() {
 
       {/* Pricing Section */}
       <section className="py-20 px-4 bg-muted/30">
-        <div className="max-w-5xl mx-auto text-center">
+        <div className="max-w-6xl mx-auto text-center">
           <h2 className="text-3xl md:text-4xl font-bold mb-12">Simple Pricing</h2>
-          <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
-            <PricingCard 
-              title="Free" price="$0" 
-              description="No credit card required" 
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+            <PricingCard
+              title="Free" price="$0"
+              description="No credit card required"
               features={["1 AI parse lifetime", "1 concurrent transaction", "10 custom tasks"]}
               buttonText="Start Free"
             />
@@ -466,6 +478,12 @@ export default function Home() {
               features={["5 AI parses per month", "20 concurrent transactions", "100 custom tasks", "Priority support"]}
               buttonText="Get Started"
               highlighted={true}
+            />
+            <PricingCard
+              title="Standard" price="$50"
+              description="or $500/year (save $100)"
+              features={["50 AI parses per month", "500 concurrent transactions", "Unlimited custom tasks", "50 task templates", "Calendar sync (coming soon)", "Communications (coming soon)"]}
+              buttonText="Get Started"
             />
           </div>
         </div>
