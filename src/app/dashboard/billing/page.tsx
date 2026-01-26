@@ -58,7 +58,7 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
     },
   });
 
-  const planConfig = PLAN_CONFIGS[user.planType as 'FREE' | 'BASIC' | 'STANDARD'];
+  const planConfig = PLAN_CONFIGS[user.planType as 'FREE' | 'BASIC' | 'STANDARD'] ?? PLAN_CONFIGS.FREE;
   const isFreeUser = user.planType === 'FREE';
   const isBasicUser = user.planType === 'BASIC';
 
