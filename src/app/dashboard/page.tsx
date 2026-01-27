@@ -102,34 +102,24 @@ export default async function Dashboard() {
         </p>
       </div>
 
-      {/* Upgrade CTA for Free Users */}
-      {isFreeUser && (
-        <Card className="border-2 border-primary/30 bg-gradient-to-br from-primary/10 via-purple-500/5 to-cyan-500/5">
-          <CardContent className="pt-6">
-            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-              <div className="flex items-start gap-4">
-                <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
-                  <Zap className="h-6 w-6 text-primary" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-semibold text-lg mb-1">Unlock the Power of Basic Plan</h3>
-                  <p className="text-sm text-muted-foreground mb-2">
-                    Get 5 AI parses per month, 20 concurrent transactions, and 100 custom tasks for just $20/month
-                  </p>
-                  <ul className="text-sm text-muted-foreground space-y-1">
-                    <li>• 5x more AI parses</li>
-                    <li>• 20x more concurrent transactions</li>
-                    <li>• 10x more custom tasks</li>
-                  </ul>
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" asChild>
-                  <Link href="/dashboard/billing">Learn More</Link>
-                </Button>
-                <UpgradeButton size="default" />
-              </div>
-            </div>
+      {parseCount === 0 && (
+        <Card className="border-2 border-green-200 bg-gradient-to-br from-green-50 to-transparent dark:border-green-900 dark:from-green-950/20">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FileUp className="h-5 w-5 text-green-600 dark:text-green-400" />
+              Start your first transaction
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground mb-4">
+              Use AI or manually enter.
+            </p>
+            <Button asChild className="w-full">
+              <Link href="/upload">
+                <FileUp className="mr-2 h-4 w-4" />
+                New File
+              </Link>
+            </Button>
           </CardContent>
         </Card>
       )}
@@ -291,6 +281,35 @@ export default async function Dashboard() {
           </CardContent>
         </Card>
       )}
-    </div>
-  );
-}
+
+      {/* Upgrade CTA for Free Users */}
+      {isFreeUser && (
+        <Card className="border-2 border-primary/30 bg-gradient-to-br from-primary/10 via-purple-500/5 to-cyan-500/5">
+          <CardContent className="pt-6">
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div className="flex items-start gap-4">
+                <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
+                  <Zap className="h-6 w-6 text-primary" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-lg mb-1">Unlock the Power of Basic Plan</h3>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Get 5 AI parses per month, 20 concurrent transactions, and 100 custom tasks for just $20/month
+                  </p>
+                  <ul className="text-sm text-muted-foreground space-y-1">
+                    <li>• 5x more AI parses</li>
+                    <li>• 20x more concurrent transactions</li>
+                    <li>• 10x more custom tasks</li>
+                  </ul>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" asChild>
+                  <Link href="/dashboard/billing">Learn More</Link>
+                </Button>
+                <UpgradeButton size="default" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
