@@ -1,6 +1,7 @@
 // src/app/api/transactions/update/[id]/route.ts
 // API route for updating transaction fields
 
+import { format } from 'date-fns';
 import { NextRequest, NextResponse } from 'next/server';
 import { currentUser } from '@clerk/nextjs/server';
 import { db } from '@/lib/prisma';
@@ -59,12 +60,30 @@ export async function PATCH(
       dataToUpdate.status = status;
     }
     if (closingDate !== undefined) {
-      // Ensure closingDate is in YYYY-MM-DD format for Prisma if it's a string
-      // If it comes as a Date object, Prisma handles it
-      dataToUpdate.closingDate = typeof closingDate === 'string' && closingDate.match(/^\d{4}-\d{2}-\d{2}$/)
-        ? new Date(closingDate + 'T00:00:00.000Z') // Force UTC midnight for consistency
-        : closingDate;
-      console.log(`[transactions/update] Updating closingDate to: ${dataToUpdate.closingDate}`);
+      let formattedClosingDate: string | null = null;
+      if (typeof closingDate === 'string' && closingDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        // If it's already a YYYY-MM-DD string, use as is
+        formattedClosingDate = closingDate;
+      } else if (closingDate instanceof Date) {
+        // If it's a Date object, convert it to YYYY-MM-DD string
+        formattedClosingDate = format(closingDate, 'yyyy-MM-dd');
+      } else if (typeof closingDate === 'string' && !closingDate.trim()) {
+        // Handle empty string for clearing the date
+        formattedClosingDate = null;
+      } else if (closingDate !== null) { // Catch any other non-null value that isn't already handled
+        // If it's a date string but not YYYY-MM-DD, try to parse and format
+        try {
+          const parsedDate = new Date(closingDate);
+          if (!isNaN(parsedDate.getTime())) {
+            formattedClosingDate = format(parsedDate, 'yyyy-MM-dd');
+          }
+        } catch (e) {
+          console.warn(`[transactions/update] Could not parse closingDate: ${closingDate}`);
+        }
+      }
+
+      dataToUpdate.closingDate = formattedClosingDate;
+      console.log(`[transactions/update] Updating closingDate to (string): ${dataToUpdate.closingDate}`);
     }
 
     let updatedParse = null;
