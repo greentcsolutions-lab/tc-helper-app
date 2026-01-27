@@ -38,7 +38,7 @@ const baseNavItems: NavItem[] = [
   { name: "Timeline", href: "/timeline", icon: Calendar },
   { name: "Transactions", href: "/transactions", icon: FileText },
   { name: "Listings", href: "#", icon: Building2, soon: true },
-  { name: "Tasks", href: "/tasks", icon: CheckSquare },
+  { name: "Checklist", href: "/tasks", icon: CheckSquare },
   { name: "Teams", href: "/teams", icon: Users, soon: true },
   { name: "Comms Center", href: "/comms", icon: Mail, devOnly: true },
   { name: "Settings", href: "/settings", icon: Settings },

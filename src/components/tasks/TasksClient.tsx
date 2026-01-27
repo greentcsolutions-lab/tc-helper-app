@@ -554,7 +554,7 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
     <div className="h-full p-4">
       <Tabs defaultValue="board" className="h-full flex flex-col">
         <div className="flex items-center justify-between mb-4">
-          <h1 className="text-2xl font-bold">Tasks</h1>
+          <h1 className="text-2xl font-bold">Checklist</h1>
           <div className="flex gap-2">
             <AddFromTemplateDialog parses={parses} onTasksAdded={handleRefresh} />
             <NewTaskDialog parses={parses} onTaskUpdated={handleTaskUpdated} />
@@ -623,9 +623,9 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold">Tasks</h1>
+            <h1 className="text-3xl font-bold">Checklist</h1>
             <p className="text-muted-foreground">
-              Manage your transaction tasks and deadlines
+              Manage your transaction checklists and deadlines
             </p>
           </div>
           <div className="flex gap-2">
