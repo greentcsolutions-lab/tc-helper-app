@@ -27,6 +27,14 @@ export const EXTRACTION_SCHEMA = {
         loan_type: { type: ["string", "null"] },
         loan_type_note: { type: ["string", "null"] },
         seller_credit_to_buyer: { type: ["string", "null"] },
+        additional_deposit: {
+          type: "object",
+          properties: {
+            amount: { type: ["string", "null"] }, // Consistent with other monetary fields in schema
+            due_date: { type: ["string", "null"] }
+          }
+        },
+        down_payment_amount: { type: ["string", "null"] }, // Consistent with other monetary fields in schema
         cop_contingency: { type: "boolean" },
         home_warranty: {
           type: "object",

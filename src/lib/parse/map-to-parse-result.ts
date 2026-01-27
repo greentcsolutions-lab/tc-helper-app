@@ -112,6 +112,15 @@ export function mapExtractionToParseResult({
           holder: universal.earnestMoneyDeposit.holder,
         }
       : null,
+    
+    additionalDeposit: universal.additional_deposit
+      ? {
+          amount: universal.additional_deposit.amount,
+          dueDate: universal.additional_deposit.due_date,
+        }
+      : null,
+
+    downPaymentAmount: universal.down_payment_amount ?? null,
 
     financing: universal.financing
       ? {

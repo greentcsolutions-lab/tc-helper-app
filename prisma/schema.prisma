@@ -136,6 +136,9 @@ loanType              String?
 
 earnestMoneyDeposit   Json?
 
+additionalDeposit     Json?
+downPaymentAmount     String?
+
 financing             Json?
 
 contingencies         Json?

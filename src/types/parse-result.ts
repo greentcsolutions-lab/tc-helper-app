@@ -62,6 +62,13 @@ export interface ParseResult {
     holder: string | null;
   } | null;
 
+  additionalDeposit: {
+    amount: number | null;
+    dueDate: string | null; // YYYY-MM-DD or "N days"
+  } | null;
+
+  downPaymentAmount: number | null;
+
   financing: {
     isAllCash: boolean;
     loanType: "Conventional" | "FHA" | "VA" | "USDA" | "Other" | null;
