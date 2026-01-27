@@ -3,15 +3,13 @@
 
 "use client";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CheckSquare, Clock, AlertTriangle, ArrowRight } from "lucide-react";
-import { getTaskStatus, formatDaysUntilDue, TASK_TYPES } from "@/types/task";
-
-type Task = any; // Use Prisma-generated type
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
 import { format } from "date-fns";
+import { CheckSquare, Clock, AlertTriangle, ArrowRight } from "lucide-react";
+import { getTaskStatus, formatDaysUntilDue, TASK_TYPES } from "@/types/task";
 
 interface NextTaskCardProps {
   tasks: Task[];

@@ -83,7 +83,7 @@ export default function NextClosingCard({ parses }: NextClosingCardProps) {
           Next Closing
         </CardTitle>
         <Button variant="ghost" size="sm" asChild>
-          <Link href="/timeline">
+          <Link href="/transactions">
             View All
             <ArrowRight className="ml-1 h-4 w-4" />
           </Link>
@@ -93,7 +93,7 @@ export default function NextClosingCard({ parses }: NextClosingCardProps) {
         {nextClosings.map((closing) => (
           <Link
             key={closing.id}
-            href={`/timeline?eventId=${closing.id}`}
+            href={`/transactions?parseId=${closing.parseId}`}
             className="flex items-start gap-3 p-3 rounded-lg border hover:bg-muted/50 transition-colors"
           >
             <div className="shrink-0 mt-0.5" role="img" aria-label="closing">
