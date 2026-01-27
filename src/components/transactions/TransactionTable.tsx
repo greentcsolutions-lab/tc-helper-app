@@ -94,13 +94,18 @@ export default function TransactionTable({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(editedData),
       });
-      if (!response.ok) throw new Error();
+      if (!response.ok) throw new Error('API update failed'); // More specific error
+      const { parse: updatedParse } = await response.json(); // Extract the updated parse
       toast.success('Transaction updated successfully');
       setEditingId(null);
       setEditedData(null);
       setHasUnsavedChanges(false);
-      window.location.reload();
+      // Update the transactions array with the newly updated parse
+      setTransactions((prevTransactions) =>
+        prevTransactions.map((t) => (t.id === updatedParse.id ? updatedParse : t))
+      );
     } catch (error) {
+      console.error("Failed to save transaction:", error); // Log the actual error
       toast.error('Failed to update transaction');
     } finally {
       setIsSaving(false);
