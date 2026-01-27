@@ -3,13 +3,15 @@
 
 "use client";
 
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import Link from "next/link";
-import { format } from "date-fns";
 import { CheckSquare, Clock, AlertTriangle, ArrowRight } from "lucide-react";
 import { getTaskStatus, formatDaysUntilDue, TASK_TYPES } from "@/types/task";
+
+type Task = any; // Use Prisma-generated type
+import Link from "next/link";
+import { format } from "date-fns";
 
 interface NextTaskCardProps {
   tasks: Task[];
@@ -92,7 +94,7 @@ export default function NextTaskCard({ tasks }: NextTaskCardProps) {
       <CardContent>
         <div className="space-y-4">
           {/* Task Card */}
-          <Link href={`/tasks?taskId=${nextTask.id}`} className="p-4 rounded-lg border hover:bg-muted/50 transition-colors block">
+          <div className="p-4 rounded-lg border hover:bg-muted/50 transition-colors">
             {/* Task Type Badges - can have multiple */}
             <div className="flex flex-wrap gap-1.5 mb-3">
               {nextTask.taskTypes?.map((type: string) => (
@@ -154,7 +156,7 @@ export default function NextTaskCard({ tasks }: NextTaskCardProps) {
                 </div>
               )}
             </div>
-          </Link>
+          </div>
         </div>
       </CardContent>
     </Card>
