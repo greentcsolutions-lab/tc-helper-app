@@ -2,7 +2,8 @@
 // Version: 2.1.0 - Added Dynamic Calendar Header
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { Calendar, dateFnsLocalizer, View } from "react-big-calendar";
 import { format, parse, startOfWeek, getDay, isSameDay } from "date-fns";
 import { enUS } from "date-fns/locale";
@@ -67,6 +68,19 @@ export default function TimelineClient({ parses }: TimelineClientProps) {
   const [selectedEvent, setSelectedEvent] = useState<TimelineEvent | null>(null);
 
   const rawEvents = useMemo(() => getAllTimelineEvents(parses), [parses]);
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    const eventId = searchParams.get('eventId');
+    if (eventId && rawEvents.length > 0) {
+      const eventToSelect = rawEvents.find(event => event.id === eventId);
+      if (eventToSelect) {
+        setSelectedEvent(eventToSelect);
+        // Ensure the calendar view centers around the selected event's date
+        setDate(eventToSelect.start);
+      }
+    }
+  }, [rawEvents, searchParams]);
 
   // Live Filtering Logic
   const filteredEvents = useMemo(() => {

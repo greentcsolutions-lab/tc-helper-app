@@ -101,8 +101,9 @@ export default function NextDueCard({ parses }: NextDueCardProps) {
       </CardHeader>
       <CardContent className="space-y-3">
         {upcomingEvents.map((event) => (
-          <div
+          <Link
             key={event.id}
+            href={`/timeline?eventId=${event.id}`}
             className="flex items-start gap-3 p-3 rounded-lg border hover:bg-muted/50 transition-colors"
           >
             <div className="shrink-0 mt-0.5" role="img" aria-label={event.type}>
@@ -134,7 +135,7 @@ export default function NextDueCard({ parses }: NextDueCardProps) {
                 </p>
               )}
             </div>
-          </div>
+          </Link>
         ))}
       </CardContent>
     </Card>

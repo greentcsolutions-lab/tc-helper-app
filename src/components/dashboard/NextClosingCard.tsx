@@ -91,8 +91,9 @@ export default function NextClosingCard({ parses }: NextClosingCardProps) {
       </CardHeader>
       <CardContent className="space-y-3">
         {nextClosings.map((closing) => (
-          <div
+          <Link
             key={closing.id}
+            href={`/timeline?eventId=${closing.id}`}
             className="flex items-start gap-3 p-3 rounded-lg border hover:bg-muted/50 transition-colors"
           >
             <div className="shrink-0 mt-0.5" role="img" aria-label="closing">
@@ -106,7 +107,7 @@ export default function NextClosingCard({ parses }: NextClosingCardProps) {
                 {format(closingDate, "MMMM d, yyyy")}
               </p>
             </div>
-          </div>
+          </Link>
         ))}
       </CardContent>
     </Card>

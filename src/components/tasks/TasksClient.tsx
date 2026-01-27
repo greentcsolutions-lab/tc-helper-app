@@ -6,7 +6,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   DndContext,
   DragEndEvent,
@@ -102,6 +102,17 @@ export default function TasksClient({ initialTasks, parses }: TasksClientProps) 
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [taskDialogMode, setTaskDialogMode] = useState<'create' | 'edit' | 'view'>('create');
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    const taskId = searchParams.get('taskId');
+    if (taskId && tasks.length > 0) {
+      const taskToSelect = tasks.find(task => task.id === taskId);
+      if (taskToSelect) {
+        handleViewTask(taskToSelect);
+      }
+    }
+  }, [tasks, searchParams, handleViewTask]);
 
   // Fetch fresh task data from API and update state
   const fetchFreshTasks = useCallback(async () => {

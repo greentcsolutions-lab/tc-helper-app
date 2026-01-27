@@ -94,7 +94,7 @@ export default function NextTaskCard({ tasks }: NextTaskCardProps) {
       <CardContent>
         <div className="space-y-4">
           {/* Task Card */}
-          <div className="p-4 rounded-lg border hover:bg-muted/50 transition-colors">
+          <Link href={`/tasks?taskId=${nextTask.id}`} className="p-4 rounded-lg border hover:bg-muted/50 transition-colors block">
             {/* Task Type Badges - can have multiple */}
             <div className="flex flex-wrap gap-1.5 mb-3">
               {nextTask.taskTypes?.map((type: string) => (
@@ -156,7 +156,7 @@ export default function NextTaskCard({ tasks }: NextTaskCardProps) {
                 </div>
               )}
             </div>
-          </div>
+          </Link>
         </div>
       </CardContent>
     </Card>
