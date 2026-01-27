@@ -51,7 +51,7 @@ const ComparisonTable = () => {
   const features = [
     {
       name: "Pricing Model",
-      tcHelper: "$20/month base",
+      tcHelper: "Starts at $20/month",
       listedKit: "$9.99 per file (credits)",
       trackxi: "$39/month (Essential plan)",
       openToClose: "$99/month (Grow plan)",

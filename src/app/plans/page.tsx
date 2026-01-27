@@ -106,7 +106,7 @@ export default function PlansPage() {
               <ul className="space-y-3 mb-8">
                 <li className="flex items-start gap-2">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
-                  <span><strong>5 AI parses per month</strong> (resets monthly)</span>
+                  <span><strong>15 AI parses per month</strong> (resets monthly)</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Check className="h-5 w-5 text-green-600 shrink-0 mt-0.5" />
