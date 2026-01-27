@@ -103,6 +103,11 @@ export default function TransactionTable({
       setEditedData(null);
       setHasUnsavedChanges(false);
       onParseUpdated(updatedParse); // Call the parent's update function
+    } catch (error) {
+      console.error("Failed to save transaction:", error); // Log the actual error
+      toast.error('Failed to update transaction');
+    } finally {
+      setIsSaving(false);
     }
   };
   const handleDataChange = (updatedData: ParseResult) => {
