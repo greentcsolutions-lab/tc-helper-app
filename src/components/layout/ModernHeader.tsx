@@ -37,6 +37,9 @@ export default function ModernHeader({ credits, planType, sidebarCollapsed }: Mo
             <Link href="/about" className="px-4 text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
               About
             </Link>
+            <Link href="/compare" className="px-4 text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
+              Compare
+            </Link>
           </nav>
         </SignedOut>
 
