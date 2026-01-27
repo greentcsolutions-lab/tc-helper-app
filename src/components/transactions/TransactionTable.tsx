@@ -120,7 +120,7 @@ export default function TransactionTable({
   const formatDate = (date: string | Date | null) => {
     if (!date) return "-";
     try {
-      return format(new Date(date), "MMM d, yyyy");
+      return formatDisplayDate(date); // Use the globally fixed formatDisplayDate
     } catch {
       return "-";
     }

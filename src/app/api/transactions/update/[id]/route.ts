@@ -46,24 +46,38 @@ export async function PATCH(
     // ONLY allow updating status (for archiving) and timelineDataStructured (intercepted to update tasks)
     // ALL other extraction data must remain unchanged
 
-    const { timelineDataStructured, status, ...extractionData } = updates;
+    const { timelineDataStructured, status, closingDate, ...extractionData } = updates;
 
-    // Log and reject any attempts to modify extraction data
+    // Log and reject any attempts to modify other immutable extraction data
     if (Object.keys(extractionData).length > 0) {
       console.warn('[transactions/update] Attempted to modify immutable Parse extraction data:', Object.keys(extractionData));
-      console.warn('[transactions/update] Parse model is immutable. Only Tasks can be modified.');
+      console.warn('[transactions/update] Parse model is immutable. Only specific fields can be modified via this API (status, closingDate, timelineDataStructured).');
     }
 
-    // Allow status updates (for archiving)
-    let updatedParse = null;
+    const dataToUpdate: any = {};
     if (status !== undefined) {
+      dataToUpdate.status = status;
+    }
+    if (closingDate !== undefined) {
+      // Ensure closingDate is in YYYY-MM-DD format for Prisma if it's a string
+      // If it comes as a Date object, Prisma handles it
+      dataToUpdate.closingDate = typeof closingDate === 'string' && closingDate.match(/^\d{4}-\d{2}-\d{2}$/)
+        ? new Date(closingDate + 'T00:00:00.000Z') // Force UTC midnight for consistency
+        : closingDate;
+      console.log(`[transactions/update] Updating closingDate to: ${dataToUpdate.closingDate}`);
+    }
+
+    let updatedParse = null;
+    if (Object.keys(dataToUpdate).length > 0) {
       updatedParse = await db.parse.update({
         where: { id: parseId },
-        data: { status },
+        data: dataToUpdate,
       });
-      console.log(`[transactions/update] Updated Parse status to: ${status}`);
+      if (status !== undefined) {
+        console.log(`[transactions/update] Updated Parse status to: ${status}`);
+      }
     } else {
-      // Just fetch the current parse to return
+      // Just fetch the current parse to return if no Parse updates were needed
       updatedParse = await db.parse.findUnique({
         where: { id: parseId },
       });
