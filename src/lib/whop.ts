@@ -54,7 +54,7 @@ export const PLAN_CONFIGS: Record<PlanType, PlanConfig> = {
   BASIC: {
     name: 'Basic',
     quota: 20,             // 20 concurrent transactions
-    parseLimit: 5,         // 5 AI parses per month (resets monthly)
+    parseLimit: 15,         // 15 AI parses per month (resets monthly)
     customTaskLimit: 100,  // 100 custom tasks
     templateLimit: 10,     // 10 task templates
     price: {
@@ -65,7 +65,7 @@ export const PLAN_CONFIGS: Record<PlanType, PlanConfig> = {
   STANDARD: {
     name: 'Standard',
     quota: 500,            // 500 concurrent transactions
-    parseLimit: 50,        // 50 AI parses per month (resets monthly)
+    parseLimit: 60,        // 60 AI parses per month (resets monthly)
     customTaskLimit: 9999, // Unlimited (soft limit)
     templateLimit: 50,     // 50 task templates
     price: {
