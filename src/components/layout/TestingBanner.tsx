@@ -67,6 +67,13 @@ export function TestingBanner() {
             <X className="h-5 w-5" />
           </button>
         </div>
+        <div className="mt-2 text-center text-sm text-red-700 dark:text-red-300">
+          Due to unforeseen events we have lost all user data. If you had any work in progress or used credits please contact{' '}
+          <a href="mailto:greentcsolutions@gmail.com" className="underline font-medium">
+            support(mailto:greentcsolutions@gmail.com)
+          </a>{' '}
+          for assistance. We are sorry for the inconvenience.
+        </div>
       </div>
     </div>
   );

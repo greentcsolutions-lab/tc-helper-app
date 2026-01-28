@@ -149,6 +149,33 @@ export default function CategoryPurchaseTerms({
         earnestMoneyDeposit: { ...data.earnestMoneyDeposit, holder: val },
       })
     ),
+    // NEW: Additional Deposit Amount
+    createField(
+      "Additional Deposit Amount",
+      isEditing ? data.additionalDeposit?.amount : (formatCurrency(data.additionalDeposit?.amount, 'additionalDeposit') ?? 'N/A'),
+      'number',
+      (val) => onDataChange?.({
+        ...data,
+        additionalDeposit: { ...data.additionalDeposit, amount: val },
+      })
+    ),
+    // NEW: Additional Deposit Due Date
+    createField(
+      "Additional Deposit Due Date",
+      isEditing ? data.additionalDeposit?.dueDate : (formatDate(data.additionalDeposit?.dueDate) ?? 'N/A'),
+      'date',
+      (val) => onDataChange?.({
+        ...data,
+        additionalDeposit: { ...data.additionalDeposit, dueDate: val },
+      })
+    ),
+    // NEW: Down Payment Amount
+    createField(
+      "Down Payment Amount",
+      isEditing ? data.downPaymentAmount : (formatCurrency(data.downPaymentAmount, 'downPaymentAmount') ?? 'N/A'),
+      'number',
+      (val) => onDataChange?.({ ...data, downPaymentAmount: val })
+    ),
     createField(
       "Loan Type",
       isEditing ? data.loanType : formatString(data.loanType),

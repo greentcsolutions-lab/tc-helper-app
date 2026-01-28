@@ -84,9 +84,22 @@ export function calculateTimelineDate(
  * Format date for display (MM/DD/YYYY)
  */
 export function formatDisplayDate(date: string | Date): string {
-  const dateObj = typeof date === 'string' ? parseISO(date) : date;
+  let dateObj: Date;
+  if (typeof date === 'string') {
+    // If it's an ISO string like "YYYY-MM-DD", create a local date
+    // This avoids timezone shifting for dates that are meant to be 'local' calendar dates
+    if (date.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      dateObj = new Date(date + 'T00:00:00'); // Force local midnight
+    } else {
+      // For full ISO strings with timezone (e.g., "YYYY-MM-DDTHH:mm:ss.sssZ"), parse as is
+      dateObj = parseISO(date);
+    }
+  } else {
+    dateObj = date;
+  }
   return format(dateObj, 'MM/dd/yyyy');
 }
+
 
 /**
  * Parse user input date (MM/DD/YYYY) to ISO format (YYYY-MM-DD)

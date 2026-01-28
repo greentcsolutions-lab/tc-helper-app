@@ -23,6 +23,7 @@ interface TransactionTableProps {
   onDelete: (id: string) => void;
   onArchive: (id: string) => void;
   tasks?: Task[]; // Optional tasks for timeline completion status
+  onParseUpdated: (updatedParse: ParseResult) => void; // NEW: Callback to update parent's state
 }
 
 export default function TransactionTable({
@@ -34,6 +35,7 @@ export default function TransactionTable({
   onDelete,
   onArchive,
   tasks = [],
+  onParseUpdated, // Destructure new prop
 }: TransactionTableProps) {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(
     new Set(latestId ? [latestId] : [])
@@ -51,7 +53,7 @@ export default function TransactionTable({
       }
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeUnload', handleBeforeUnload);
   }, [hasUnsavedChanges]);
 
   const toggleRow = (id: string) => {
@@ -94,19 +96,20 @@ export default function TransactionTable({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(editedData),
       });
-      if (!response.ok) throw new Error();
+      if (!response.ok) throw new Error('API update failed'); // More specific error
+      const { parse: updatedParse } = await response.json(); // Extract the updated parse
       toast.success('Transaction updated successfully');
       setEditingId(null);
       setEditedData(null);
       setHasUnsavedChanges(false);
-      window.location.reload();
+      onParseUpdated(updatedParse); // Call the parent's update function
     } catch (error) {
+      console.error("Failed to save transaction:", error); // Log the actual error
       toast.error('Failed to update transaction');
     } finally {
       setIsSaving(false);
     }
   };
-
   const handleDataChange = (updatedData: ParseResult) => {
     setEditedData(updatedData);
     setHasUnsavedChanges(true);
@@ -120,7 +123,7 @@ export default function TransactionTable({
   const formatDate = (date: string | Date | null) => {
     if (!date) return "-";
     try {
-      return format(new Date(date), "MMM d, yyyy");
+      return formatDisplayDate(date); // Use the globally fixed formatDisplayDate
     } catch {
       return "-";
     }

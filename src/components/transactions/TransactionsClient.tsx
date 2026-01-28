@@ -36,14 +36,21 @@ export default function TransactionsClient({
   activeCount,
   tasks = [],
 }: TransactionsClientProps) {
+  const [parses, setParses] = useState<ParseResult[]>(initialParses);
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<SortOption>("date");
   const [showArchived, setShowArchived] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isActioning, setIsActioning] = useState(false);
 
+  const handleParseUpdated = (updatedParse: ParseResult) => {
+    setParses((prevParses) =>
+      prevParses.map((p) => (p.id === updatedParse.id ? updatedParse : p))
+    );
+  };
+
   // Sorting Logic
-  const filteredAndSorted = initialParses
+  const filteredAndSorted = parses
     .filter((parse) => {
       const isArchived = parse.status === "ARCHIVED";
       if (showArchived && !isArchived) return false;
@@ -247,6 +254,7 @@ export default function TransactionsClient({
                 onDelete={handleDelete}
                 onArchive={handleArchive} // Wired to the cabinet button
                 tasks={tasks}
+                onParseUpdated={handleParseUpdated}
               />
             </div>
           )}

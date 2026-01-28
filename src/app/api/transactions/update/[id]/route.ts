@@ -1,6 +1,7 @@
 // src/app/api/transactions/update/[id]/route.ts
 // API route for updating transaction fields
 
+import { format } from 'date-fns';
 import { NextRequest, NextResponse } from 'next/server';
 import { currentUser } from '@clerk/nextjs/server';
 import { db } from '@/lib/prisma';
@@ -46,24 +47,56 @@ export async function PATCH(
     // ONLY allow updating status (for archiving) and timelineDataStructured (intercepted to update tasks)
     // ALL other extraction data must remain unchanged
 
-    const { timelineDataStructured, status, ...extractionData } = updates;
+    const { timelineDataStructured, status, closingDate, ...extractionData } = updates;
 
-    // Log and reject any attempts to modify extraction data
+    // Log and reject any attempts to modify other immutable extraction data
     if (Object.keys(extractionData).length > 0) {
       console.warn('[transactions/update] Attempted to modify immutable Parse extraction data:', Object.keys(extractionData));
-      console.warn('[transactions/update] Parse model is immutable. Only Tasks can be modified.');
+      console.warn('[transactions/update] Parse model is immutable. Only specific fields can be modified via this API (status, closingDate, timelineDataStructured).');
     }
 
-    // Allow status updates (for archiving)
-    let updatedParse = null;
+    const dataToUpdate: any = {};
     if (status !== undefined) {
+      dataToUpdate.status = status;
+    }
+    if (closingDate !== undefined) {
+      let formattedClosingDate: string | null = null;
+      if (typeof closingDate === 'string' && closingDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        // If it's already a YYYY-MM-DD string, use as is
+        formattedClosingDate = closingDate;
+      } else if (closingDate instanceof Date) {
+        // If it's a Date object, convert it to YYYY-MM-DD string
+        formattedClosingDate = format(closingDate, 'yyyy-MM-dd');
+      } else if (typeof closingDate === 'string' && !closingDate.trim()) {
+        // Handle empty string for clearing the date
+        formattedClosingDate = null;
+      } else if (closingDate !== null) { // Catch any other non-null value that isn't already handled
+        // If it's a date string but not YYYY-MM-DD, try to parse and format
+        try {
+          const parsedDate = new Date(closingDate);
+          if (!isNaN(parsedDate.getTime())) {
+            formattedClosingDate = format(parsedDate, 'yyyy-MM-dd');
+          }
+        } catch (e) {
+          console.warn(`[transactions/update] Could not parse closingDate: ${closingDate}`);
+        }
+      }
+
+      dataToUpdate.closingDate = formattedClosingDate;
+      console.log(`[transactions/update] Updating closingDate to (string): ${dataToUpdate.closingDate}`);
+    }
+
+    let updatedParse = null;
+    if (Object.keys(dataToUpdate).length > 0) {
       updatedParse = await db.parse.update({
         where: { id: parseId },
-        data: { status },
+        data: dataToUpdate,
       });
-      console.log(`[transactions/update] Updated Parse status to: ${status}`);
+      if (status !== undefined) {
+        console.log(`[transactions/update] Updated Parse status to: ${status}`);
+      }
     } else {
-      // Just fetch the current parse to return
+      // Just fetch the current parse to return if no Parse updates were needed
       updatedParse = await db.parse.findUnique({
         where: { id: parseId },
       });
