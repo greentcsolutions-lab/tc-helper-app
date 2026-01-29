@@ -1,10 +1,12 @@
 // src/lib/extraction/shared/transform-to-universal.ts
-// Version: 1.0.0 - 2026-01-15
+// Version: 2.0.0 - 2026-01-29
+// ENHANCED: Added closing cost allocation transformation with seller credit extraction
 // Shared transformation logic used by ALL AI providers
 // Converts extracted data to UniversalExtractionResult format
 
 import { coerceNumber, coerceString } from '@/lib/grok/type-coercion';
 import { normalizeDateString } from '@/lib/extraction/extract/universal/helpers/date-utils';
+import type { ClosingCostItem } from '@/types/extraction';
 
 /**
  * Transform extracted data from any AI provider to universal format
@@ -15,10 +17,8 @@ export function transformToUniversal(data: any): any {
 
   const effectiveDate = normalizeDateString(e.final_acceptance_date) || e.final_acceptance_date;
   const purchasePrice = coerceNumber(e.purchase_price);
-  const sellerCreditAmount = coerceNumber(e.seller_credit_to_buyer);
 
   console.log(`[transform] Coerced purchasePrice: "${e.purchase_price}" → ${purchasePrice}`);
-  console.log(`[transform] Coerced sellerCredit: "${e.seller_credit_to_buyer}" → ${sellerCreditAmount}`);
   console.log(`[transform] Normalized effectiveDate: "${e.final_acceptance_date}" → ${effectiveDate}`);
 
   // Transform timeline events to our structured format
@@ -53,6 +53,57 @@ export function transformToUniversal(data: any): any {
       timelineEventsStructured[event.event_key] = eventData;
 
       console.log(`[transform] Timeline event "${event.event_key}": ${event.date_type}`, eventData);
+    }
+  }
+
+  // ============================================================================
+  // NEW: Transform closing cost allocations
+  // ============================================================================
+  const closingCostAllocations: ClosingCostItem[] = [];
+  let sellerCreditAmount: number | null = null;
+
+  if (e.closing_cost_allocations && Array.isArray(e.closing_cost_allocations)) {
+    console.log(`[transform] Processing ${e.closing_cost_allocations.length} closing cost allocations`);
+
+    for (const item of e.closing_cost_allocations) {
+      const costItem: ClosingCostItem = {
+        itemName: item.item_name || 'Unknown Item',
+        paidBy: item.paid_by || 'Not specified',
+        amount: coerceNumber(item.amount),
+        notes: coerceString(item.notes),
+      };
+
+      closingCostAllocations.push(costItem);
+
+      // Extract seller credit/concession/assist/contribution amount
+      // Look for common variations in the item name
+      const itemNameLower = costItem.itemName.toLowerCase();
+      const isSellerCredit = (
+        itemNameLower.includes('seller credit') ||
+        itemNameLower.includes('seller concession') ||
+        itemNameLower.includes('seller assist') ||
+        itemNameLower.includes('seller contribution') ||
+        itemNameLower.includes('seller-paid closing')
+      );
+
+      if (isSellerCredit && costItem.amount !== null) {
+        console.log(`[transform] Found seller credit: ${costItem.itemName} = $${costItem.amount}`);
+        // Use the largest seller credit amount if multiple found
+        if (sellerCreditAmount === null || costItem.amount > sellerCreditAmount) {
+          sellerCreditAmount = costItem.amount;
+        }
+      }
+
+      console.log(`[transform] Closing cost: "${costItem.itemName}" paid by ${costItem.paidBy}${costItem.amount ? ` ($${costItem.amount})` : ''}`);
+    }
+  }
+
+  // Fallback: Check for seller_credit_to_buyer field (legacy extraction)
+  if (sellerCreditAmount === null && e.seller_credit_to_buyer) {
+    const legacyCredit = coerceNumber(e.seller_credit_to_buyer);
+    if (legacyCredit !== null) {
+      console.log(`[transform] Using legacy seller_credit_to_buyer: $${legacyCredit}`);
+      sellerCreditAmount = legacyCredit;
     }
   }
 
@@ -138,10 +189,12 @@ export function transformToUniversal(data: any): any {
 
     contingencies,
 
+    // ENHANCED: Closing costs with detailed allocations
     closingCosts: {
-      buyerPays: [],
-      sellerPays: [],
-      sellerCreditAmount,
+      allocations: closingCostAllocations,           // NEW
+      sellerCreditAmount,                            // Updated to use extracted value
+      buyerPays: [],                                 // DEPRECATED but kept for compatibility
+      sellerPays: [],                                // DEPRECATED but kept for compatibility
     },
 
     brokers: {

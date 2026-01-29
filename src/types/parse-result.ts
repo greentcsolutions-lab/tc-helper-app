@@ -1,13 +1,23 @@
 // src/types/parse-result.ts
-// Version: 3.0.0 - 2025-12-29
-// ENHANCED: Added field provenance tracking for debugging
-// NEW: extractionDetails now includes fieldProvenance, confidenceBreakdown, missingConfidenceFields
-// BREAKING: purchasePrice: 0 is now treated as an extraction error
+// Version: 4.0.0 - 2026-01-29
+// ENHANCED: Added closing cost allocation types to ParseResult
+//           Field provenance tracking for debugging
+//           extractionDetails includes fieldProvenance, confidenceBreakdown, missingConfidenceFields
 
 import { JsonValue } from "@prisma/client/runtime/library";
 
 // ═══════════════════════════════════════════════════════════════════════════
-// NEW: Field provenance tracking (Issue 6)
+// Closing Cost Allocation Types
+// ═══════════════════════════════════════════════════════════════════════════
+export interface ClosingCostItem {
+  itemName: string;           // Exact name as it appears in contract
+  paidBy: "Buyer" | "Seller" | "Split" | "Buyer and Seller" | "Waived" | "Not specified";
+  amount: number | null;      // Dollar amount if specified
+  notes: string | null;       // Additional context
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Field Provenance Tracking
 // ═══════════════════════════════════════════════════════════════════════════
 export interface FieldProvenance {
   field: string;            // e.g., "purchasePrice", "buyerNames", "brokers.listingAgent"
@@ -20,13 +30,13 @@ export interface FieldProvenance {
 export interface ExtractionDetails {
   route: "universal" | "california" | "california-fallback-universal";
   
-  // NEW: Field provenance (which page → which field)
+  // Field provenance (which page → which field)
   fieldProvenance?: FieldProvenance[];
   
-  // NEW: Per-field confidence scores
+  // Per-field confidence scores
   confidenceBreakdown?: Record<string, number>;
   
-  // NEW: Fields that didn't return confidence scores
+  // Fields that didn't return confidence scores
   missingConfidenceFields?: string[];
   
   // Legacy/future state-specific data
@@ -41,22 +51,22 @@ export interface ParseResult {
   createdAt: string | Date;
   finalizedAt: string | Date | null;
 
-  // === UNIVERSAL CORE FIELDS (existing scalars preserved) ===
-  transactionType: string | null;           // "listing" or "escrow"
+  // === UNIVERSAL CORE FIELDS ===
+  transactionType: string | null;
   buyerNames: string[] | null;
   sellerNames: string[] | null;
   propertyAddress: string | null;
-  purchasePrice: number | null;  // IMPORTANT: 0 = extraction error, requires review
+  purchasePrice: number | null;
   earnestMoneyAmount: number | null;        // deprecated — use earnestMoneyDeposit.amount
   earnestMoneyHolder: string | null;        // deprecated — use earnestMoneyDeposit.holder
   closingDate: string | null;
-  effectiveDate: string | null;             // Acceptance date (YYYY-MM-DD)
-  initialDepositDueDate: string | null;     // Earnest money due date (YYYY-MM-DD or "N days")
-  sellerDeliveryOfDisclosuresDate: string | null; // YYYY-MM-DD or "N days"
+  effectiveDate: string | null;
+  initialDepositDueDate: string | null;
+  sellerDeliveryOfDisclosuresDate: string | null;
   isAllCash: boolean | null;
   loanType: string | null;
 
-  // === NEW: FULL NESTED UNIVERSAL FIELDS ===
+  // === NESTED UNIVERSAL FIELDS ===
   earnestMoneyDeposit: {
     amount: number | null;
     holder: string | null;
@@ -69,16 +79,18 @@ export interface ParseResult {
   } | null;
 
   contingencies: {
-    inspectionDays: number | string | null;     // number of days or "Waived"
+    inspectionDays: number | string | null;
     appraisalDays: number | string | null;
     loanDays: number | string | null;
     saleOfBuyerProperty: boolean;
   } | null;
 
+  // ENHANCED: Closing costs with detailed allocations
   closingCosts: {
-    buyerPays: string[];
-    sellerPays: string[];
-    sellerCreditAmount: number | null;
+    allocations: ClosingCostItem[];           // NEW: Detailed allocations
+    sellerCreditAmount: number | null;        // Auto-extracted from allocations
+    buyerPays: string[];                      // DEPRECATED: Keep for backward compatibility
+    sellerPays: string[];                     // DEPRECATED: Keep for backward compatibility
   } | null;
 
   brokers: {
@@ -104,18 +116,15 @@ export interface ParseResult {
   } | null;
 
   personalPropertyIncluded: string[] | null;
-
   escrowHolder: string | null;
 
   // === FLAGS ===
   missingSCOs: boolean;
 
-  // === RICH JSON FIELDS (enhanced with field provenance) ===
+  // === RICH JSON FIELDS ===
   extractionDetails?: ExtractionDetails | JsonValue | null;
-
   timelineEvents?: JsonValue | null;
-
-  timelineDataStructured?: JsonValue | null;  // NEW: Structured timeline data with calculation metadata
+  timelineDataStructured?: JsonValue | null;
 
   // === THUMBNAILS / PREVIEWS ===
   lowResZipUrl?: string | null;

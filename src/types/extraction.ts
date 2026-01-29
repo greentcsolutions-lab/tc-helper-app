@@ -1,11 +1,21 @@
 // src/types/extraction.ts
-// Version: 3.0.0 - 2026-01-05
-// ENHANCED: Full broker contact info (email/phone)
+// Version: 4.0.0 - 2026-01-29
+// ENHANCED: Added detailed closing cost allocation types with flexible naming
+//           Full broker contact info (email/phone)
 //           Added closeOfEscrowDate and contingency deadlines
-//           Removed deprecated closingDate from UniversalExtractionResult
 
 /**
- * Per-page extraction result from Mistral (pure OCR extraction)
+ * Individual closing cost allocation item
+ */
+export interface ClosingCostItem {
+  itemName: string;           // Exact name as it appears in contract
+  paidBy: "Buyer" | "Seller" | "Split" | "Buyer and Seller" | "Waived" | "Not specified";
+  amount: number | null;      // Dollar amount if specified
+  notes: string | null;       // Additional context (e.g., "split 50/50", "up to $500")
+}
+
+/**
+ * Per-page extraction result from AI (pure OCR extraction)
  * No classification metadata - just raw field extraction
  */
 export interface PerPageExtraction {
@@ -33,9 +43,10 @@ export interface PerPageExtraction {
     saleOfBuyerProperty: boolean | null;
   } | null;
   closingCosts?: {
-    buyerPays: string[] | null;
-    sellerPays: string[] | null;
-    sellerCreditAmount: number | null;
+    allocations: ClosingCostItem[];           // NEW: Detailed allocations
+    sellerCreditAmount: number | null;        // DEPRECATED: Use allocations instead
+    buyerPays: string[] | null;               // DEPRECATED: Use allocations instead
+    sellerPays: string[] | null;              // DEPRECATED: Use allocations instead
   } | null;
   brokers?: {
     listingBrokerage: string | null;
@@ -83,9 +94,9 @@ export interface UniversalExtractionResult {
     holder: string | null;
   } | null;
   effectiveDate: string | null;
-  closeOfEscrowDate: string | null; // ← Calculated COE (new primary field)
-  initialDepositDueDate?: string | null; // ← Earnest money due date (YYYY-MM-DD)
-  sellerDeliveryOfDisclosuresDate?: string | null; // ← Seller disclosures due date (YYYY-MM-DD)
+  closeOfEscrowDate: string | null;
+  initialDepositDueDate?: string | null;
+  sellerDeliveryOfDisclosuresDate?: string | null;
   closing?: {
     daysAfterAcceptance?: number | null;
     specificDate?: string | null;
@@ -97,7 +108,7 @@ export interface UniversalExtractionResult {
   } | null;
   contingencies: {
     inspectionDays: number | string | null;
-    inspectionDaysDeadline?: string | null; // ← Calculated
+    inspectionDaysDeadline?: string | null;
     appraisalDays: number | string | null;
     appraisalDaysDeadline?: string | null;
     loanDays: number | string | null;
@@ -105,9 +116,10 @@ export interface UniversalExtractionResult {
     saleOfBuyerProperty: boolean | null;
   } | null;
   closingCosts: {
-    buyerPays: string[] | null;
-    sellerPays: string[] | null;
-    sellerCreditAmount: number | null;
+    allocations: ClosingCostItem[];           // NEW: Detailed allocations
+    sellerCreditAmount: number | null;        // DEPRECATED: Keep for backward compatibility
+    buyerPays: string[] | null;               // DEPRECATED: Keep for backward compatibility
+    sellerPays: string[] | null;              // DEPRECATED: Keep for backward compatibility
   } | null;
   brokers: {
     listingBrokerage: string | null;

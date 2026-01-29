@@ -1,13 +1,15 @@
 // src/components/CategoryPurchaseTerms.tsx
-// Version: 3.1.0 - 2026-01-08
-// ENHANCED: Added edit mode support and missing fields (loan amount, personal property, escrow holder, closing costs)
-// FIXED: Proper null handling + zero-value detection (purchasePrice: 0 = error)
-// FIXED: Date formatting - displays dates as MM/DD/YYYY to users
+// Version: 4.0.0 - 2026-01-29
+// ENHANCED: Added closing cost allocation table display
+//           Edit mode support for all fields
+//           Proper null handling + zero-value detection
 
 import CategorySection, { FieldConfig } from "./CategorySection";
 import { DollarSign, AlertCircle } from "lucide-react";
 import { ParseResult } from "@/types";
 import { formatDisplayDate } from "@/lib/date-utils";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 
 interface CategoryPurchaseTermsProps {
   data: ParseResult;
@@ -72,7 +74,6 @@ export default function CategoryPurchaseTerms({
     try {
       return formatDisplayDate(value);
     } catch (e) {
-      // If parsing fails, return the original value
       return value;
     }
   };
@@ -177,15 +178,6 @@ export default function CategoryPurchaseTerms({
       (val) => onDataChange?.({ ...data, effectiveDate: val })
     ),
     createField(
-      "Seller Credit to Buyer",
-      isEditing ? data.closingCosts?.sellerCreditAmount : formatCurrency(data.closingCosts?.sellerCreditAmount, 'sellerCredit'),
-      'number',
-      (val) => onDataChange?.({
-        ...data,
-        closingCosts: { ...data.closingCosts, sellerCreditAmount: val },
-      })
-    ),
-    createField(
       "Escrow Holder",
       isEditing ? data.escrowHolder : formatString(data.escrowHolder),
       'text',
@@ -211,15 +203,36 @@ export default function CategoryPurchaseTerms({
   // Filter out null values when not editing
   const fields = isEditing ? allFields : allFields.filter((f) => f.value !== null);
 
-  if (fields.length === 0) return null;
-
   // ═══════════════════════════════════════════════════════════════════════
   // CHECK FOR EXTRACTION ERRORS (purchasePrice = 0)
   // ═══════════════════════════════════════════════════════════════════════
   const hasExtractionError = data.purchasePrice === 0;
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // CLOSING COST ALLOCATIONS TABLE
+  // ═══════════════════════════════════════════════════════════════════════
+  const closingCostAllocations = data.closingCosts?.allocations || [];
+  const hasClosingCosts = closingCostAllocations.length > 0;
+
+  // Helper to get badge color based on who pays
+  const getPaidByColor = (paidBy: string) => {
+    switch (paidBy) {
+      case 'Buyer':
+        return 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300';
+      case 'Seller':
+        return 'bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300';
+      case 'Split':
+      case 'Buyer and Seller':
+        return 'bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300';
+      case 'Waived':
+        return 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300';
+      default:
+        return 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300';
+    }
+  };
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-6">
       {hasExtractionError && !isEditing && (
         <div className="p-4 rounded-lg border-2 border-orange-300 bg-orange-50 flex items-start gap-3">
           <AlertCircle className="h-5 w-5 text-orange-600 shrink-0 mt-0.5" />
@@ -243,6 +256,70 @@ export default function CategoryPurchaseTerms({
         defaultOpen={true}
         isEditing={isEditing}
       />
+
+      {/* NEW: Closing Cost Allocations Table */}
+      {hasClosingCosts && !isEditing && (
+        <div className="mt-6">
+          <div className="bg-muted/50 rounded-t-lg px-5 py-3 border-x border-t border-border/50">
+            <h3 className="text-lg font-bold flex items-center gap-2">
+              <DollarSign className="h-5 w-5 text-primary" />
+              Allocation of Closing Costs
+              <Badge variant="secondary" className="font-mono text-[10px] px-1.5 py-0">
+                {closingCostAllocations.length} ITEMS
+              </Badge>
+            </h3>
+          </div>
+          <div className="border border-border/50 rounded-b-lg overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/30">
+                  <TableHead className="font-semibold">Cost Item</TableHead>
+                  <TableHead className="font-semibold">Paid By</TableHead>
+                  <TableHead className="font-semibold text-right">Amount</TableHead>
+                  <TableHead className="font-semibold">Notes</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {closingCostAllocations.map((item, index) => (
+                  <TableRow key={index} className="hover:bg-muted/50">
+                    <TableCell className="font-medium">
+                      {item.itemName}
+                    </TableCell>
+                    <TableCell>
+                      <Badge className={getPaidByColor(item.paidBy)}>
+                        {item.paidBy}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right font-mono">
+                      {item.amount !== null 
+                        ? `$${item.amount.toLocaleString()}` 
+                        : <span className="text-muted-foreground text-xs">Not specified</span>
+                      }
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {item.notes || '—'}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+
+          {/* Show total seller credit if present */}
+          {data.closingCosts?.sellerCreditAmount !== null && (
+            <div className="mt-3 p-3 bg-green-50 dark:bg-green-950/20 rounded-lg border border-green-200 dark:border-green-800">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-green-900 dark:text-green-100">
+                  Total Seller Credit to Buyer
+                </span>
+                <span className="text-lg font-bold text-green-700 dark:text-green-300">
+                  ${data.closingCosts.sellerCreditAmount.toLocaleString()}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 // src/lib/extraction/shared/extraction-schema.ts
-// Version: 1.0.0 - 2026-01-15
+// Version: 2.0.0 - 2026-01-29
+// ENHANCED: Added detailed closing cost allocation extraction with flexible naming recognition
 // Shared extraction schema used by ALL AI providers (Claude, Gemini, etc.)
-// This ensures consistent extraction regardless of which AI is used
 
 /**
  * JSON Schema for structured contract extraction
@@ -86,12 +86,40 @@ export const EXTRACTION_SCHEMA = {
             email: { type: ["string", "null"] },
             phone: { type: ["string", "null"] }
           }
+        },
+        closing_cost_allocations: {
+          type: "array",
+          description: "Detailed allocation of closing costs with flexible naming recognition",
+          items: {
+            type: "object",
+            properties: {
+              item_name: { 
+                type: "string",
+                description: "EXACT name of the cost item as it appears in the contract (preserve original terminology)"
+              },
+              paid_by: { 
+                type: "string",
+                enum: ["Buyer", "Seller", "Split", "Buyer and Seller", "Waived", "Not specified"],
+                description: "Who pays for this item based on checkboxes, blanks, or allocation text"
+              },
+              amount: {
+                type: ["number", "null"],
+                description: "Dollar amount if explicitly stated (remove $, commas). Null if not specified or 'to be determined'."
+              },
+              notes: {
+                type: ["string", "null"],
+                description: "Any additional context about the allocation (e.g., 'split 50/50', 'up to $500', 'per contract terms')"
+              }
+            },
+            required: ["item_name", "paid_by"]
+          }
         }
       },
       required: [
         "buyer_names", "property_address", "purchase_price", "all_cash",
         "final_acceptance_date", "timeline_events", "cop_contingency",
-        "home_warranty", "counters", "buyers_broker", "sellers_broker"
+        "home_warranty", "counters", "buyers_broker", "sellers_broker",
+        "closing_cost_allocations"
       ]
     },
     confidence: {
@@ -105,12 +133,13 @@ export const EXTRACTION_SCHEMA = {
         final_acceptance_date: { type: "integer", minimum: 0, maximum: 100 },
         home_warranty: { type: "integer", minimum: 0, maximum: 100 },
         brokerage_info: { type: "integer", minimum: 0, maximum: 100 },
-        loan_type: { type: "integer", minimum: 0, maximum: 100 }
+        loan_type: { type: "integer", minimum: 0, maximum: 100 },
+        closing_cost_allocations: { type: "integer", minimum: 0, maximum: 100 }
       },
       required: [
         "overall_confidence", "purchase_price", "property_address", "buyer_names",
         "timeline_events", "final_acceptance_date", "home_warranty",
-        "brokerage_info", "loan_type"
+        "brokerage_info", "loan_type", "closing_cost_allocations"
       ]
     },
     handwriting_detected: { type: "boolean" }
@@ -138,6 +167,7 @@ Your task is to extract ALL fields specified in the schema with particular focus
 - Final acceptance date (also called effective date) - this must be a SPECIFIC date in MM/DD/YYYY format
 - Timeline events (ALL dates/deadlines found in the contract)
 - Broker contact information
+- **Closing cost allocations** (NEW - see detailed instructions below)
 
 Follow these extraction rules:
 
@@ -147,7 +177,7 @@ Follow these extraction rules:
 - When merging information from multiple pages, apply this override logic carefully
 - Last counter/addendum wins for any field it explicitly modifies
 
-**CRITICAL: Timeline Events Extraction (NEW)**
+**CRITICAL: Timeline Events Extraction**
 Extract EVERY timeline event found in the contract. For each event, you must identify HOW the date is set, not calculate the actual date.
 
 For each timeline event, extract:
@@ -183,11 +213,121 @@ Example: "Buyer has 5 days to review after seller delivers disclosures" means an
 - BAD: "30 days after 01/15/2026 is 02/14/2026" ❌
 - GOOD: { date_type: "relative", relative_days: 30, anchor_point: "acceptance", direction: "after", day_type: "calendar" } ✓
 
+**CRITICAL: Closing Cost Allocation Extraction (NEW)**
+
+Extract detailed information about who pays for what closing costs. This is CRITICAL to get right.
+
+**What to Look For:**
+Look for explicit allocations in the contract such as:
+- Checkboxes like [ ] Buyer, [ ] Seller, [ ] Split
+- Fill-in blanks with "Buyer" or "Seller" written in
+- Phrases like "paid by Buyer", "paid by Seller", "shall be paid by", "to be paid by"
+- Allocation tables or grids showing cost breakdowns
+- Sections labeled "Allocation of Costs", "Who Pays What", "Settlement Charges", etc.
+
+**Flexible Naming Recognition:**
+Different states and contracts use different terminology for the same items. You MUST extract the EXACT name as it appears in the contract (preserve original wording), but be aware these items may have multiple names:
+
+Common variations you may encounter:
+- **Seller Credit/Concession/Assist/Contribution** - This is THE MOST IMPORTANT item to extract correctly
+  - May appear as: "Seller Credit", "Seller Concession", "Seller Assist", "Seller Contribution to Buyer's Costs", "Seller-Paid Closing Costs", "Seller Credit Toward Closing Costs"
+  - ALWAYS extract the NAME, WHO pays (usually Seller), and the AMOUNT
+  
+- **Escrow Fees**
+  - May appear as: "Escrow Fees", "Escrow Holder's Fees", "Escrow Services", "Settlement Fees", "Closing Agent Fees"
+  
+- **Title Insurance**
+  - Owner's policy: "Owner's Title Policy", "Owner's Title Insurance", "CLTA/ALTA Owner's Policy"
+  - Lender's policy: "Lender's Title Policy", "Lender's Title Insurance", "ALTA Lender's Policy", "Loan Policy"
+  
+- **Transfer Taxes**
+  - "County Transfer Tax", "County Documentary Transfer Tax", "State Transfer Tax", "Deed Recording Tax"
+  - "City Transfer Tax", "Municipal Transfer Tax"
+  
+- **HOA Fees**
+  - "HOA Transfer Fees", "HOA Document Preparation", "HOA Transfer Fee", "Association Transfer Fee", "HOA Capital Contribution"
+  
+- **Recording Fees**
+  - "County Recording Fees", "Recording Fees", "Document Recording", "Deed Recording"
+  
+- **Inspections**
+  - "Home Inspection", "Pest Inspection", "Termite Inspection", "Wood Destroying Organism Report", "Septic Inspection", "Well Inspection", "Radon Test"
+  
+- **Home Warranty**
+  - "Home Warranty", "Home Protection Plan", "Home Service Contract", "Warranty Plan"
+  
+- **Other Fees**
+  - "Natural Hazard Disclosure Report", "NHD Report", "Environmental Report"
+  - "Survey", "Property Survey", "Boundary Survey"
+  - "HOA Document Fees", "Demand Statement Fee"
+  - "Private Transfer Fee", "Transfer Assessment"
+
+**Extraction Instructions:**
+1. For EACH cost item found in the contract:
+   - item_name: Extract the EXACT name as written (preserve original terminology - do NOT normalize)
+   - paid_by: Extract who pays based on checkboxes/allocations (Buyer, Seller, Split, Buyer and Seller, Waived, Not specified)
+   - amount: Extract dollar amount if explicitly stated (remove $, commas). Use null if not specified or "TBD"
+   - notes: Extract any additional context (e.g., "split 50/50", "up to $500", "per contract", "based on title company rate sheet")
+
+2. If an item is NOT mentioned in the contract at all, do NOT include it in the array.
+
+3. If an item is mentioned but allocation is unclear or blank, use "Not specified" for paid_by.
+
+4. For seller credits/concessions/assists/contributions:
+   - This is the MOST IMPORTANT item to extract correctly
+   - Extract the EXACT name as it appears
+   - ALWAYS extract the amount if stated
+   - Common patterns: "Seller to credit Buyer $5,000", "Seller concession of $3,500 toward closing costs"
+
+**Examples of Good Extraction:**
+
+Example 1 (Checkbox allocation):
+Contract text: "Title Insurance (Owner's Policy): [ ] Buyer [X] Seller [ ] Split"
+Output: 
+{
+  "item_name": "Title Insurance (Owner's Policy)",
+  "paid_by": "Seller",
+  "amount": null,
+  "notes": null
+}
+
+Example 2 (Seller credit with amount):
+Contract text: "Seller to credit Buyer $5,000 toward closing costs"
+Output:
+{
+  "item_name": "Seller Credit Toward Closing Costs",
+  "paid_by": "Seller",
+  "amount": 5000,
+  "notes": null
+}
+
+Example 3 (Split with notes):
+Contract text: "Escrow fees to be split equally between Buyer and Seller"
+Output:
+{
+  "item_name": "Escrow fees",
+  "paid_by": "Split",
+  "amount": null,
+  "notes": "split equally"
+}
+
+Example 4 (Amount with cap):
+Contract text: "Home Warranty - Seller to pay up to $500"
+Output:
+{
+  "item_name": "Home Warranty",
+  "paid_by": "Seller",
+  "amount": 500,
+  "notes": "up to $500"
+}
+
 **Field-Specific Instructions:**
 - Prices: Include the dollar sign and format with commas (e.g., $500,000)
 - final_acceptance_date: Must be the last signature date (MM/DD/YYYY format)
 - Be state-agnostic: Extract ALL timeline events regardless of state
 - Better to extract MORE timeline events than miss some
+- For closing costs: Better to extract MORE items than miss important ones
+- PRESERVE EXACT WORDING for item_name - do not normalize or standardize
 
 **Response Format:**
 
@@ -198,6 +338,8 @@ Your response should contain two parts:
    - Track which fields are mentioned in counters/addenda vs original contract
    - Identify timeline events and how each date is calculated
    - Note any events that depend on other timeline events
+   - Identify closing cost allocation sections and note any ambiguities
+   - List seller credits/concessions found with their amounts
    - Reason through any ambiguities or conflicts
    - Map extracted information to schema fields
    - Keep this section concise (a few bullet points per topic is sufficient)
@@ -215,5 +357,8 @@ Your response should contain two parts:
    - Match the exact structure of the provided schema
    - Include all required fields from the schema
    - Use null for any fields that cannot be found in the document
-   - Extract ALL timeline events with their calculation structure (no date calculations!)`;
+   - Extract ALL timeline events with their calculation structure (no date calculations!)
+   - Extract ALL closing cost allocations found in the contract
+   - Preserve exact wording for closing cost item names
+   - Include seller credits/concessions/assists/contributions with amounts`;
 }
