@@ -1,8 +1,7 @@
 // src/lib/parse/map-to-parse-result.ts
-// Version: 4.0.0 - 2026-01-15
-// BREAKING: Added support for structured timeline data (timelineDataStructured)
-//           Maps new flat broker contact fields → nested listingAgentDetails / buyersAgentDetails
-//           Added closeOfEscrowDate support
+// Version: 4.0.1 - 2026-01-30
+// BUGFIX: Added missing allocations field to closingCosts mapping
+// Previous version (4.0.0) dropped allocations during database save, causing UI display failure
 
 import type { UniversalExtractionResult } from '@/types/extraction';
 import type { FieldProvenance } from '@/types/parse-result';
@@ -132,6 +131,7 @@ export function mapExtractionToParseResult({
 
     closingCosts: universal.closingCosts
       ? {
+          allocations: universal.closingCosts.allocations ?? [], // ← BUGFIX: Added missing field
           buyerPays: universal.closingCosts.buyerPays ?? [],
           sellerPays: universal.closingCosts.sellerPays ?? [],
           sellerCreditAmount: universal.closingCosts.sellerCreditAmount,
