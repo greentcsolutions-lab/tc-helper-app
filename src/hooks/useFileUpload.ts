@@ -1,9 +1,13 @@
 // src/hooks/useFileUpload.ts
-// Version: 1.0.0 - 2025-12-30
-// Handles file validation and upload logic
+// Version: 2.0.0 - 2026-01-30
+// BREAKING: Moved to direct Blob upload to bypass Vercel serverless body size limits
+// - All PDF validation now happens client-side
+// - Uses @vercel/blob client upload (no serverless function)
+// - Page counting moved to separate API route after upload
 
 import { useState } from "react";
 import { toast } from "sonner";
+import { upload } from "@vercel/blob/client";
 
 export function useFileUpload() {
   const [currentFile, setCurrentFile] = useState<File | null>(null);
@@ -34,24 +38,39 @@ export function useFileUpload() {
   };
 
   const uploadFile = async (file: File): Promise<string | null> => {
-    const formData = new FormData();
-    formData.append("file", file);
-
     try {
-      const uploadRes = await fetch("/api/parse/upload", {
-        method: "POST",
-        body: formData,
+      console.log(`[useFileUpload] Starting direct Blob upload for ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`);
+
+      // Step 1: Upload directly to Vercel Blob (bypasses serverless function)
+      const blob = await upload(file.name, file, {
+        access: "public",
+        handleUploadUrl: "/api/parse/upload-url", // Route that generates signed URL
       });
 
-      if (!uploadRes.ok) {
-        const error = await uploadRes.json();
-        throw new Error(error.error || "Upload failed");
+      console.log(`[useFileUpload] Blob upload complete: ${blob.url}`);
+
+      // Step 2: Create parse record with blob URL
+      const createRes = await fetch("/api/parse/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileName: file.name,
+          pdfUrl: blob.url,
+          fileSize: file.size,
+        }),
+      });
+
+      if (!createRes.ok) {
+        const error = await createRes.json();
+        throw new Error(error.error || "Failed to create parse record");
       }
 
-      const { parseId: newParseId } = await uploadRes.json();
+      const { parseId: newParseId } = await createRes.json();
+      console.log(`[useFileUpload] Parse record created: ${newParseId}`);
+
       return newParseId;
     } catch (error: any) {
-      console.error("[upload] Error:", error);
+      console.error("[useFileUpload] Upload failed:", error);
       toast.error("Upload failed", { description: error.message });
       return null;
     }
