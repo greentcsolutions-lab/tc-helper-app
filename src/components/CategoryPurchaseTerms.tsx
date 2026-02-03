@@ -1,14 +1,27 @@
 // src/components/CategoryPurchaseTerms.tsx
 // Version: 4.0.0 - 2026-01-29
-// ENHANCED: Added closing cost allocation table display
-//           Edit mode support for all fields
-//           Proper null handling + zero-value detection
+// ENHANCED: Added Allocation of Closing Costs table with full CRUD support
+// ENHANCED: Separate "Copy All" buttons for main fields and allocations table
+// ENHANCED: Individual copy buttons for each allocation row
 
+import { useState } from "react";
 import CategorySection, { FieldConfig } from "./CategorySection";
-import { DollarSign, AlertCircle } from "lucide-react";
+import { DollarSign, AlertCircle, Copy, Plus, Trash2 } from "lucide-react";
 import { ParseResult } from "@/types";
 import { formatDisplayDate } from "@/lib/date-utils";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { toast } from "sonner";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
 interface CategoryPurchaseTermsProps {
@@ -17,11 +30,24 @@ interface CategoryPurchaseTermsProps {
   onDataChange?: (updatedData: ParseResult) => void;
 }
 
+// Type for closing cost allocation items (matches database structure)
+export interface AllocationItem {
+  itemName: string;
+  paidBy: "Buyer" | "Seller" | "Split";
+  amount: number | null;
+  notes: string | null;
+}
+
 export default function CategoryPurchaseTerms({
   data,
   isEditing = false,
   onDataChange,
 }: CategoryPurchaseTermsProps) {
+  // Local state for editing allocations
+  const [allocations, setAllocations] = useState<AllocationItem[]>(
+    data.closingCosts?.allocations || []
+  );
+
   // ═══════════════════════════════════════════════════════════════════════
   // HELPER: Safe array display
   // ═══════════════════════════════════════════════════════════════════════
@@ -74,6 +100,7 @@ export default function CategoryPurchaseTerms({
     try {
       return formatDisplayDate(value);
     } catch (e) {
+      // If parsing fails, return the original value
       return value;
     }
   };
@@ -84,6 +111,71 @@ export default function CategoryPurchaseTerms({
   const formatArray = (arr: string[] | null | undefined): string | null => {
     if (!Array.isArray(arr) || arr.length === 0) return null;
     return arr.join(', ');
+  };
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // ALLOCATION TABLE HANDLERS
+  // ═══════════════════════════════════════════════════════════════════════
+
+  const handleAddAllocation = () => {
+    const newAllocation: AllocationItem = {
+      itemName: "",
+      paidBy: "Buyer",
+      amount: null,
+      notes: null,
+    };
+    const updated = [...allocations, newAllocation];
+    setAllocations(updated);
+    updateClosingCosts(updated);
+  };
+
+  const handleRemoveAllocation = (index: number) => {
+    const updated = allocations.filter((_, i) => i !== index);
+    setAllocations(updated);
+    updateClosingCosts(updated);
+  };
+
+  const handleUpdateAllocation = (
+    index: number,
+    field: keyof AllocationItem,
+    value: any
+  ) => {
+    const updated = [...allocations];
+    updated[index] = { ...updated[index], [field]: value };
+    setAllocations(updated);
+    updateClosingCosts(updated);
+  };
+
+  const updateClosingCosts = (updatedAllocations: AllocationItem[]) => {
+    if (!onDataChange) return;
+    onDataChange({
+      ...data,
+      closingCosts: {
+        ...data.closingCosts,
+        allocations: updatedAllocations,
+      },
+    });
+  };
+
+  const copyAllocationRow = (allocation: AllocationItem) => {
+    const text = `${allocation.itemName} - ${allocation.paidBy} - ${
+      allocation.amount ? `$${allocation.amount.toLocaleString()}` : "Not specified"
+    } - ${allocation.notes || "—"}`;
+    navigator.clipboard.writeText(text);
+    toast.success("Copied allocation row!");
+  };
+
+  const copyAllAllocations = () => {
+    const text = allocations
+      .map(
+        (a) =>
+          `${a.itemName} - ${a.paidBy} - ${
+            a.amount ? `$${a.amount.toLocaleString()}` : "Not specified"
+          } - ${a.notes || "—"}`
+      )
+      .join("\n");
+    navigator.clipboard.writeText(text);
+    toast.success("Copied all allocations!");
   };
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -178,6 +270,15 @@ export default function CategoryPurchaseTerms({
       (val) => onDataChange?.({ ...data, effectiveDate: val })
     ),
     createField(
+      "Seller Credit to Buyer",
+      isEditing ? data.closingCosts?.sellerCreditAmount : formatCurrency(data.closingCosts?.sellerCreditAmount, 'sellerCredit'),
+      'number',
+      (val) => onDataChange?.({
+        ...data,
+        closingCosts: { ...data.closingCosts, sellerCreditAmount: val },
+      })
+    ),
+    createField(
       "Escrow Holder",
       isEditing ? data.escrowHolder : formatString(data.escrowHolder),
       'text',
@@ -203,33 +304,12 @@ export default function CategoryPurchaseTerms({
   // Filter out null values when not editing
   const fields = isEditing ? allFields : allFields.filter((f) => f.value !== null);
 
+  if (fields.length === 0 && allocations.length === 0) return null;
+
   // ═══════════════════════════════════════════════════════════════════════
   // CHECK FOR EXTRACTION ERRORS (purchasePrice = 0)
   // ═══════════════════════════════════════════════════════════════════════
   const hasExtractionError = data.purchasePrice === 0;
-
-  // ═══════════════════════════════════════════════════════════════════════
-  // CLOSING COST ALLOCATIONS TABLE
-  // ═══════════════════════════════════════════════════════════════════════
-  const closingCostAllocations = data.closingCosts?.allocations || [];
-  const hasClosingCosts = closingCostAllocations.length > 0;
-
-  // Helper to get badge color based on who pays
-  const getPaidByColor = (paidBy: string) => {
-    switch (paidBy) {
-      case 'Buyer':
-        return 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300';
-      case 'Seller':
-        return 'bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300';
-      case 'Split':
-      case 'Buyer and Seller':
-        return 'bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300';
-      case 'Waived':
-        return 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300';
-      default:
-        return 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300';
-    }
-  };
 
   return (
     <div className="space-y-6">
@@ -257,68 +337,173 @@ export default function CategoryPurchaseTerms({
         isEditing={isEditing}
       />
 
-      {/* NEW: Closing Cost Allocations Table */}
-      {hasClosingCosts && !isEditing && (
-        <div className="mt-6">
-          <div className="bg-muted/50 rounded-t-lg px-5 py-3 border-x border-t border-border/50">
-            <h3 className="text-lg font-bold flex items-center gap-2">
-              <DollarSign className="h-5 w-5 text-primary" />
-              Allocation of Closing Costs
-              <Badge variant="secondary" className="font-mono text-[10px] px-1.5 py-0">
-                {closingCostAllocations.length} ITEMS
-              </Badge>
-            </h3>
-          </div>
-          <div className="border border-border/50 rounded-b-lg overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/30">
-                  <TableHead className="font-semibold">Cost Item</TableHead>
-                  <TableHead className="font-semibold">Paid By</TableHead>
-                  <TableHead className="font-semibold text-right">Amount</TableHead>
-                  <TableHead className="font-semibold">Notes</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {closingCostAllocations.map((item, index) => (
-                  <TableRow key={index} className="hover:bg-muted/50">
-                    <TableCell className="font-medium">
-                      {item.itemName}
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={getPaidByColor(item.paidBy)}>
-                        {item.paidBy}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right font-mono">
-                      {item.amount !== null 
-                        ? `$${item.amount.toLocaleString()}` 
-                        : <span className="text-muted-foreground text-xs">Not specified</span>
-                      }
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {item.notes || '—'}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-
-          {/* Show total seller credit if present */}
-          {data.closingCosts?.sellerCreditAmount !== null && (
-            <div className="mt-3 p-3 bg-green-50 dark:bg-green-950/20 rounded-lg border border-green-200 dark:border-green-800">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-green-900 dark:text-green-100">
-                  Total Seller Credit to Buyer
-                </span>
-                <span className="text-lg font-bold text-green-700 dark:text-green-300">
-                  ${data.closingCosts.sellerCreditAmount.toLocaleString()}
-                </span>
+      {/* ALLOCATION OF CLOSING COSTS TABLE */}
+      {(allocations.length > 0 || isEditing) && (
+        <Card className="overflow-hidden">
+          <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 border-b">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <DollarSign className="h-5 w-5 text-blue-600" />
+                <CardTitle className="text-lg font-bold">
+                  Allocation of Closing Costs
+                </CardTitle>
+                <Badge variant="secondary" className="font-mono text-[10px] px-1.5 py-0">
+                  {allocations.length} ITEMS
+                </Badge>
+              </div>
+              <div className="flex items-center gap-2">
+                {!isEditing && allocations.length > 0 && (
+                  <Button variant="outline" size="sm" onClick={copyAllAllocations}>
+                    <Copy className="h-4 w-4 mr-2" />
+                    Copy All
+                  </Button>
+                )}
+                {isEditing && (
+                  <Button variant="outline" size="sm" onClick={handleAddAllocation}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Item
+                  </Button>
+                )}
               </div>
             </div>
-          )}
-        </div>
+          </CardHeader>
+
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/50">
+                    <TableHead className="font-semibold">Cost Item</TableHead>
+                    <TableHead className="font-semibold w-32">Paid By</TableHead>
+                    <TableHead className="font-semibold w-40">Amount</TableHead>
+                    <TableHead className="font-semibold">Notes</TableHead>
+                    {!isEditing && <TableHead className="w-12"></TableHead>}
+                    {isEditing && <TableHead className="w-12"></TableHead>}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {allocations.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                        No closing cost allocations specified
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    allocations.map((allocation, index) => (
+                      <TableRow key={index} className="hover:bg-muted/30 transition-colors">
+                        <TableCell className="font-medium">
+                          {isEditing ? (
+                            <Input
+                              value={allocation.itemName}
+                              onChange={(e) =>
+                                handleUpdateAllocation(index, "itemName", e.target.value)
+                              }
+                              placeholder="Cost item name"
+                              className="min-w-[200px]"
+                            />
+                          ) : (
+                            allocation.itemName || "—"
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {isEditing ? (
+                            <Select
+                              value={allocation.paidBy}
+                              onValueChange={(val) =>
+                                handleUpdateAllocation(index, "paidBy", val)
+                              }
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="Buyer">Buyer</SelectItem>
+                                <SelectItem value="Seller">Seller</SelectItem>
+                                <SelectItem value="Split">Split</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <Badge
+                              variant={
+                                allocation.paidBy === "Buyer"
+                                  ? "default"
+                                  : allocation.paidBy === "Seller"
+                                  ? "secondary"
+                                  : "outline"
+                              }
+                              className="font-medium"
+                            >
+                              {allocation.paidBy}
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {isEditing ? (
+                            <Input
+                              type="number"
+                              value={allocation.amount || ""}
+                              onChange={(e) =>
+                                handleUpdateAllocation(
+                                  index,
+                                  "amount",
+                                  e.target.value ? parseFloat(e.target.value) : null
+                                )
+                              }
+                              placeholder="Amount"
+                              className="w-full"
+                            />
+                          ) : allocation.amount ? (
+                            <span className="font-semibold text-green-700 dark:text-green-400">
+                              ${allocation.amount.toLocaleString()}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground text-sm">Not specified</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {isEditing ? (
+                            <Input
+                              value={allocation.notes || ""}
+                              onChange={(e) =>
+                                handleUpdateAllocation(index, "notes", e.target.value || null)
+                              }
+                              placeholder="Notes"
+                              className="min-w-[150px]"
+                            />
+                          ) : (
+                            <span className="text-sm text-muted-foreground">
+                              {allocation.notes || "—"}
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {isEditing ? (
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              onClick={() => handleRemoveAllocation(index)}
+                              className="text-destructive hover:text-destructive"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              onClick={() => copyAllocationRow(allocation)}
+                            >
+                              <Copy className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   );
