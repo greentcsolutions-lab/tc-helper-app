@@ -23,9 +23,7 @@ export default async function UploadPage() {
   });
 
   if (!dbUser) redirect("/onboarding");
-  if (!dbUser.state || !["CA"].includes(dbUser.state)) {
-    redirect("/not-supported");
-  }
+
 
   const hasCredits = dbUser.credits > 0;
 
